@@ -1,0 +1,88 @@
+{
+  "version": "1.0",
+  "type": "TactileMapDocument",
+  "metadata": {
+    "name": "Branch Road Demo",
+    "floor": 1,
+    "coordinate_unit": "feet",
+    "building_name": "Branch Demo Building"
+  },
+  "bounds": { "width": 1000, "height": 1600 },
+  "features": [
+    {
+      "id": "c-upper",
+      "element_type": "corridor",
+      "geometry": { "type": "LineString", "coordinates": [[100, 80], [500, 800]] },
+      "properties": { "name": "Upper Main Road", "level": 1, "is_accessible": true }
+    },
+    {
+      "id": "c-lower",
+      "element_type": "corridor",
+      "geometry": { "type": "LineString", "coordinates": [[500, 800], [900, 1520]] },
+      "properties": { "name": "Lower Main Road", "level": 1, "is_accessible": true }
+    },
+    {
+      "id": "c-branch",
+      "element_type": "corridor",
+      "geometry": { "type": "LineString", "coordinates": [[500, 800], [200, 1200]] },
+      "properties": { "name": "Branch Road", "level": 1, "is_accessible": true }
+    },
+    {
+      "id": "c-branch-down",
+      "element_type": "corridor",
+      "geometry": { "type": "LineString", "coordinates": [[200, 1200], [200, 1520]] },
+      "properties": { "name": "Branch Down Road", "level": 1, "is_accessible": true }
+    },
+    {
+      "id": "i-top-left",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [100, 80] },
+      "properties": { "name": "Main Entrance", "connected_corridors": ["c-upper"] }
+    },
+    {
+      "id": "i-junction",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [500, 800] },
+      "properties": {
+        "name": "Branch Junction",
+        "connected_corridors": ["c-upper", "c-lower", "c-branch"]
+      }
+    },
+    {
+      "id": "i-bottom-right",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [900, 1520] },
+      "properties": { "name": "Main Road End", "connected_corridors": ["c-lower"] }
+    },
+    {
+      "id": "i-branch-junction",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [200, 1200] },
+      "properties": { "name": "Branch Sub-Junction", "connected_corridors": ["c-branch", "c-branch-down"] }
+    },
+    {
+      "id": "i-branch-bottom",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [200, 1520] },
+      "properties": { "name": "Branch Down End", "connected_corridors": ["c-branch-down"] }
+    },
+    {
+      "id": "room-office",
+      "element_type": "landmark",
+      "geometry": { "type": "Point", "coordinates": [310, 260] },
+      "properties": { "name": "Office", "category": "conference_room", "side": "right" }
+    },
+    {
+      "id": "room-restroom",
+      "element_type": "landmark",
+      "geometry": { "type": "Point", "coordinates": [310, 1060] },
+      "properties": { "name": "Restroom", "category": "bathroom", "side": "right" }
+    },
+    {
+      "id": "room-elevator",
+      "element_type": "landmark",
+      "geometry": { "type": "Point", "coordinates": [740, 1200] },
+      "properties": { "name": "Elevator", "category": "elevator", "side": "left" }
+    }
+  ]
+}
