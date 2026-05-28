@@ -1,0 +1,118 @@
+{
+  "version": "1.0",
+  "type": "TactileMapDocument",
+  "metadata": {
+    "name": "Practice Map – Floor 1",
+    "floor": 1,
+    "coordinate_unit": "feet",
+    "building_name": "Practice Building"
+  },
+  "bounds": { "width": 1000, "height": 1600 },
+  "features": [
+    {
+      "id": "c-north",
+      "element_type": "corridor",
+      "geometry": { "type": "LineString", "coordinates": [[500, 60], [500, 720]] },
+      "properties": { "name": "North Corridor", "level": 1, "is_accessible": true }
+    },
+    {
+      "id": "c-west",
+      "element_type": "corridor",
+      "geometry": { "type": "LineString", "coordinates": [[30, 720], [500, 720]] },
+      "properties": { "name": "West Corridor", "level": 1, "is_accessible": true }
+    },
+    {
+      "id": "c-east",
+      "element_type": "corridor",
+      "geometry": { "type": "LineString", "coordinates": [[500, 720], [970, 720]] },
+      "properties": { "name": "East Corridor", "level": 1, "is_accessible": true }
+    },
+    {
+      "id": "c-sw",
+      "element_type": "corridor",
+      "geometry": { "type": "LineString", "coordinates": [[500, 720], [120, 1560]] },
+      "properties": { "name": "Southwest Corridor", "level": 1, "is_accessible": true }
+    },
+    {
+      "id": "c-se",
+      "element_type": "corridor",
+      "geometry": { "type": "LineString", "coordinates": [[500, 720], [880, 1560]] },
+      "properties": { "name": "Southeast Corridor", "level": 1, "is_accessible": true }
+    },
+    {
+      "id": "i-center",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [500, 720] },
+      "properties": {
+        "name": "Main Intersection",
+        "connected_corridors": ["c-north", "c-west", "c-east", "c-sw", "c-se"]
+      }
+    },
+    {
+      "id": "i-north-end",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [500, 60] },
+      "properties": { "name": "North End", "connected_corridors": ["c-north"] }
+    },
+    {
+      "id": "i-west-end",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [30, 720] },
+      "properties": { "name": "West End", "connected_corridors": ["c-west"] }
+    },
+    {
+      "id": "i-east-end",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [970, 720] },
+      "properties": { "name": "East End", "connected_corridors": ["c-east"] }
+    },
+    {
+      "id": "i-sw-end",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [120, 1560] },
+      "properties": { "name": "Southwest End", "connected_corridors": ["c-sw"] }
+    },
+    {
+      "id": "i-se-end",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [880, 1560] },
+      "properties": { "name": "Southeast End", "connected_corridors": ["c-se"] }
+    },
+    {
+      "id": "room-nw",
+      "element_type": "landmark",
+      "geometry": { "type": "Point", "coordinates": [210, 380] },
+      "properties": { "name": "Room A", "category": "conference_room", "side": "left" }
+    },
+    {
+      "id": "room-ne",
+      "element_type": "landmark",
+      "geometry": { "type": "Point", "coordinates": [730, 370] },
+      "properties": { "name": "Room B", "category": "conference_room", "side": "right" }
+    },
+    {
+      "id": "room-east-upper",
+      "element_type": "landmark",
+      "geometry": { "type": "Point", "coordinates": [820, 580] },
+      "properties": { "name": "Elevator", "category": "elevator", "side": "right" }
+    },
+    {
+      "id": "room-east-lower",
+      "element_type": "landmark",
+      "geometry": { "type": "Point", "coordinates": [790, 860] },
+      "properties": { "name": "Vending Machine", "category": "vending_machine", "side": "right" }
+    },
+    {
+      "id": "room-west",
+      "element_type": "landmark",
+      "geometry": { "type": "Point", "coordinates": [140, 840] },
+      "properties": { "name": "Bathroom", "category": "bathroom", "side": "left" }
+    },
+    {
+      "id": "room-sw",
+      "element_type": "landmark",
+      "geometry": { "type": "Point", "coordinates": [390, 1260] },
+      "properties": { "name": "Kitchen", "category": "kitchen", "side": "left" }
+    }
+  ]
+}

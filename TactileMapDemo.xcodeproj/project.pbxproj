@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		F1B01A2B2FBBE5E400BE0F00 /* TactileMapKit in Frameworks */ = {isa = PBXBuildFile; productRef = F1B01A2A2FBBE5E400BE0F00 /* TactileMapKit */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		F1B01A0D2FBBE4D900BE0F00 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F1B01A2B2FBBE5E400BE0F00 /* TactileMapKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +117,7 @@
 			);
 			name = TactileMapDemo;
 			packageProductDependencies = (
+				F1B01A2A2FBBE5E400BE0F00 /* TactileMapKit */,
 			);
 			productName = TactileMapDemo;
 			productReference = F1B019FF2FBBE4D600BE0F00 /* TactileMapDemo.app */;
@@ -195,6 +201,9 @@
 			);
 			mainGroup = F1B019F62FBBE4D600BE0F00;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				F1B01A292FBBE5E400BE0F00 /* XCRemoteSwiftPackageReference "ProjectMultiNav" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F1B01A002FBBE4D600BE0F00 /* Products */;
 			projectDirPath = "";
@@ -395,11 +404,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 9WP58NUV7H;
+				DEVELOPMENT_TEAM = K2WQH7G8CP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Used to connect devices on the local network.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Required for spatial audio processing.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -410,8 +422,9 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.vatsalya.research.TactileMapDemo;
+				PRODUCT_BUNDLE_IDENTIFIER = com.unar.tac;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -427,11 +440,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 9WP58NUV7H;
+				DEVELOPMENT_TEAM = K2WQH7G8CP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Used to connect devices on the local network.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Required for spatial audio processing.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -442,8 +458,9 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.vatsalya.research.TactileMapDemo;
+				PRODUCT_BUNDLE_IDENTIFIER = com.unar.tac;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -578,6 +595,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		F1B01A292FBBE5E400BE0F00 /* XCRemoteSwiftPackageReference "ProjectMultiNav" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Hariprasath88/ProjectMultiNav";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F1B01A2A2FBBE5E400BE0F00 /* TactileMapKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F1B01A292FBBE5E400BE0F00 /* XCRemoteSwiftPackageReference "ProjectMultiNav" */;
+			productName = TactileMapKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F1B019F72FBBE4D600BE0F00 /* Project object */;
 }

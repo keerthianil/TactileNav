@@ -1,0 +1,160 @@
+{
+  "version": "1.0",
+  "type": "TactileMapDocument",
+  "metadata": {
+    "name": "Branch Road Demo",
+    "floor": 1,
+    "coordinate_unit": "feet",
+    "building_name": "Branch Demo Building"
+  },
+  "bounds": { "width": 1000, "height": 1600 },
+  "features": [
+    {
+      "id": "c-h-left",
+      "element_type": "corridor",
+      "geometry": { "type": "LineString", "coordinates": [[30, 800], [350, 806]] },
+      "properties": { "name": "West Road", "level": 1, "is_accessible": true }
+    },
+    {
+      "id": "c-h-right",
+      "element_type": "corridor",
+      "geometry": { "type": "LineString", "coordinates": [[350, 806], [349, 806], [970, 800]] },
+      "properties": { "name": "East Road", "level": 1, "is_accessible": true }
+    },
+    {
+      "id": "c-upper",
+      "element_type": "corridor",
+      "geometry": { "type": "LineString", "coordinates": [[350, 806], [421, 915]] },
+      "properties": { "name": "North Road", "level": 1, "is_accessible": true }
+    },
+    {
+      "id": "c-upper-right",
+      "element_type": "corridor",
+      "geometry": { "type": "LineString", "coordinates": [[349, 806], [637, 65]] },
+      "properties": { "name": "Northeast Road", "level": 1, "is_accessible": true }
+    },
+    {
+      "id": "c-lower",
+      "element_type": "corridor",
+      "geometry": { "type": "LineString", "coordinates": [[421, 915], [909, 1566]] },
+      "properties": { "name": "Southeast Road", "level": 1, "is_accessible": true }
+    },
+    {
+      "id": "c-branch",
+      "element_type": "corridor",
+      "geometry": { "type": "LineString", "coordinates": [[421, 915], [332, 1026]] },
+      "properties": { "name": "South Road", "level": 1, "is_accessible": true }
+    },
+    {
+      "id": "c-branch-down",
+      "element_type": "corridor",
+      "geometry": { "type": "LineString", "coordinates": [[332, 1026], [324, 1570]] },
+      "properties": { "name": "South Alley", "level": 1, "is_accessible": true }
+    },
+    {
+      "id": "i-h-left-end",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [30, 800] },
+      "properties": { "name": "West End", "connected_corridors": ["c-h-left"] }
+    },
+    {
+      "id": "i-h-center",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [350, 806] },
+      "properties": {
+        "name": "Main Crossing",
+        "connected_corridors": ["c-h-left", "c-h-right", "c-upper"]
+      }
+    },
+    {
+      "id": "i-h-mid",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [349, 806] },
+      "properties": {
+        "name": "East Crossing",
+        "connected_corridors": ["c-h-right", "c-upper-right"]
+      }
+    },
+    {
+      "id": "i-h-right-end",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [970, 800] },
+      "properties": { "name": "East End", "connected_corridors": ["c-h-right"] }
+    },
+    {
+      "id": "i-upper-right-end",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [637, 65] },
+      "properties": { "name": "Northeast End", "connected_corridors": ["c-upper-right"] }
+    },
+    {
+      "id": "i-junction",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [421, 915] },
+      "properties": {
+        "name": "South Fork",
+        "connected_corridors": ["c-upper", "c-lower", "c-branch"]
+      }
+    },
+    {
+      "id": "i-bottom-right",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [909, 1566] },
+      "properties": { "name": "Southeast End", "connected_corridors": ["c-lower"] }
+    },
+    {
+      "id": "i-branch-junction",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [332, 1026] },
+      "properties": { "name": "South Turn", "connected_corridors": ["c-branch", "c-branch-down"] }
+    },
+    {
+      "id": "i-branch-bottom",
+      "element_type": "intersection",
+      "geometry": { "type": "Point", "coordinates": [324, 1570] },
+      "properties": { "name": "South End", "connected_corridors": ["c-branch-down"] }
+    },
+    {
+      "id": "logo-top-junction",
+      "element_type": "landmark",
+      "geometry": { "type": "Point", "coordinates": [350, 806] },
+      "properties": { "name": "Traffic Signal", "category": "traffic_signal", "side": "center" }
+    },
+    {
+      "id": "room-a",
+      "element_type": "landmark",
+      "geometry": { "type": "Point", "coordinates": [150, 594] },
+      "properties": { "name": "USPS Post Office", "category": "post_office", "side": "right" }
+    },
+    {
+      "id": "room-b",
+      "element_type": "landmark",
+      "geometry": { "type": "Point", "coordinates": [700, 417] },
+      "properties": { "name": "Safeway", "category": "grocery", "side": "left" }
+    },
+    {
+      "id": "room-elevator",
+      "element_type": "landmark",
+      "geometry": { "type": "Point", "coordinates": [803, 650] },
+      "properties": { "name": "Gas Station", "category": "gas_station", "side": "right" }
+    },
+    {
+      "id": "room-office",
+      "element_type": "landmark",
+      "geometry": { "type": "Point", "coordinates": [801, 925] },
+      "properties": { "name": "Barbershop", "category": "barbershop", "side": "left" }
+    },
+    {
+      "id": "room-restroom",
+      "element_type": "landmark",
+      "geometry": { "type": "Point", "coordinates": [225, 1126] },
+      "properties": { "name": "McDonald's", "category": "restaurant", "side": "left" }
+    },
+    {
+      "id": "room-kitchen",
+      "element_type": "landmark",
+      "geometry": { "type": "Point", "coordinates": [475, 1251] },
+      "properties": { "name": "Pet Shop", "category": "pet_shop", "side": "right" }
+    }
+  ]
+}
