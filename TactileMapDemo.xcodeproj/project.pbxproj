@@ -596,16 +596,12 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		F1B01A292FBBE5E400BE0F00 /* XCRemoteSwiftPackageReference "ProjectMultiNav" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/Hariprasath88/ProjectMultiNav";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
+/* Begin XCLocalSwiftPackageReference section */
+		F1B01A292FBBE5E400BE0F00 /* XCLocalSwiftPackageReference "TactileMapKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "Packages/TactileMapKit";
 		};
-/* End XCRemoteSwiftPackageReference section */
+/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		F1B01A2A2FBBE5E400BE0F00 /* TactileMapKit */ = {

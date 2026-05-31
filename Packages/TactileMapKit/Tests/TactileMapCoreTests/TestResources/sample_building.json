@@ -1,0 +1,172 @@
+{
+  "version": "1.0",
+  "type": "TactileMapDocument",
+  "metadata": {
+    "name": "Sample Office Building - Floor 1",
+    "buildingName": "Engineering Center",
+    "floor": 1,
+    "scale": "1 unit = 1 foot",
+    "coordinate_unit": "feet",
+    "coordinateOrigin": "top-left",
+    "author": "TactileMapKit Demo",
+    "created": "2026-05-16"
+  },
+  "bounds": {
+    "width": 1400,
+    "height": 1400
+  },
+  "features": [
+    {
+      "id": "c1",
+      "type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[200, 200], [800, 200]]
+      },
+      "properties": {
+        "name": "South Corridor",
+        "level": 1,
+        "accessible": true
+      }
+    },
+    {
+      "id": "c2",
+      "type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[800, 200], [800, 800]]
+      },
+      "properties": {
+        "name": "East Corridor",
+        "level": 1,
+        "accessible": true
+      }
+    },
+    {
+      "id": "c3",
+      "type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[800, 800], [200, 800]]
+      },
+      "properties": {
+        "name": "North Corridor",
+        "level": 1,
+        "accessible": true
+      }
+    },
+    {
+      "id": "c4",
+      "type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [[200, 800], [200, 200]]
+      },
+      "properties": {
+        "name": "West Corridor",
+        "level": 1,
+        "accessible": true
+      }
+    },
+    {
+      "id": "bathroom",
+      "type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [350, 650]
+      },
+      "properties": {
+        "name": "Bathroom",
+        "category": "bathroom",
+        "side": "right"
+      }
+    },
+    {
+      "id": "elevator",
+      "type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [50, 350]
+      },
+      "properties": {
+        "name": "Elevator",
+        "category": "elevator",
+        "side": "left"
+      }
+    },
+    {
+      "id": "conference_room",
+      "type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [650, 650]
+      },
+      "properties": {
+        "name": "Conference Room",
+        "category": "conference_room",
+        "side": "left"
+      }
+    },
+    {
+      "id": "kitchen",
+      "type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [650, 350]
+      },
+      "properties": {
+        "name": "Kitchen",
+        "category": "kitchen",
+        "side": "left"
+      }
+    },
+    {
+      "id": "i1",
+      "type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [200, 200]
+      },
+      "properties": {
+        "name": "SW Corner",
+        "connected_corridors": ["c1", "c4"]
+      }
+    },
+    {
+      "id": "i2",
+      "type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [800, 200]
+      },
+      "properties": {
+        "name": "SE Corner",
+        "connected_corridors": ["c1", "c2"]
+      }
+    },
+    {
+      "id": "i3",
+      "type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [800, 800]
+      },
+      "properties": {
+        "name": "NE Corner",
+        "connected_corridors": ["c2", "c3"]
+      }
+    },
+    {
+      "id": "i4",
+      "type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [200, 800]
+      },
+      "properties": {
+        "name": "NW Corner",
+        "connected_corridors": ["c3", "c4"]
+      }
+    }
+  ]
+}
