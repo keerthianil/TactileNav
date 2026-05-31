@@ -1,13 +1,13 @@
 //
-//  TactileMapDemoUITestsLaunchTests.swift
-//  TactileMapDemoUITests
+//  TactileNavUITestsLaunchTests.swift
+//  TactileNavUITests
 //
 //  Created by Vatsalya's Mac on 5/18/26.
 //
 
 import XCTest
 
-final class TactileMapDemoUITestsLaunchTests: XCTestCase {
+final class TactileNavUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true

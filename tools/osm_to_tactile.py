@@ -3,7 +3,7 @@
 osm_to_tactile.py — OFFLINE build tool (NOT shipped in the app).
 
 Converts a manually-exported OpenStreetMap XML file (.osm) into a
-TactileMapDocument JSON file that the TactileMapDemo / TactileMapKit
+TactileMapDocument JSON file that the TactileNav / TactileMapKit
 Canvas renderer can load.
 
 Mapping:

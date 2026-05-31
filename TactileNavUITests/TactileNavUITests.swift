@@ -1,13 +1,13 @@
 //
-//  TactileMapDemoUITests.swift
-//  TactileMapDemoUITests
+//  TactileNavUITests.swift
+//  TactileNavUITests
 //
 //  Created by Vatsalya's Mac on 5/18/26.
 //
 
 import XCTest
 
-final class TactileMapDemoUITests: XCTestCase {
+final class TactileNavUITests: XCTestCase {
 
     override func setUpWithError() throws {
         // Put setup code here. This method is called before the invocation of each test method in the class.

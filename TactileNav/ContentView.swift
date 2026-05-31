@@ -23,7 +23,7 @@ struct ContentView: View {
                                    destination: FilesListView())
                 }
             }
-            .navigationTitle("TactileMapDemo")
+            .navigationTitle("TactileNav")
         }
     }
 }

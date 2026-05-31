@@ -16,37 +16,37 @@
 			containerPortal = F1B019F72FBBE4D600BE0F00 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = F1B019FE2FBBE4D600BE0F00;
-			remoteInfo = TactileMapDemo;
+			remoteInfo = TactileNav;
 		};
 		F1B01A172FBBE4D900BE0F00 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = F1B019F72FBBE4D600BE0F00 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = F1B019FE2FBBE4D600BE0F00;
-			remoteInfo = TactileMapDemo;
+			remoteInfo = TactileNav;
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		F1B019FF2FBBE4D600BE0F00 /* TactileMapDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TactileMapDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		F1B01A0C2FBBE4D900BE0F00 /* TactileMapDemoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TactileMapDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		F1B01A162FBBE4D900BE0F00 /* TactileMapDemoUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TactileMapDemoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F1B019FF2FBBE4D600BE0F00 /* TactileNav.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TactileNav.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F1B01A0C2FBBE4D900BE0F00 /* TactileNavTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TactileNavTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F1B01A162FBBE4D900BE0F00 /* TactileNavUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TactileNavUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		F1B01A012FBBE4D600BE0F00 /* TactileMapDemo */ = {
+		F1B01A012FBBE4D600BE0F00 /* TactileNav */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = TactileMapDemo;
+			path = TactileNav;
 			sourceTree = "<group>";
 		};
-		F1B01A0F2FBBE4D900BE0F00 /* TactileMapDemoTests */ = {
+		F1B01A0F2FBBE4D900BE0F00 /* TactileNavTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = TactileMapDemoTests;
+			path = TactileNavTests;
 			sourceTree = "<group>";
 		};
-		F1B01A192FBBE4D900BE0F00 /* TactileMapDemoUITests */ = {
+		F1B01A192FBBE4D900BE0F00 /* TactileNavUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = TactileMapDemoUITests;
+			path = TactileNavUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -80,9 +80,9 @@
 		F1B019F62FBBE4D600BE0F00 = {
 			isa = PBXGroup;
 			children = (
-				F1B01A012FBBE4D600BE0F00 /* TactileMapDemo */,
-				F1B01A0F2FBBE4D900BE0F00 /* TactileMapDemoTests */,
-				F1B01A192FBBE4D900BE0F00 /* TactileMapDemoUITests */,
+				F1B01A012FBBE4D600BE0F00 /* TactileNav */,
+				F1B01A0F2FBBE4D900BE0F00 /* TactileNavTests */,
+				F1B01A192FBBE4D900BE0F00 /* TactileNavUITests */,
 				F1B01A002FBBE4D600BE0F00 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -90,9 +90,9 @@
 		F1B01A002FBBE4D600BE0F00 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				F1B019FF2FBBE4D600BE0F00 /* TactileMapDemo.app */,
-				F1B01A0C2FBBE4D900BE0F00 /* TactileMapDemoTests.xctest */,
-				F1B01A162FBBE4D900BE0F00 /* TactileMapDemoUITests.xctest */,
+				F1B019FF2FBBE4D600BE0F00 /* TactileNav.app */,
+				F1B01A0C2FBBE4D900BE0F00 /* TactileNavTests.xctest */,
+				F1B01A162FBBE4D900BE0F00 /* TactileNavUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -100,9 +100,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		F1B019FE2FBBE4D600BE0F00 /* TactileMapDemo */ = {
+		F1B019FE2FBBE4D600BE0F00 /* TactileNav */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = F1B01A202FBBE4D900BE0F00 /* Build configuration list for PBXNativeTarget "TactileMapDemo" */;
+			buildConfigurationList = F1B01A202FBBE4D900BE0F00 /* Build configuration list for PBXNativeTarget "TactileNav" */;
 			buildPhases = (
 				F1B019FB2FBBE4D600BE0F00 /* Sources */,
 				F1B019FC2FBBE4D600BE0F00 /* Frameworks */,
@@ -113,19 +113,19 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				F1B01A012FBBE4D600BE0F00 /* TactileMapDemo */,
+				F1B01A012FBBE4D600BE0F00 /* TactileNav */,
 			);
-			name = TactileMapDemo;
+			name = TactileNav;
 			packageProductDependencies = (
 				F1B01A2A2FBBE5E400BE0F00 /* TactileMapKit */,
 			);
-			productName = TactileMapDemo;
-			productReference = F1B019FF2FBBE4D600BE0F00 /* TactileMapDemo.app */;
+			productName = TactileNav;
+			productReference = F1B019FF2FBBE4D600BE0F00 /* TactileNav.app */;
 			productType = "com.apple.product-type.application";
 		};
-		F1B01A0B2FBBE4D900BE0F00 /* TactileMapDemoTests */ = {
+		F1B01A0B2FBBE4D900BE0F00 /* TactileNavTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = F1B01A232FBBE4D900BE0F00 /* Build configuration list for PBXNativeTarget "TactileMapDemoTests" */;
+			buildConfigurationList = F1B01A232FBBE4D900BE0F00 /* Build configuration list for PBXNativeTarget "TactileNavTests" */;
 			buildPhases = (
 				F1B01A082FBBE4D900BE0F00 /* Sources */,
 				F1B01A092FBBE4D900BE0F00 /* Frameworks */,
@@ -137,18 +137,18 @@
 				F1B01A0E2FBBE4D900BE0F00 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				F1B01A0F2FBBE4D900BE0F00 /* TactileMapDemoTests */,
+				F1B01A0F2FBBE4D900BE0F00 /* TactileNavTests */,
 			);
-			name = TactileMapDemoTests;
+			name = TactileNavTests;
 			packageProductDependencies = (
 			);
-			productName = TactileMapDemoTests;
-			productReference = F1B01A0C2FBBE4D900BE0F00 /* TactileMapDemoTests.xctest */;
+			productName = TactileNavTests;
+			productReference = F1B01A0C2FBBE4D900BE0F00 /* TactileNavTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		F1B01A152FBBE4D900BE0F00 /* TactileMapDemoUITests */ = {
+		F1B01A152FBBE4D900BE0F00 /* TactileNavUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = F1B01A262FBBE4D900BE0F00 /* Build configuration list for PBXNativeTarget "TactileMapDemoUITests" */;
+			buildConfigurationList = F1B01A262FBBE4D900BE0F00 /* Build configuration list for PBXNativeTarget "TactileNavUITests" */;
 			buildPhases = (
 				F1B01A122FBBE4D900BE0F00 /* Sources */,
 				F1B01A132FBBE4D900BE0F00 /* Frameworks */,
@@ -160,13 +160,13 @@
 				F1B01A182FBBE4D900BE0F00 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				F1B01A192FBBE4D900BE0F00 /* TactileMapDemoUITests */,
+				F1B01A192FBBE4D900BE0F00 /* TactileNavUITests */,
 			);
-			name = TactileMapDemoUITests;
+			name = TactileNavUITests;
 			packageProductDependencies = (
 			);
-			productName = TactileMapDemoUITests;
-			productReference = F1B01A162FBBE4D900BE0F00 /* TactileMapDemoUITests.xctest */;
+			productName = TactileNavUITests;
+			productReference = F1B01A162FBBE4D900BE0F00 /* TactileNavUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
@@ -192,7 +192,7 @@
 					};
 				};
 			};
-			buildConfigurationList = F1B019FA2FBBE4D600BE0F00 /* Build configuration list for PBXProject "TactileMapDemo" */;
+			buildConfigurationList = F1B019FA2FBBE4D600BE0F00 /* Build configuration list for PBXProject "TactileNav" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -209,9 +209,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				F1B019FE2FBBE4D600BE0F00 /* TactileMapDemo */,
-				F1B01A0B2FBBE4D900BE0F00 /* TactileMapDemoTests */,
-				F1B01A152FBBE4D900BE0F00 /* TactileMapDemoUITests */,
+				F1B019FE2FBBE4D600BE0F00 /* TactileNav */,
+				F1B01A0B2FBBE4D900BE0F00 /* TactileNavTests */,
+				F1B01A152FBBE4D900BE0F00 /* TactileNavUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -267,12 +267,12 @@
 /* Begin PBXTargetDependency section */
 		F1B01A0E2FBBE4D900BE0F00 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = F1B019FE2FBBE4D600BE0F00 /* TactileMapDemo */;
+			target = F1B019FE2FBBE4D600BE0F00 /* TactileNav */;
 			targetProxy = F1B01A0D2FBBE4D900BE0F00 /* PBXContainerItemProxy */;
 		};
 		F1B01A182FBBE4D900BE0F00 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = F1B019FE2FBBE4D600BE0F00 /* TactileMapDemo */;
+			target = F1B019FE2FBBE4D600BE0F00 /* TactileNav */;
 			targetProxy = F1B01A172FBBE4D900BE0F00 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -489,7 +489,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TactileMapDemo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TactileMapDemo";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TactileNav.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TactileNav";
 			};
 			name = Debug;
 		};
@@ -511,7 +511,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TactileMapDemo.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TactileMapDemo";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/TactileNav.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TactileNav";
 			};
 			name = Release;
 		};
@@ -531,7 +531,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = TactileMapDemo;
+				TEST_TARGET_NAME = TactileNav;
 			};
 			name = Debug;
 		};
@@ -551,14 +551,14 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = TactileMapDemo;
+				TEST_TARGET_NAME = TactileNav;
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		F1B019FA2FBBE4D600BE0F00 /* Build configuration list for PBXProject "TactileMapDemo" */ = {
+		F1B019FA2FBBE4D600BE0F00 /* Build configuration list for PBXProject "TactileNav" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				F1B01A1E2FBBE4D900BE0F00 /* Debug */,
@@ -567,7 +567,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		F1B01A202FBBE4D900BE0F00 /* Build configuration list for PBXNativeTarget "TactileMapDemo" */ = {
+		F1B01A202FBBE4D900BE0F00 /* Build configuration list for PBXNativeTarget "TactileNav" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				F1B01A212FBBE4D900BE0F00 /* Debug */,
@@ -576,7 +576,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		F1B01A232FBBE4D900BE0F00 /* Build configuration list for PBXNativeTarget "TactileMapDemoTests" */ = {
+		F1B01A232FBBE4D900BE0F00 /* Build configuration list for PBXNativeTarget "TactileNavTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				F1B01A242FBBE4D900BE0F00 /* Debug */,
@@ -585,7 +585,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		F1B01A262FBBE4D900BE0F00 /* Build configuration list for PBXNativeTarget "TactileMapDemoUITests" */ = {
+		F1B01A262FBBE4D900BE0F00 /* Build configuration list for PBXNativeTarget "TactileNavUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				F1B01A272FBBE4D900BE0F00 /* Debug */,
