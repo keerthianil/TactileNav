@@ -11,6 +11,11 @@ struct ContentView: View {
                                    destination: LandmarkStudyView(condition: .practiceNL))
                 }
 
+                Section("OpenStreetMap") {
+                    NavigationLink("Roux Map (stage zoom)",
+                                   destination: RouxStageMapView())
+                }
+
                 Section("Custom Maps") {
                     NavigationLink("Branch Road Demo",
                                    destination: BranchMapView())
