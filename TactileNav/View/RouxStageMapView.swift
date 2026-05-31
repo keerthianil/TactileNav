@@ -78,43 +78,51 @@ struct RouxStageMapView: View {
     @State private var level: StageLevel = .neighborhood
     @Environment(\.dismiss) private var dismiss
 
+    // MARK: Map zoom (visual scale) — distinct from stage zoom (information).
+    // Baseline scale is coupled to the stage level; pinch adjusts around it.
+    @State private var steadyZoom: CGFloat = 1
+    @GestureState private var pinch: CGFloat = 1
+    private var mapZoom: CGFloat { min(5, max(1, steadyZoom * pinch)) }
+
     private var filteredDocument: TactileMapDocument {
         StageFilter.filter(vm.document, level: level)
     }
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            GenericMapCanvasView(document: filteredDocument, policy: vm.policy)
-                .ignoresSafeArea()
-                // Stage zoom exposed to VoiceOver as an adjustable value:
-                // swipe up = more detail, swipe down = less.
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel("Tactile map, stage zoom")
-                .accessibilityValue("\(level.title), level \(level.rawValue) of \(StageLevel.allCases.count)")
-                .accessibilityAdjustableAction { direction in
-                    switch direction {
-                    case .increment: setLevel(level.rawValue + 1)
-                    case .decrement: setLevel(level.rawValue - 1)
-                    @unknown default: break
-                    }
-                }
-                // Magic Tap (two-finger double-tap) jumps straight to detail.
-                .accessibilityAction(.magicTap) {
-                    setLevel(StageLevel.intersection.rawValue)
-                }
+            // The map: a VoiceOver direct-interaction region (raw-touch
+            // finger exploration) with pinch-to-zoom map scaling on top.
+            DirectInteractionHost(onBackGesture: { dismiss() }) {
+                GenericMapCanvasView(document: filteredDocument, policy: vm.policy)
+                    .scaleEffect(mapZoom, anchor: .center)
+                    .simultaneousGesture(
+                        MagnificationGesture()
+                            .updating($pinch) { value, state, _ in state = value }
+                            .onEnded { value in
+                                steadyZoom = min(5, max(1, steadyZoom * value))
+                            }
+                    )
+            }
+            .ignoresSafeArea()
 
             levelBar
         }
         .navigationTitle("Roux Map (OSM)")
         .navigationBarTitleDisplayMode(.inline)
+        // Magic Tap (two-finger double-tap) jumps straight to detail level.
+        .accessibilityAction(.magicTap) {
+            setLevel(StageLevel.intersection.rawValue)
+        }
         .onDisappear {
             vm.policy.stopAll()
             vm.logger.endSession()
         }
     }
 
-    // Visible control (sighted / low-vision / testing). VoiceOver users use
-    // the adjustable swipe above, so this bar is hidden from VO.
+    // Stage-level control. A SEPARATE adjustable accessibility element so it
+    // coexists with the map's direct-interaction region: VoiceOver users
+    // focus it and swipe up/down to change level. Visible +/- buttons serve
+    // sighted / low-vision users and testing.
     private var levelBar: some View {
         HStack {
             Button { setLevel(level.rawValue - 1) } label: {
@@ -139,12 +147,32 @@ struct RouxStageMapView: View {
         .padding(.vertical, 12)
         .background(.ultraThinMaterial, in: Capsule())
         .padding(.bottom, 24)
-        .accessibilityHidden(true)
+        // Expose as a single adjustable control to VoiceOver.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Stage zoom level")
+        .accessibilityValue("\(level.title), level \(level.rawValue) of \(StageLevel.allCases.count)")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: setLevel(level.rawValue + 1)
+            case .decrement: setLevel(level.rawValue - 1)
+            @unknown default: break
+            }
+        }
     }
 
     private func setLevel(_ raw: Int) {
         guard let newLevel = StageLevel(rawValue: raw), newLevel != level else { return }
         level = newLevel
+        // Couple visual map-zoom baseline to the stage level.
+        steadyZoom = baselineZoom(for: newLevel)
         UIAccessibility.post(notification: .announcement, argument: "\(newLevel.title) level")
+    }
+
+    private func baselineZoom(for level: StageLevel) -> CGFloat {
+        switch level {
+        case .neighborhood: return 1.0
+        case .street:       return 1.6
+        case .intersection: return 2.4
+        }
     }
 }
