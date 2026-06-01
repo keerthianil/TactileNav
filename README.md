@@ -29,8 +29,6 @@ TactileNav/
 └── Assets.xcassets/                         ← app icon, accent color
 ```
 
-Same folder layout as the original Indoor_Route app, just smaller.
-
 ## How it is built
 
 ### Dependency
@@ -63,6 +61,16 @@ python3 tools/osm_to_tactile.py input.osm TactileNav/Model/output.json
 ```
 
 It keeps streets (corridors), junctions (intersections), and traffic signals / crossings / named anchors (landmarks). Long street geometry is simplified (Douglas–Peucker) but tagged nodes are never dropped. `roux_portland.json` was generated this way from a Roux Institute (Portland, ME) export; coordinates are in meters.
+
+## Roux navigation screen (`RouxStageMapView`)
+
+The OSM map is explored through a screen with two independent notions of zoom and a non-visual interaction model:
+
+- **Stage zoom (information level):** 3 levels — Neighborhood → Street → Intersection — each surfacing more detail. `StageFilter` filters the document per level. Exposed to VoiceOver as a **separate adjustable control** (focus it, swipe up/down). A **Magic Tap** (two-finger double-tap) jumps straight to the Intersection level.
+- **Map zoom (visual scale):** **pinch to zoom** and **two-finger drag to pan**, handled by UIKit gesture recognizers on the host so they never collide with one-finger exploration. The zoom baseline is coupled to the stage level (deeper level starts more zoomed in).
+- **Direct interaction:** the map is a VoiceOver direct-interaction region (`DirectInteractionHost`), so a single finger passes through for tactile exploration with haptics/audio. Three-finger swipe right and Z-scrub both go back.
+
+Design note: VoiceOver direct interaction and an Adjustable swipe cannot share one element, so the map (direct interaction) and the stage-level control (adjustable) are deliberately separate accessibility elements.
 
 
 

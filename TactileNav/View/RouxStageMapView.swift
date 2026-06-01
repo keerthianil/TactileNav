@@ -79,10 +79,11 @@ struct RouxStageMapView: View {
     @Environment(\.dismiss) private var dismiss
 
     // MARK: Map zoom (visual scale) — distinct from stage zoom (information).
-    // Baseline scale is coupled to the stage level; pinch adjusts around it.
+    // Baseline scale is coupled to the stage level; pinch/pan adjust around it.
     @State private var steadyZoom: CGFloat = 1
-    @GestureState private var pinch: CGFloat = 1
-    private var mapZoom: CGFloat { min(5, max(1, steadyZoom * pinch)) }
+    @State private var steadyPan: CGSize = .zero
+    @State private var zoomAtGestureStart: CGFloat = 1
+    @State private var panAtGestureStart: CGSize = .zero
 
     private var filteredDocument: TactileMapDocument {
         StageFilter.filter(vm.document, level: level)
@@ -90,18 +91,24 @@ struct RouxStageMapView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            // The map: a VoiceOver direct-interaction region (raw-touch
-            // finger exploration) with pinch-to-zoom map scaling on top.
-            DirectInteractionHost(onBackGesture: { dismiss() }) {
+            // The map: a VoiceOver direct-interaction region (one-finger
+            // raw-touch exploration). Two-finger pinch zooms, two-finger
+            // drag pans — driven by the host's UIKit recognizers.
+            DirectInteractionHost(
+                onBackGesture: { dismiss() },
+                onPinch: { scale, state in
+                    if state == .began { zoomAtGestureStart = steadyZoom }
+                    steadyZoom = min(5, max(1, zoomAtGestureStart * scale))
+                },
+                onPan: { t, state in
+                    if state == .began { panAtGestureStart = steadyPan }
+                    steadyPan = CGSize(width: panAtGestureStart.width + t.x,
+                                       height: panAtGestureStart.height + t.y)
+                }
+            ) {
                 GenericMapCanvasView(document: filteredDocument, policy: vm.policy)
-                    .scaleEffect(mapZoom, anchor: .center)
-                    .simultaneousGesture(
-                        MagnificationGesture()
-                            .updating($pinch) { value, state, _ in state = value }
-                            .onEnded { value in
-                                steadyZoom = min(5, max(1, steadyZoom * value))
-                            }
-                    )
+                    .scaleEffect(steadyZoom, anchor: .center)
+                    .offset(steadyPan)
             }
             .ignoresSafeArea()
 
@@ -163,8 +170,9 @@ struct RouxStageMapView: View {
     private func setLevel(_ raw: Int) {
         guard let newLevel = StageLevel(rawValue: raw), newLevel != level else { return }
         level = newLevel
-        // Couple visual map-zoom baseline to the stage level.
+        // Couple visual map-zoom baseline to the stage level; recenter.
         steadyZoom = baselineZoom(for: newLevel)
+        steadyPan = .zero
         UIAccessibility.post(notification: .announcement, argument: "\(newLevel.title) level")
     }
 
