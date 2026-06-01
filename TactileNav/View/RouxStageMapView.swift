@@ -133,7 +133,11 @@ struct RouxStageMapView: View {
             // Sizes are in map units = METERS; realistic street widths so the
             // network reads as streets, not blobs. Touch targets stay
             // accessible via the renderer's minHitRadiusPts floor.
-            DirectInteractionHost(onBackGesture: { dismiss() }) {
+            DirectInteractionHost(
+                onBackGesture: { dismiss() },
+                onZoomIn:  { setLevel(level.rawValue + 1) },
+                onZoomOut: { setLevel(level.rawValue - 1) }
+            ) {
                 GenericMapCanvasView(
                     document: filteredDocument,
                     policy: vm.policy,

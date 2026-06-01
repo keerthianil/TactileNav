@@ -97,10 +97,15 @@ public final class AVSpatialAudioEngine: NSObject, SpatialAudioEngine {
     private func configureAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
+            // Playback only — this app never records. Using .playAndRecord
+            // activates the mic input path which, with .defaultToSpeaker,
+            // causes an audible idle/feedback buzz (very noticeable when
+            // VoiceOver activates audio). .playback avoids that entirely while
+            // .mixWithOthers keeps VoiceOver speech coexisting cleanly.
             try session.setCategory(
-                .playAndRecord,
+                .playback,
                 mode: .spokenAudio,
-                options: [.defaultToSpeaker, .allowBluetoothA2DP, .mixWithOthers]
+                options: [.mixWithOthers, .allowBluetoothA2DP]
             )
             try session.setActive(true)
         } catch {
