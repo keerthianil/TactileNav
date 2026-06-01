@@ -20,12 +20,19 @@ struct GenericMapCanvasView: View {
     private let landmarkBorder = Color(red: 0.65,  green: 0.43,  blue: 0.18)   // #A66E2E
     private let nodeColor      = Color(red: 0.29,  green: 0.56,  blue: 0.85)   // #4A90D9
 
-    // MARK: - Sizes in JSON coordinate space
-    private let corridorJSONWidth: CGFloat = 65
-    private let landmarkJSONSize:  CGFloat = 110
-    private let majorJSONRadius:   CGFloat = 14
-    private let minorJSONRadius:   CGFloat = 7
-    private let mapPadding:        CGFloat = 8
+    // MARK: - Sizes in JSON coordinate space (overridable per map)
+    // Visual sizes only. Touch targets are floored separately (see minHitRadiusPts)
+    // so thin, realistic lines still get an accessible hit area.
+    var corridorJSONWidth: CGFloat = 65
+    var landmarkJSONSize:  CGFloat = 110
+    var majorJSONRadius:   CGFloat = 14
+    var minorJSONRadius:   CGFloat = 7
+    var mapPadding:        CGFloat = 8
+
+    /// Minimum touch-target radius in points. Apple HIG requires a 44 pt
+    /// minimum target; hit areas never shrink below this even when the map
+    /// is drawn with thin, realistic line widths.
+    var minHitRadiusPts: CGFloat = 22
 
     // MARK: - Body
 
@@ -56,11 +63,14 @@ struct GenericMapCanvasView: View {
                                 }
                             }
                             touchPoint = pt
-                            Task { @MainActor in touch(at: pt, t: t) }
+                            // Synchronous (not a detached Task) so a touch-up's
+                            // stop can never be reordered before a touch-down's
+                            // start — which was leaving haptics buzzing forever.
+                            touch(at: pt, t: t)
                         }
                         .onEnded { _ in
                             touchPoint = nil
-                            Task { @MainActor in lift() }
+                            lift()
                         }
                 )
         }
@@ -124,7 +134,7 @@ struct GenericMapCanvasView: View {
         }
     }
 
-    // MARK: - Drawing (landmarks, nodes, center icon — identical to MapCanvasViewV2)
+    // MARK: - Drawing (landmarks, nodes, center icon)
 
     private func drawLandmarks(_ ctx: GraphicsContext, t: MapTransform) {
         let sideLen = t.scaled(landmarkJSONSize)
@@ -282,31 +292,34 @@ struct GenericMapCanvasView: View {
     // MARK: - Hit Testing
 
     private func hitElement(at point: CGPoint, t: MapTransform) -> (MapElement, TouchType)? {
-        let minorR  = t.scaled(minorJSONRadius)
-        let majorR  = t.scaled(majorJSONRadius)
-        let halfLen = t.scaled(landmarkJSONSize) / 2
-        let corrHW  = t.scaled(corridorJSONWidth) / 2
+        // Touch targets are floored at minHitRadiusPts (HIG 44 pt) regardless
+        // of how thin the element is drawn — visual size and hit size are
+        // intentionally decoupled for non-visual exploration.
+        let anchorHit = max(t.scaled(minorJSONRadius) + 6, minHitRadiusPts)
+        let interHit  = max(t.scaled(majorJSONRadius) + 8, minHitRadiusPts)
+        let landHit   = max(t.scaled(landmarkJSONSize) / 2 + 8, minHitRadiusPts)
+        let corrHit   = max(t.scaled(corridorJSONWidth) / 2 + 8, minHitRadiusPts)
 
         for f in document.features where f.elementType == .landmark {
             guard case .point(let c) = f.geometry else { continue }
             let anchor = anchorCenter(for: f, screenPt: t.apply(c), t: t)
-            if dist(point, anchor) <= minorR + 6 { return (f, .anchor) }
+            if dist(point, anchor) <= anchorHit { return (f, .anchor) }
         }
         for f in document.features where f.elementType == .intersection {
             guard case .point(let c) = f.geometry else { continue }
-            if dist(point, t.apply(c)) <= majorR + 8 { return (f, .direct) }
+            if dist(point, t.apply(c)) <= interHit { return (f, .direct) }
         }
         for f in document.features where f.elementType == .landmark {
             guard case .point(let c) = f.geometry else { continue }
             let center = t.apply(c)
-            if abs(point.x - center.x) <= halfLen + 8 && abs(point.y - center.y) <= halfLen + 8 {
+            if abs(point.x - center.x) <= landHit && abs(point.y - center.y) <= landHit {
                 return (f, .direct)
             }
         }
         for f in document.features where f.elementType == .corridor {
             guard case .lineString(let pts) = f.geometry, pts.count >= 2 else { continue }
             for i in 0..<pts.count - 1 {
-                if distToSegment(point, t.apply(pts[i]), t.apply(pts[i + 1])) <= corrHW + 8 {
+                if distToSegment(point, t.apply(pts[i]), t.apply(pts[i + 1])) <= corrHit {
                     return (f, .direct)
                 }
             }

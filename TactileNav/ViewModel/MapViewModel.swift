@@ -11,63 +11,39 @@ final class MapViewModel: ObservableObject {
     let policy: any FeedbackPolicy
     let logger: CSVTouchLogger
 
-    init(condition: StudyCondition) {
-        self.document = try! TactileMapDocument.load(from: condition.mapFileName, bundle: .main)
-        self.policy   = condition.makeFeedbackPolicy()
+    /// Load any map by filename. Uses Natural-Language feedback by default.
+    /// The CSV log is named after the map (from its metadata) plus a
+    /// readable timestamp, e.g. `Roux_Institute_Area_Portland_ME_20260531_194300`.
+    init(mapFileName: String) {
+        let doc = try! TactileMapDocument.load(from: mapFileName, bundle: .main)
+        self.document = doc
+        self.policy   = NLFeedbackService()
 
-        let sessionName = condition.shortLogName
+        let sessionName = Self.sessionName(for: doc, fallback: mapFileName)
         self.logger = CSVTouchLogger(fileNameGenerator: { metadata in
             let name = metadata["sessionName"] ?? sessionName
-            let now  = Date()
-            let df   = DateFormatter()
+            let df = DateFormatter()
             df.locale = Locale(identifier: "en_US_POSIX")
+            let now = Date()
             df.dateFormat = "yyyyMMdd"
             let datePart = df.string(from: now)
             df.dateFormat = "HHmmss"
             let timePart = df.string(from: now)
-            let version  = CSVTouchLogger.nextVersion()
-            return "\(name)_\(datePart)_\(timePart)_v\(version)"
+            return "\(name)_\(datePart)_\(timePart)"
         })
         self.logger.startSession(metadata: ["sessionName": sessionName])
     }
 
-    /// Load any map by filename without a study condition. Uses NL feedback by default.
-    init(mapFileName: String) {
-        self.document = try! TactileMapDocument.load(from: mapFileName, bundle: .main)
-        self.policy   = NLFeedbackService()
-
-        let sessionName = "CustomMap_\(mapFileName)"
-        self.logger = CSVTouchLogger(fileNameGenerator: { metadata in
-            let name = metadata["sessionName"] ?? sessionName
-            let now  = Date()
-            let df   = DateFormatter()
-            df.locale = Locale(identifier: "en_US_POSIX")
-            df.dateFormat = "yyyyMMdd_HHmmss"
-            return "\(name)_\(df.string(from: now))"
-        })
-        self.logger.startSession(metadata: ["sessionName": sessionName])
-    }
-}
-
-// MARK: - Version helper (mirrors CSVTouchLogger.getNextSessionNumber)
-
-extension CSVTouchLogger {
-    static func nextVersion() -> Int {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        guard let contents = try? FileManager.default.contentsOfDirectory(
-            at: docs, includingPropertiesForKeys: nil, options: .skipsHiddenFiles
-        ) else { return 1 }
-        let pattern = try! NSRegularExpression(pattern: #"_v(\d+)\.csv$"#)
-        var max = 0
-        for url in contents where url.pathExtension == "csv" {
-            let name = url.lastPathComponent
-            let range = NSRange(name.startIndex..<name.endIndex, in: name)
-            if let match = pattern.firstMatch(in: name, range: range),
-               let vRange = Range(match.range(at: 1), in: name),
-               let v = Int(name[vRange]) {
-                if v > max { max = v }
-            }
+    /// Builds a filesystem-safe session name from the map's display name.
+    private static func sessionName(for doc: TactileMapDocument, fallback: String) -> String {
+        let raw = doc.metadata?.name ?? fallback
+        let allowed = CharacterSet.alphanumerics
+        var out = ""
+        for scalar in raw.unicodeScalars {
+            out.append(allowed.contains(scalar) ? Character(scalar) : "_")
         }
-        return max + 1
+        while out.contains("__") { out = out.replacingOccurrences(of: "__", with: "_") }
+        let trimmed = out.trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+        return trimmed.isEmpty ? fallback : trimmed
     }
 }

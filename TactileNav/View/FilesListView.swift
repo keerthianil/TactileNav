@@ -106,11 +106,19 @@ struct FileRowView: View {
 
     private var fileName: String { file.deletingPathExtension().lastPathComponent }
 
+    /// Underscore tokens. The last two are date (yyyyMMdd) and time (HHmmss);
+    /// everything before them is the human-readable map name.
+    private var tokens: [Substring] { fileName.split(separator: "_") }
+
+    private var mapName: String {
+        guard tokens.count >= 3 else { return fileName }
+        return tokens.dropLast(2).joined(separator: " ")
+    }
+
     private var fileDate: String {
-        let parts = fileName.split(separator: "_")
-        guard parts.count >= 3 else { return "Unknown date" }
-        let dateStr = String(parts[1])
-        let timeStr = String(parts[2])
+        guard tokens.count >= 2 else { return "Unknown date" }
+        let dateStr = String(tokens[tokens.count - 2])
+        let timeStr = String(tokens[tokens.count - 1])
         guard dateStr.count == 8, timeStr.count == 6 else { return "Unknown date" }
         let y = dateStr.prefix(4)
         let mo = dateStr.dropFirst(4).prefix(2)
@@ -121,35 +129,10 @@ struct FileRowView: View {
         return "\(y)-\(mo)-\(d) \(h):\(mi):\(s)"
     }
 
-    private var conditionName: String {
-        if fileName.hasPrefix("PracticeNL")      { return "Practice – NL" }
-        if fileName.hasPrefix("PracticeSpatial")  { return "Practice – Spatial" }
-        if fileName.hasPrefix("PracticeIcons")    { return "Practice – Icons" }
-        if fileName.hasPrefix("NL")               { return "Natural Language" }
-        if fileName.hasPrefix("SpatialAudio")     { return "Spatialized Audio" }
-        if fileName.hasPrefix("AuditoryIcons")    { return "Auditory Icons" }
-        return "Session"
-    }
-
-    private var sessionVersion: String {
-        if let idx = fileName.lastIndex(of: "v") { return String(fileName.suffix(from: idx)) }
-        return ""
-    }
-
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(conditionName).font(.headline)
-                    if !sessionVersion.isEmpty {
-                        Text(sessionVersion)
-                            .font(.caption)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.blue.opacity(0.1))
-                            .cornerRadius(4)
-                    }
-                }
+                Text(mapName).font(.headline)
                 Text(fileDate).font(.caption).foregroundColor(.secondary)
                 Text(fileSize).font(.caption2).foregroundColor(.gray)
             }
@@ -159,18 +142,18 @@ struct FileRowView: View {
                     Image(systemName: "square.and.arrow.up").foregroundColor(.blue)
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("Share \(conditionName) log")
+                .accessibilityLabel("Share \(mapName) log")
 
                 Button { onDelete() } label: {
                     Image(systemName: "trash").foregroundColor(.red)
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("Delete \(conditionName) log")
+                .accessibilityLabel("Delete \(mapName) log")
             }
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(conditionName) \(sessionVersion), \(fileDate), \(fileSize)")
+        .accessibilityLabel("\(mapName) log, \(fileDate), \(fileSize)")
         .accessibilityHint("Swipe up or down for share and delete actions")
     }
 }

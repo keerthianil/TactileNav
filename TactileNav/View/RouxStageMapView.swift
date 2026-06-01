@@ -106,9 +106,19 @@ struct RouxStageMapView: View {
                                        height: panAtGestureStart.height + t.y)
                 }
             ) {
-                GenericMapCanvasView(document: filteredDocument, policy: vm.policy)
-                    .scaleEffect(steadyZoom, anchor: .center)
-                    .offset(steadyPan)
+                // Sizes are in map units = METERS (OSM data). Realistic street
+                // widths so the network reads as streets, not blobs. Touch
+                // targets stay accessible via the renderer's minHitRadiusPts.
+                GenericMapCanvasView(
+                    document: filteredDocument,
+                    policy: vm.policy,
+                    corridorJSONWidth: 12,
+                    landmarkJSONSize: 28,
+                    majorJSONRadius: 7,
+                    minorJSONRadius: 5
+                )
+                .scaleEffect(steadyZoom, anchor: .center)
+                .offset(steadyPan)
             }
             .ignoresSafeArea()
 
