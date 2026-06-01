@@ -74,7 +74,12 @@ final class DirectInteractionView: UIView {
         isAccessibilityElement = true
         accessibilityTraits = .allowsDirectInteraction
         accessibilityLabel = "Tactile map"
-        accessibilityHint = "Touch and drag to explore. Use the rotor Actions to change zoom level."
+        // Direct interaction passes the rotor and single-finger swipes through
+        // as touches, so zoom and back must use the multi-finger gestures that
+        // VoiceOver still routes to accessibility methods.
+        accessibilityHint = "Touch and drag to explore. "
+            + "Three-finger swipe up or down to change zoom level. "
+            + "Three-finger swipe right, or scrub with two fingers, to go back."
     }
 
     /// Exposes stage-zoom changes as VoiceOver custom actions, reachable from
@@ -95,11 +100,21 @@ final class DirectInteractionView: UIView {
     }
 
     override func accessibilityScroll(_ direction: UIAccessibilityScrollDirection) -> Bool {
-        if direction == .right {
+        // 3-finger swipe — one of the few gestures VoiceOver still delivers to
+        // a direct-interaction element. Up/down = stage zoom, right = back.
+        switch direction {
+        case .up:
+            onZoomIn?()
+            return true
+        case .down:
+            onZoomOut?()
+            return true
+        case .right:
             triggerBack()
             return true
+        default:
+            return super.accessibilityScroll(direction)
         }
-        return super.accessibilityScroll(direction)
     }
 
     override func accessibilityPerformEscape() -> Bool {
