@@ -1,29 +1,21 @@
 import SwiftUI
 import UIKit
 
-/// Hosts arbitrary SwiftUI content inside a UIView that declares the
-/// VoiceOver **direct-interaction** trait, so raw touches pass through to the
-/// content (needed for one-finger finger-exploration of a tactile map)
-/// instead of being intercepted by VoiceOver's navigation gestures.
+/// Hosts SwiftUI content in a UIView that declares the VoiceOver
+/// **direct-interaction** trait, so a single finger's touches pass through for
+/// tactile exploration instead of being used for VoiceOver navigation.
 ///
-/// No custom multi-finger gesture recognizers are installed — that keeps
-/// VoiceOver's own two-/three-finger gestures (Magic Tap, rotor, scroll)
-/// working. Back is handled via the two VoiceOver gestures below:
-/// - three-finger swipe right (`accessibilityScroll`)
-/// - Z-scrub escape (`accessibilityPerformEscape`)
+/// Direct interaction swallows the rotor, single-finger swipes, and taps, so
+/// the only controls here are the multi-finger gestures VoiceOver still routes
+/// to accessibility methods — used for "back". Zoom is handled by ordinary
+/// buttons outside this view, which stay fully VoiceOver-accessible.
 struct DirectInteractionHost<Content: View>: UIViewRepresentable {
     var onBackGesture: (() -> Void)?
-    /// Surfaced as VoiceOver custom actions ("Actions" rotor) so the user can
-    /// change stage level while focused on the map, without finding buttons.
-    var onZoomIn: (() -> Void)?
-    var onZoomOut: (() -> Void)?
     @ViewBuilder var content: () -> Content
 
     func makeUIView(context: Context) -> DirectInteractionView {
         let host = DirectInteractionView()
         host.onBackGesture = onBackGesture
-        host.onZoomIn = onZoomIn
-        host.onZoomOut = onZoomOut
 
         let hc = UIHostingController(rootView: content())
         hc.view.backgroundColor = .clear
@@ -41,8 +33,6 @@ struct DirectInteractionHost<Content: View>: UIViewRepresentable {
 
     func updateUIView(_ host: DirectInteractionView, context: Context) {
         host.onBackGesture = onBackGesture
-        host.onZoomIn = onZoomIn
-        host.onZoomOut = onZoomOut
         context.coordinator.hostingController?.rootView = content()
     }
 
@@ -54,11 +44,9 @@ struct DirectInteractionHost<Content: View>: UIViewRepresentable {
 }
 
 /// The backing UIView that carries the direct-interaction trait and the
-/// VoiceOver back gestures.
+/// VoiceOver back gestures (three-finger swipe right, two-finger Z-scrub).
 final class DirectInteractionView: UIView {
     var onBackGesture: (() -> Void)?
-    var onZoomIn:  (() -> Void)? { didSet { refreshCustomActions() } }
-    var onZoomOut: (() -> Void)? { didSet { refreshCustomActions() } }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -74,47 +62,17 @@ final class DirectInteractionView: UIView {
         isAccessibilityElement = true
         accessibilityTraits = .allowsDirectInteraction
         accessibilityLabel = "Tactile map"
-        // Direct interaction passes the rotor and single-finger swipes through
-        // as touches, so zoom and back must use the multi-finger gestures that
-        // VoiceOver still routes to accessibility methods.
         accessibilityHint = "Touch and drag to explore. "
-            + "Three-finger swipe up or down to change zoom level. "
+            + "Use the zoom buttons below the map to change detail. "
             + "Three-finger swipe right, or scrub with two fingers, to go back."
     }
 
-    /// Exposes stage-zoom changes as VoiceOver custom actions, reachable from
-    /// the rotor's "Actions" while the map is focused.
-    private func refreshCustomActions() {
-        var actions: [UIAccessibilityCustomAction] = []
-        if onZoomIn != nil {
-            actions.append(UIAccessibilityCustomAction(name: "Zoom in to more detail") { [weak self] _ in
-                self?.onZoomIn?(); return true
-            })
-        }
-        if onZoomOut != nil {
-            actions.append(UIAccessibilityCustomAction(name: "Zoom out for overview") { [weak self] _ in
-                self?.onZoomOut?(); return true
-            })
-        }
-        accessibilityCustomActions = actions
-    }
-
     override func accessibilityScroll(_ direction: UIAccessibilityScrollDirection) -> Bool {
-        // 3-finger swipe — one of the few gestures VoiceOver still delivers to
-        // a direct-interaction element. Up/down = stage zoom, right = back.
-        switch direction {
-        case .up:
-            onZoomIn?()
-            return true
-        case .down:
-            onZoomOut?()
-            return true
-        case .right:
+        if direction == .right {
             triggerBack()
             return true
-        default:
-            return super.accessibilityScroll(direction)
         }
+        return super.accessibilityScroll(direction)
     }
 
     override func accessibilityPerformEscape() -> Bool {

@@ -126,18 +126,12 @@ struct RouxStageMapView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            // The map is a VoiceOver direct-interaction region (one-finger
-            // raw-touch exploration). No free zoom/pan — the lab's apps use a
-            // fixed-scale map, and each stage level reframes to fill the screen.
-            // Sizes are in map units = METERS; realistic street widths so the
-            // network reads as streets, not blobs. Touch targets stay
-            // accessible via the renderer's minHitRadiusPts floor.
-            DirectInteractionHost(
-                onBackGesture: { dismiss() },
-                onZoomIn:  { setLevel(level.rawValue + 1) },
-                onZoomOut: { setLevel(level.rawValue - 1) }
-            ) {
+        VStack(spacing: 0) {
+            // Map = VoiceOver direct-interaction region (one finger drags to
+            // explore). It sits ABOVE the control bar (not overlaid), so the
+            // bar's buttons are always reachable. Sizes are in meters; thin
+            // realistic streets, touch targets floored for accessibility.
+            DirectInteractionHost(onBackGesture: { dismiss() }) {
                 GenericMapCanvasView(
                     document: filteredDocument,
                     policy: vm.policy,
@@ -147,61 +141,56 @@ struct RouxStageMapView: View {
                     minorJSONRadius: 5
                 )
             }
-            .ignoresSafeArea()
 
-            levelBar
+            levelControls
         }
         .navigationTitle("Roux Map (OSM)")
         .navigationBarTitleDisplayMode(.inline)
-        // Magic Tap (two-finger double-tap) jumps straight to detail level.
-        .accessibilityAction(.magicTap) {
-            setLevel(StageLevel.intersection.rawValue)
-        }
         .onDisappear {
             vm.policy.stopAll()
             vm.logger.endSession()
         }
     }
 
-    // Stage-level control. A SEPARATE adjustable accessibility element so it
-    // coexists with the map's direct-interaction region: VoiceOver users
-    // focus it and swipe up/down to change level. Visible +/- buttons serve
-    // sighted / low-vision users and testing.
-    private var levelBar: some View {
-        HStack {
-            Button { setLevel(level.rawValue - 1) } label: {
-                Image(systemName: "minus.magnifyingglass").font(.title2)
+    // Zoom controls in their own bar below the map. Plain, individually
+    // focusable VoiceOver buttons — the dependable way to change level, since
+    // the direct-interaction map swallows the rotor and swipe gestures.
+    // VoiceOver: touch a button (it reads its label), then double-tap.
+    private var levelControls: some View {
+        HStack(spacing: 12) {
+            Button {
+                setLevel(level.rawValue - 1)
+            } label: {
+                Image(systemName: "minus.magnifyingglass")
+                    .font(.title2).frame(width: 64, height: 48)
             }
             .disabled(level == .neighborhood)
+            .accessibilityLabel("Zoom out for overview")
+            .accessibilityHint("Currently \(level.title), level \(level.rawValue) of \(StageLevel.allCases.count)")
 
-            Spacer()
+            Spacer(minLength: 0)
             VStack(spacing: 2) {
-                Text("Level \(level.rawValue) / \(StageLevel.allCases.count)")
+                Text("Level \(level.rawValue) of \(StageLevel.allCases.count)")
                     .font(.caption).foregroundStyle(.secondary)
                 Text(level.title).font(.headline)
             }
-            Spacer()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Current zoom: \(level.title)")
+            Spacer(minLength: 0)
 
-            Button { setLevel(level.rawValue + 1) } label: {
-                Image(systemName: "plus.magnifyingglass").font(.title2)
+            Button {
+                setLevel(level.rawValue + 1)
+            } label: {
+                Image(systemName: "plus.magnifyingglass")
+                    .font(.title2).frame(width: 64, height: 48)
             }
             .disabled(level == .intersection)
+            .accessibilityLabel("Zoom in for more detail")
+            .accessibilityHint("Currently \(level.title), level \(level.rawValue) of \(StageLevel.allCases.count)")
         }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 12)
-        .background(.ultraThinMaterial, in: Capsule())
-        .padding(.bottom, 24)
-        // Expose as a single adjustable control to VoiceOver.
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Stage zoom level")
-        .accessibilityValue("\(level.title), level \(level.rawValue) of \(StageLevel.allCases.count)")
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: setLevel(level.rawValue + 1)
-            case .decrement: setLevel(level.rawValue - 1)
-            @unknown default: break
-            }
-        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.bar)
     }
 
     private func setLevel(_ raw: Int) {
