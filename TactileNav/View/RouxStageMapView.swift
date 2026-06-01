@@ -33,15 +33,58 @@ enum StageFilter {
         "primary", "primary_link", "secondary", "secondary_link",
     ]
 
-    /// Returns a copy of `doc` containing only the features visible at `level`.
+    /// Returns a copy of `doc` containing only the features visible at `level`,
+    /// reframed so that content fills the screen at every level (the coarse
+    /// levels would otherwise look tiny and off-center). This is the
+    /// information-zoom: each level reframes to its own content.
     static func filter(_ doc: TactileMapDocument, level: StageLevel) -> TactileMapDocument {
-        let features = doc.features.filter { shouldShow($0, level: level) }
-        return TactileMapDocument(
-            version: doc.version,
-            bounds: doc.bounds,
-            features: features,
-            metadata: doc.metadata
-        )
+        let shown = doc.features.filter { shouldShow($0, level: level) }
+        guard !shown.isEmpty else {
+            return TactileMapDocument(version: doc.version, bounds: doc.bounds,
+                                      features: shown, metadata: doc.metadata)
+        }
+
+        // Bounding box of the visible features.
+        var minX =  Double.greatestFiniteMagnitude
+        var minY =  Double.greatestFiniteMagnitude
+        var maxX = -Double.greatestFiniteMagnitude
+        var maxY = -Double.greatestFiniteMagnitude
+        for f in shown {
+            for c in coordinates(of: f) {
+                minX = min(minX, c.x); minY = min(minY, c.y)
+                maxX = max(maxX, c.x); maxY = max(maxY, c.y)
+            }
+        }
+
+        let pad = 30.0   // meters of breathing room
+        let dx = -minX + pad
+        let dy = -minY + pad
+        let translated = shown.map { translate($0, dx: dx, dy: dy) }
+        let bounds = TactileMapBounds(width: (maxX - minX) + 2 * pad,
+                                      height: (maxY - minY) + 2 * pad)
+        return TactileMapDocument(version: doc.version, bounds: bounds,
+                                  features: translated, metadata: doc.metadata)
+    }
+
+    private static func coordinates(of f: MapElement) -> [TactileCoordinate] {
+        switch f.geometry {
+        case .point(let c):       return [c]
+        case .lineString(let cs): return cs
+        case .polygon(let cs):    return cs
+        }
+    }
+
+    private static func translate(_ f: MapElement, dx: Double, dy: Double) -> MapElement {
+        let g: TactileGeometry
+        switch f.geometry {
+        case .point(let c):
+            g = .point(TactileCoordinate(x: c.x + dx, y: c.y + dy))
+        case .lineString(let cs):
+            g = .lineString(cs.map { TactileCoordinate(x: $0.x + dx, y: $0.y + dy) })
+        case .polygon(let cs):
+            g = .polygon(cs.map { TactileCoordinate(x: $0.x + dx, y: $0.y + dy) })
+        }
+        return MapElement(id: f.id, elementType: f.elementType, geometry: g, properties: f.properties)
     }
 
     private static func shouldShow(_ f: MapElement, level: StageLevel) -> Bool {
@@ -78,37 +121,19 @@ struct RouxStageMapView: View {
     @State private var level: StageLevel = .neighborhood
     @Environment(\.dismiss) private var dismiss
 
-    // MARK: Map zoom (visual scale) — distinct from stage zoom (information).
-    // Baseline scale is coupled to the stage level; pinch/pan adjust around it.
-    @State private var steadyZoom: CGFloat = 1
-    @State private var steadyPan: CGSize = .zero
-    @State private var zoomAtGestureStart: CGFloat = 1
-    @State private var panAtGestureStart: CGSize = .zero
-
     private var filteredDocument: TactileMapDocument {
         StageFilter.filter(vm.document, level: level)
     }
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            // The map: a VoiceOver direct-interaction region (one-finger
-            // raw-touch exploration). Two-finger pinch zooms, two-finger
-            // drag pans — driven by the host's UIKit recognizers.
-            DirectInteractionHost(
-                onBackGesture: { dismiss() },
-                onPinch: { scale, state in
-                    if state == .began { zoomAtGestureStart = steadyZoom }
-                    steadyZoom = min(5, max(1, zoomAtGestureStart * scale))
-                },
-                onPan: { t, state in
-                    if state == .began { panAtGestureStart = steadyPan }
-                    steadyPan = CGSize(width: panAtGestureStart.width + t.x,
-                                       height: panAtGestureStart.height + t.y)
-                }
-            ) {
-                // Sizes are in map units = METERS (OSM data). Realistic street
-                // widths so the network reads as streets, not blobs. Touch
-                // targets stay accessible via the renderer's minHitRadiusPts.
+            // The map is a VoiceOver direct-interaction region (one-finger
+            // raw-touch exploration). No free zoom/pan — the lab's apps use a
+            // fixed-scale map, and each stage level reframes to fill the screen.
+            // Sizes are in map units = METERS; realistic street widths so the
+            // network reads as streets, not blobs. Touch targets stay
+            // accessible via the renderer's minHitRadiusPts floor.
+            DirectInteractionHost(onBackGesture: { dismiss() }) {
                 GenericMapCanvasView(
                     document: filteredDocument,
                     policy: vm.policy,
@@ -117,8 +142,6 @@ struct RouxStageMapView: View {
                     majorJSONRadius: 7,
                     minorJSONRadius: 5
                 )
-                .scaleEffect(steadyZoom, anchor: .center)
-                .offset(steadyPan)
             }
             .ignoresSafeArea()
 
@@ -180,17 +203,6 @@ struct RouxStageMapView: View {
     private func setLevel(_ raw: Int) {
         guard let newLevel = StageLevel(rawValue: raw), newLevel != level else { return }
         level = newLevel
-        // Couple visual map-zoom baseline to the stage level; recenter.
-        steadyZoom = baselineZoom(for: newLevel)
-        steadyPan = .zero
         UIAccessibility.post(notification: .announcement, argument: "\(newLevel.title) level")
-    }
-
-    private func baselineZoom(for level: StageLevel) -> CGFloat {
-        switch level {
-        case .neighborhood: return 1.0
-        case .street:       return 1.6
-        case .intersection: return 2.4
-        }
     }
 }

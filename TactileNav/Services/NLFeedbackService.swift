@@ -1,16 +1,23 @@
 import TactileMapCore
 import TactileMapFeedback
 import AVFoundation
+import Foundation
 
 // MARK: - Natural Language Feedback Service
-// Condition 1: speaks the element name (+ directional phrase for anchor touches).
-// Haptics are identical to DefaultFeedbackPolicy.
+// Speaks the element name (+ directional phrase for anchor touches).
+// Speech/clicks are debounced so dragging across nearby elements doesn't
+// fire a burst of overlapping audio (matches Nav_Indoor's 0.5s rule).
 
 @MainActor
 final class NLFeedbackService: FeedbackPolicy {
 
     private let hapticEngine: HapticEngine = CoreHapticsEngine()
     private let audioEngine: SpatialAudioEngine = AVSpatialAudioEngine()
+
+    // Debounce: skip re-announcing the same thing within this window.
+    private var lastAnnouncedKey: String?
+    private var lastAnnouncedAt: Date = .distantPast
+    private let minRepeatInterval: TimeInterval = 0.5
 
     // MARK: FeedbackPolicy
 
@@ -22,16 +29,23 @@ final class NLFeedbackService: FeedbackPolicy {
 
         case .intersection:
             hapticEngine.start(pattern: .intersectionPulse)
-            audioEngine.speak(props.name)
+            if shouldAnnounce("ix:\(props.name)") {
+                audioEngine.speak(props.name)
+            }
 
         case .landmark:
             hapticEngine.start(pattern: .landmarkFastPulse)
-            audioEngine.playClickSound()
-            handleLandmark(name: props.name, side: props.side, touchType: touchType)
+            let text = landmarkText(name: props.name, side: props.side, touchType: touchType)
+            if shouldAnnounce("lm:\(props.name):\(touchType)") {
+                audioEngine.playClickSound()
+                audioEngine.speak(text)
+            }
 
         default:
             hapticEngine.playSingleTap()
-            audioEngine.speak(props.name)
+            if shouldAnnounce("x:\(props.name)") {
+                audioEngine.speak(props.name)
+            }
         }
     }
 
@@ -43,7 +57,7 @@ final class NLFeedbackService: FeedbackPolicy {
 
     func onTap(element: any TactileMapElement, touchType: TouchType) {
         hapticEngine.playSingleTap()
-        audioEngine.speak(element.properties.name)
+        audioEngine.speak(element.properties.name)   // explicit tap always speaks
     }
 
     func stopAll() {
@@ -53,14 +67,26 @@ final class NLFeedbackService: FeedbackPolicy {
 
     // MARK: Private
 
-    private func handleLandmark(name: String, side: String?, touchType: TouchType) {
+    /// Returns true if this announcement should play now. Suppresses an
+    /// identical announcement repeated within `minRepeatInterval`, but lets
+    /// a *different* element through immediately.
+    private func shouldAnnounce(_ key: String) -> Bool {
+        let now = Date()
+        if key == lastAnnouncedKey, now.timeIntervalSince(lastAnnouncedAt) < minRepeatInterval {
+            return false
+        }
+        lastAnnouncedKey = key
+        lastAnnouncedAt = now
+        return true
+    }
+
+    private func landmarkText(name: String, side: String?, touchType: TouchType) -> String {
         switch touchType {
         case .anchor:
             let dir = directionPhrase(for: side)
-            let text = dir.isEmpty ? name : "\(name), \(dir)"
-            audioEngine.speak(text)
+            return dir.isEmpty ? name : "\(name), \(dir)"
         case .direct:
-            audioEngine.speak(name)
+            return name
         }
     }
 

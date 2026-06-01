@@ -145,7 +145,11 @@ struct GenericMapCanvasView: View {
             let center = t.apply(c)
             let category = f.properties.category ?? ""
             if category == "entrance" || category == "traffic_signal" {
-                drawTrafficSignalIcon(ctx, at: center, t: t)
+                drawTrafficSignalIcon(ctx, at: center)
+                continue
+            }
+            if category == "crossing" {
+                drawCrossingMarker(ctx, at: center)
                 continue
             }
             let half = sideLen / 2
@@ -157,8 +161,19 @@ struct GenericMapCanvasView: View {
         }
     }
 
-    private func drawTrafficSignalIcon(_ ctx: GraphicsContext, at center: CGPoint, t: MapTransform) {
-        let scale  = t.scaled(1)
+    /// Small fixed-size marker for a pedestrian crossing — a white disc with a
+    /// dark ring, distinct from junction discs, landmarks, and anchor dots.
+    private func drawCrossingMarker(_ ctx: GraphicsContext, at center: CGPoint) {
+        let r: CGFloat = 5
+        let rect = circleRect(center: center, radius: r)
+        ctx.fill(Path(ellipseIn: rect), with: .color(.white))
+        ctx.stroke(Path(ellipseIn: rect), with: .color(Color(white: 0.2)), lineWidth: 1.5)
+    }
+
+    // Traffic signals use a fixed on-screen size (like a map pin) so they stay
+    // clean and consistent instead of scaling huge on small maps.
+    private func drawTrafficSignalIcon(_ ctx: GraphicsContext, at center: CGPoint) {
+        let scale: CGFloat = 0.42      // fixed → ~23 pt tall
         let bodyW  = 30 * scale
         let bodyH  = 55 * scale
         let lightR = 7  * scale
@@ -200,6 +215,11 @@ struct GenericMapCanvasView: View {
 
         for f in document.features where f.elementType == .landmark {
             guard case .point(let c) = f.geometry else { continue }
+            // Anchor dots only make sense for off-street POIs (buildings,
+            // restaurants, the Roux anchor). Crossings/signals sit on the
+            // street itself, so an offset dot just adds clutter.
+            let cat = f.properties.category ?? ""
+            if cat == "crossing" || cat == "traffic_signal" || cat == "entrance" { continue }
             let anchor = anchorCenter(for: f, screenPt: t.apply(c), t: t)
             let rect   = circleRect(center: anchor, radius: minorR)
             ctx.fill(Path(ellipseIn: rect), with: .color(nodeColor))

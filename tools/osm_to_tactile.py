@@ -173,8 +173,11 @@ def main():
         })
 
     # ---- Intersections (shared nodes that aren't landmarks) ----
+    # Only real intersections (3+ corridors meet). Degree-2 nodes are just
+    # where a single street is split into segments — not decision points, and
+    # rendering/feedback for them clutters the map.
     for nid, count in node_use_count.items():
-        if count >= 2 and nid not in landmark_node_ids:
+        if count >= 3 and nid not in landmark_node_ids:
             x, y = project(nid)
             connected = [f"c-{wid}" for wid, refs, _ in ways if nid in refs]
             features.append({
