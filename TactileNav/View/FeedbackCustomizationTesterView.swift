@@ -183,7 +183,7 @@ struct CustomizableMapView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        let doc = try! TactileMapDocument.load(from: "demo_building", bundle: .main)
+        let doc = try! TactileMapDocument.load(from: "roux_portland", bundle: .main)
         TactileMapView(
             document: doc,
             feedbackPolicy: policy,

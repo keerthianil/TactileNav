@@ -74,7 +74,12 @@ def main():
     ap.add_argument("--name", default="Roux Institute Area - Portland, ME")
     ap.add_argument("--epsilon", type=float, default=1.5,
                     help="Douglas-Peucker tolerance in meters")
+    ap.add_argument("--pedestrian", action="store_true",
+                    help="Drop motorway/trunk (non-walkable) for a clean "
+                         "pedestrian tactile map")
     args = ap.parse_args()
+
+    corridor_highways = WALKABLE if args.pedestrian else CORRIDOR_HIGHWAYS
 
     tree = ET.parse(args.input)
     root = tree.getroot()
@@ -92,7 +97,7 @@ def main():
     for w in root.findall("way"):
         tags = {t.get("k"): t.get("v") for t in w.findall("tag")}
         hw = tags.get("highway")
-        if hw not in CORRIDOR_HIGHWAYS:
+        if hw not in corridor_highways:
             continue
         refs = [nd.get("ref") for nd in w.findall("nd")]
         refs = [r for r in refs if r in nodes]

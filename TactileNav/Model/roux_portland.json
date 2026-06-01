@@ -6,13 +6,279 @@
     "scale": "1 unit = 1 meter",
     "coordinate_unit": "meters",
     "source": "OpenStreetMap (ODbL) \u2014 manual export",
-    "center_lat": 43.679992
+    "center_lat": 43.681012
   },
   "bounds": {
-    "width": 605.93,
-    "height": 660.04
+    "width": 1240.66,
+    "height": 1194.0
   },
   "features": [
+    {
+      "id": "c-11385572",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            1131.43,
+            558.27
+          ],
+          [
+            1126.85,
+            545.13
+          ],
+          [
+            1114.53,
+            535.89
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Residential",
+        "category": "residential",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-11387471",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            657.12,
+            775.69
+          ],
+          [
+            648.18,
+            786.18
+          ],
+          [
+            639.17,
+            794.5
+          ],
+          [
+            631.91,
+            800.25
+          ],
+          [
+            610.66,
+            811.81
+          ],
+          [
+            591.62,
+            818.26
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Bates Street",
+        "category": "tertiary",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-11390811",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            632.7,
+            646.21
+          ],
+          [
+            610.55,
+            629.92
+          ],
+          [
+            598.88,
+            644.54
+          ],
+          [
+            621.93,
+            659.88
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-11393162",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            897.64,
+            433.1
+          ],
+          [
+            892.65,
+            429.16
+          ],
+          [
+            771.46,
+            333.49
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Dalton Street",
+        "category": "residential",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-11396238",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            1131.43,
+            558.27
+          ],
+          [
+            1146.17,
+            569.51
+          ],
+          [
+            1200.03,
+            606.03
+          ],
+          [
+            1224.9,
+            623.28
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Lennox Street",
+        "category": "residential",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-11397626",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            1170.24,
+            493.93
+          ],
+          [
+            1209.44,
+            519.53
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Chester Street",
+        "category": "residential",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-11403661",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            980.48,
+            321.05
+          ],
+          [
+            1065.92,
+            361.88
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Upland Avenue",
+        "category": "residential",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-11403790",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            690.42,
+            730.27
+          ],
+          [
+            698.54,
+            739.21
+          ],
+          [
+            688.73,
+            794.26
+          ],
+          [
+            691.55,
+            800.27
+          ],
+          [
+            720.39,
+            805.11
+          ],
+          [
+            728.17,
+            801.88
+          ],
+          [
+            730.7,
+            783.69
+          ],
+          [
+            733.64,
+            762.59
+          ],
+          [
+            735.38,
+            747.65
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Bates Court",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-11407753",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            1200.03,
+            606.03
+          ],
+          [
+            1228.4,
+            562.78
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Kendall Street",
+        "category": "residential",
+        "is_accessible": true
+      }
+    },
     {
       "id": "c-11408663",
       "element_type": "corridor",
@@ -20,28 +286,28 @@
         "type": "LineString",
         "coordinates": [
           [
-            458.76,
-            219.87
+            1050.12,
+            600.35
           ],
           [
-            471.56,
-            219.31
+            1062.92,
+            599.79
           ],
           [
-            499.18,
-            242.35
+            1090.54,
+            622.84
           ],
           [
-            541.12,
-            270.07
+            1132.48,
+            650.55
           ],
           [
-            585.89,
-            304.69
+            1177.24,
+            685.17
           ],
           [
-            605.93,
-            315.49
+            1197.29,
+            695.97
           ]
         ]
       },
@@ -58,29 +324,299 @@
         "type": "LineString",
         "coordinates": [
           [
-            172.56,
-            246.25
+            763.92,
+            626.73
           ],
           [
-            179.76,
-            250.54
+            771.12,
+            631.02
           ],
           [
-            207.64,
-            267.12
+            799.0,
+            647.6
           ],
           [
-            222.14,
-            275.75
+            813.51,
+            656.23
           ],
           [
-            241.8,
-            287.44
+            833.16,
+            667.92
           ]
         ]
       },
       "properties": {
         "name": "Jordan Street",
+        "category": "residential",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-11410602",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            690.42,
+            730.27
+          ],
+          [
+            699.52,
+            717.33
+          ],
+          [
+            707.69,
+            705.71
+          ],
+          [
+            717.32,
+            692.01
+          ],
+          [
+            727.37,
+            677.72
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Bates Street",
+        "category": "primary",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-11411025",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            1062.92,
+            599.79
+          ],
+          [
+            1110.5,
+            576.97
+          ],
+          [
+            1125.8,
+            564.5
+          ],
+          [
+            1131.43,
+            558.27
+          ],
+          [
+            1139.16,
+            548.7
+          ],
+          [
+            1163.31,
+            512.52
+          ],
+          [
+            1167.26,
+            503.06
+          ],
+          [
+            1170.24,
+            493.93
+          ],
+          [
+            1172.57,
+            486.25
+          ],
+          [
+            1176.44,
+            476.67
+          ],
+          [
+            1198.66,
+            430.47
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Windsor Terrace",
+        "category": "residential",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-11411858",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            958.05,
+            399.48
+          ],
+          [
+            966.72,
+            395.52
+          ],
+          [
+            972.45,
+            396.43
+          ],
+          [
+            1031.58,
+            427.91
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Richmond Street",
+        "category": "residential",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-11412162",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            1141.26,
+            401.98
+          ],
+          [
+            1147.29,
+            405.43
+          ],
+          [
+            1198.66,
+            430.47
+          ],
+          [
+            1232.15,
+            447.73
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Watson Street",
+        "category": "residential",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-11412512",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            825.74,
+            539.0
+          ],
+          [
+            819.25,
+            534.97
+          ],
+          [
+            637.35,
+            405.32
+          ],
+          [
+            633.47,
+            402.54
+          ],
+          [
+            580.13,
+            363.79
+          ],
+          [
+            494.04,
+            304.93
+          ],
+          [
+            247.18,
+            128.17
+          ],
+          [
+            85.98,
+            5.23
+          ],
+          [
+            74.23,
+            0.0
+          ],
+          [
+            67.95,
+            0.89
+          ],
+          [
+            29.22,
+            18.03
+          ],
+          [
+            0.0,
+            25.94
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Sherwood Street",
+        "category": "residential",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-11414402",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            781.47,
+            601.8
+          ],
+          [
+            775.28,
+            597.41
+          ],
+          [
+            761.56,
+            587.7
+          ],
+          [
+            596.86,
+            471.11
+          ],
+          [
+            523.85,
+            418.77
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Pembroke Street",
+        "category": "residential",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-11415760",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            1230.94,
+            364.02
+          ],
+          [
+            1198.66,
+            430.47
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Island Street",
         "category": "residential",
         "is_accessible": true
       }
@@ -92,48 +628,60 @@
         "type": "LineString",
         "coordinates": [
           [
-            136.01,
-            297.24
+            727.37,
+            677.72
           ],
           [
-            142.6,
-            288.04
+            733.97,
+            668.52
           ],
           [
-            156.81,
-            268.21
+            748.18,
+            648.7
           ],
           [
-            172.56,
-            246.25
+            763.92,
+            626.73
           ],
           [
-            209.27,
-            194.41
+            775.19,
+            610.72
           ],
           [
-            223.96,
-            173.43
+            781.47,
+            601.8
           ],
           [
-            234.38,
-            158.52
+            800.63,
+            574.89
           ],
           [
-            236.32,
-            155.68
+            815.33,
+            553.91
           ],
           [
-            284.27,
-            85.66
+            825.74,
+            539.0
           ],
           [
-            306.27,
-            52.62
+            827.68,
+            536.16
           ],
           [
-            309.38,
-            48.79
+            873.83,
+            468.77
+          ],
+          [
+            875.63,
+            466.14
+          ],
+          [
+            897.64,
+            433.1
+          ],
+          [
+            900.74,
+            429.27
           ]
         ]
       },
@@ -150,16 +698,16 @@
         "type": "LineString",
         "coordinates": [
           [
-            241.8,
-            287.44
+            833.16,
+            667.92
           ],
           [
-            233.75,
-            303.14
+            825.11,
+            683.62
           ],
           [
-            229.16,
-            311.15
+            820.52,
+            691.63
           ]
         ]
       },
@@ -170,103 +718,41 @@
       }
     },
     {
-      "id": "c-11416524",
+      "id": "c-11418157",
       "element_type": "corridor",
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            242.55,
-            658.76
+            650.49,
+            621.17
           ],
           [
-            242.51,
-            588.66
+            645.49,
+            627.84
           ],
           [
-            246.47,
-            552.38
+            632.7,
+            646.21
           ],
           [
-            263.37,
-            458.43
+            621.93,
+            659.88
           ],
           [
-            265.55,
-            425.92
+            603.68,
+            684.13
           ],
           [
-            262.73,
-            411.34
-          ],
-          [
-            246.63,
-            379.06
-          ],
-          [
-            238.33,
-            369.26
-          ],
-          [
-            222.96,
-            355.46
-          ],
-          [
-            160.97,
-            310.37
-          ],
-          [
-            146.23,
-            300.24
-          ],
-          [
-            136.01,
-            297.24
+            533.76,
+            784.36
           ]
         ]
       },
       "properties": {
-        "name": "Motorway Link",
-        "category": "motorway_link",
-        "is_accessible": false
-      }
-    },
-    {
-      "id": "c-11416531",
-      "element_type": "corridor",
-      "geometry": {
-        "type": "LineString",
-        "coordinates": [
-          [
-            136.01,
-            297.24
-          ],
-          [
-            141.16,
-            307.7
-          ],
-          [
-            182.22,
-            342.54
-          ],
-          [
-            194.15,
-            357.7
-          ],
-          [
-            207.01,
-            390.83
-          ],
-          [
-            220.74,
-            593.94
-          ]
-        ]
-      },
-      "properties": {
-        "name": "Motorway Link",
-        "category": "motorway_link",
-        "is_accessible": false
+        "name": "Galvin Street",
+        "category": "residential",
+        "is_accessible": true
       }
     },
     {
@@ -276,24 +762,24 @@
         "type": "LineString",
         "coordinates": [
           [
-            344.6,
-            0.0
+            935.96,
+            380.48
           ],
           [
-            363.59,
-            13.63
+            954.95,
+            394.11
           ],
           [
-            366.69,
-            19.0
+            958.05,
+            399.48
           ],
           [
-            458.76,
-            219.87
+            1050.12,
+            600.35
           ],
           [
-            488.41,
-            289.54
+            1079.77,
+            670.02
           ]
         ]
       },
@@ -304,59 +790,25 @@
       }
     },
     {
-      "id": "c-11419786",
+      "id": "c-11419516",
       "element_type": "corridor",
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            328.7,
-            254.86
+            1174.18,
+            336.41
           ],
           [
-            310.71,
-            271.85
-          ],
-          [
-            245.28,
-            354.53
+            1230.94,
+            364.02
           ]
         ]
       },
       "properties": {
-        "name": "Motorway Link",
-        "category": "motorway_link",
-        "is_accessible": false
-      }
-    },
-    {
-      "id": "c-30158599",
-      "element_type": "corridor",
-      "geometry": {
-        "type": "LineString",
-        "coordinates": [
-          [
-            241.38,
-            403.15
-          ],
-          [
-            230.9,
-            436.89
-          ],
-          [
-            224.1,
-            474.43
-          ],
-          [
-            220.74,
-            593.94
-          ]
-        ]
-      },
-      "properties": {
-        "name": "Motorway",
-        "category": "motorway",
-        "is_accessible": false
+        "name": "Sullivan Street",
+        "category": "residential",
+        "is_accessible": true
       }
     },
     {
@@ -366,32 +818,32 @@
         "type": "LineString",
         "coordinates": [
           [
-            206.61,
-            524.76
+            797.97,
+            905.24
           ],
           [
-            195.05,
-            510.98
+            786.41,
+            891.46
           ],
           [
-            191.07,
-            506.24
+            782.43,
+            886.72
           ],
           [
-            170.76,
-            492.28
+            762.13,
+            872.76
           ],
           [
-            154.9,
-            487.11
+            746.26,
+            867.59
           ],
           [
-            88.83,
-            474.62
+            680.2,
+            855.1
           ],
           [
-            0.0,
-            464.78
+            591.37,
+            845.26
           ]
         ]
       },
@@ -402,245 +854,25 @@
       }
     },
     {
-      "id": "c-32565943",
+      "id": "c-30809849",
       "element_type": "corridor",
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            242.55,
-            658.76
+            654.24,
+            829.8
           ],
           [
-            233.67,
-            550.38
-          ],
-          [
-            233.18,
-            518.09
-          ],
-          [
-            235.44,
-            477.8
-          ],
-          [
-            247.8,
-            422.07
+            648.81,
+            829.58
           ]
         ]
       },
       "properties": {
-        "name": "Motorway",
-        "category": "motorway",
-        "is_accessible": false
-      }
-    },
-    {
-      "id": "c-32565951",
-      "element_type": "corridor",
-      "geometry": {
-        "type": "LineString",
-        "coordinates": [
-          [
-            220.74,
-            593.94
-          ],
-          [
-            223.08,
-            659.57
-          ]
-        ]
-      },
-      "properties": {
-        "name": "Motorway",
-        "category": "motorway",
-        "is_accessible": false
-      }
-    },
-    {
-      "id": "c-32565958",
-      "element_type": "corridor",
-      "geometry": {
-        "type": "LineString",
-        "coordinates": [
-          [
-            192.58,
-            468.58
-          ],
-          [
-            221.53,
-            461.86
-          ],
-          [
-            241.26,
-            450.06
-          ],
-          [
-            253.36,
-            438.85
-          ],
-          [
-            263.41,
-            425.23
-          ],
-          [
-            288.19,
-            373.07
-          ]
-        ]
-      },
-      "properties": {
-        "name": "Motorway Link",
-        "category": "motorway_link",
-        "is_accessible": false
-      }
-    },
-    {
-      "id": "c-32565964",
-      "element_type": "corridor",
-      "geometry": {
-        "type": "LineString",
-        "coordinates": [
-          [
-            288.19,
-            373.07
-          ],
-          [
-            337.24,
-            264.07
-          ]
-        ]
-      },
-      "properties": {
-        "name": "Motorway Link",
-        "category": "motorway_link",
-        "is_accessible": false
-      }
-    },
-    {
-      "id": "c-32565979",
-      "element_type": "corridor",
-      "geometry": {
-        "type": "LineString",
-        "coordinates": [
-          [
-            245.28,
-            354.53
-          ],
-          [
-            191.92,
-            421.03
-          ]
-        ]
-      },
-      "properties": {
-        "name": "Motorway Link",
-        "category": "motorway_link",
-        "is_accessible": false
-      }
-    },
-    {
-      "id": "c-32565980",
-      "element_type": "corridor",
-      "geometry": {
-        "type": "LineString",
-        "coordinates": [
-          [
-            191.92,
-            421.03
-          ],
-          [
-            175.06,
-            436.61
-          ],
-          [
-            146.56,
-            449.97
-          ],
-          [
-            116.45,
-            453.31
-          ],
-          [
-            62.88,
-            449.32
-          ]
-        ]
-      },
-      "properties": {
-        "name": "Motorway Link",
-        "category": "motorway_link",
-        "is_accessible": false
-      }
-    },
-    {
-      "id": "c-32566006",
-      "element_type": "corridor",
-      "geometry": {
-        "type": "LineString",
-        "coordinates": [
-          [
-            247.8,
-            422.07
-          ],
-          [
-            266.11,
-            377.65
-          ]
-        ]
-      },
-      "properties": {
-        "name": "Motorway",
-        "category": "motorway",
-        "is_accessible": false
-      }
-    },
-    {
-      "id": "c-32566007",
-      "element_type": "corridor",
-      "geometry": {
-        "type": "LineString",
-        "coordinates": [
-          [
-            266.11,
-            377.65
-          ],
-          [
-            290.83,
-            334.64
-          ],
-          [
-            337.24,
-            264.07
-          ]
-        ]
-      },
-      "properties": {
-        "name": "Motorway",
-        "category": "motorway",
-        "is_accessible": false
-      }
-    },
-    {
-      "id": "c-32566009",
-      "element_type": "corridor",
-      "geometry": {
-        "type": "LineString",
-        "coordinates": [
-          [
-            257.84,
-            366.16
-          ],
-          [
-            241.38,
-            403.15
-          ]
-        ]
-      },
-      "properties": {
-        "name": "Motorway",
-        "category": "motorway",
-        "is_accessible": false
+        "name": "Baxter Boulevard",
+        "category": "tertiary",
+        "is_accessible": true
       }
     },
     {
@@ -650,12 +882,12 @@
         "type": "LineString",
         "coordinates": [
           [
-            211.65,
-            660.04
+            803.01,
+            1040.52
           ],
           [
-            206.61,
-            524.76
+            797.97,
+            905.24
           ]
         ]
       },
@@ -666,29 +898,25 @@
       }
     },
     {
-      "id": "c-65381681",
+      "id": "c-32566116",
       "element_type": "corridor",
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            328.7,
-            254.86
+            809.64,
+            1194.0
           ],
           [
-            272.9,
-            339.39
-          ],
-          [
-            257.84,
-            366.16
+            803.01,
+            1040.52
           ]
         ]
       },
       "properties": {
-        "name": "Motorway",
-        "category": "motorway",
-        "is_accessible": false
+        "name": "Tukey's Bridge Pathway",
+        "category": "cycleway",
+        "is_accessible": true
       }
     },
     {
@@ -698,76 +926,80 @@
         "type": "LineString",
         "coordinates": [
           [
-            206.61,
-            524.76
+            797.97,
+            905.24
           ],
           [
-            205.55,
-            505.46
+            796.91,
+            885.94
           ],
           [
-            205.55,
-            493.46
+            796.91,
+            873.94
           ],
           [
-            202.24,
-            421.99
+            793.61,
+            802.47
           ],
           [
-            199.78,
-            413.95
+            791.14,
+            794.44
           ],
           [
-            189.54,
-            401.15
+            780.9,
+            781.63
           ],
           [
-            186.62,
-            393.89
+            777.98,
+            774.38
           ],
           [
-            185.41,
-            388.28
+            776.77,
+            768.76
           ],
           [
-            184.38,
-            383.49
+            775.74,
+            763.97
           ],
           [
-            183.89,
-            376.82
+            775.25,
+            757.3
           ],
           [
-            183.17,
-            367.22
+            774.53,
+            747.7
           ],
           [
-            183.04,
-            364.09
+            774.41,
+            744.57
           ],
           [
-            182.86,
-            359.81
+            774.22,
+            740.29
           ],
           [
-            180.48,
-            351.07
+            771.85,
+            731.55
           ],
           [
-            168.48,
-            334.1
+            759.84,
+            714.59
           ],
           [
-            141.3,
-            317.3
+            732.66,
+            697.78
           ],
           [
-            130.94,
-            320.53
+            726.48,
+            698.8
           ],
           [
-            123.19,
-            330.19
+            722.3,
+            701.02
+          ],
+          [
+            714.56,
+            710.67
           ]
         ]
       },
@@ -778,25 +1010,365 @@
       }
     },
     {
-      "id": "c-604553284",
+      "id": "c-131830255",
       "element_type": "corridor",
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            60.99,
-            459.42
+            591.49,
+            836.44
           ],
           [
-            192.58,
-            468.58
+            652.36,
+            839.9
           ]
         ]
       },
       "properties": {
-        "name": "Motorway Link",
-        "category": "motorway_link",
-        "is_accessible": false
+        "name": "Baxter Boulevard",
+        "category": "tertiary",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-176819649",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            930.34,
+            388.89
+          ],
+          [
+            935.96,
+            380.48
+          ],
+          [
+            977.02,
+            325.94
+          ],
+          [
+            980.48,
+            321.05
+          ],
+          [
+            996.83,
+            298.34
+          ],
+          [
+            1054.71,
+            214.85
+          ],
+          [
+            1109.62,
+            126.29
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Veranda Street",
+        "category": "secondary",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-176819651",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            900.74,
+            429.27
+          ],
+          [
+            930.34,
+            388.89
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Veranda Street",
+        "category": "secondary",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-417064502",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            518.18,
+            156.54
+          ],
+          [
+            558.79,
+            166.65
+          ],
+          [
+            598.24,
+            171.66
+          ],
+          [
+            636.88,
+            183.12
+          ],
+          [
+            643.73,
+            186.57
+          ],
+          [
+            652.74,
+            195.7
+          ],
+          [
+            681.4,
+            229.54
+          ],
+          [
+            702.59,
+            284.87
+          ],
+          [
+            672.37,
+            327.49
+          ],
+          [
+            671.44,
+            349.11
+          ],
+          [
+            633.47,
+            402.54
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Path",
+        "category": "path",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-544935648",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            657.12,
+            775.69
+          ],
+          [
+            648.36,
+            809.81
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Bates Street",
+        "category": "primary",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-544935651",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            639.17,
+            794.5
+          ],
+          [
+            648.36,
+            809.81
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Primary Link",
+        "category": "primary_link",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-544935653",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            639.17,
+            794.5
+          ],
+          [
+            634.94,
+            789.55
+          ],
+          [
+            625.42,
+            779.16
+          ],
+          [
+            617.43,
+            788.95
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-604553273",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            654.24,
+            829.8
+          ],
+          [
+            657.17,
+            806.51
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Bates Street",
+        "category": "tertiary",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-604553277",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            648.81,
+            829.58
+          ],
+          [
+            592.2,
+            826.72
+          ],
+          [
+            558.21,
+            829.22
+          ],
+          [
+            538.39,
+            834.2
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Baxter Boulevard",
+        "category": "tertiary",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-604553282",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            648.81,
+            829.58
+          ],
+          [
+            652.36,
+            839.9
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Bates Street",
+        "category": "primary",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-604553288",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            648.36,
+            809.81
+          ],
+          [
+            648.81,
+            829.58
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Bates Street",
+        "category": "primary",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-604553289",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            657.17,
+            806.51
+          ],
+          [
+            663.73,
+            780.89
+          ],
+          [
+            690.42,
+            730.27
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Bates Street",
+        "category": "primary",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-604553294",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            652.36,
+            839.9
+          ],
+          [
+            654.24,
+            829.8
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Bates Street",
+        "category": "tertiary",
+        "is_accessible": true
       }
     },
     {
@@ -806,28 +1378,28 @@
         "type": "LineString",
         "coordinates": [
           [
-            488.41,
-            289.54
+            1079.77,
+            670.02
           ],
           [
-            493.43,
-            294.68
+            1084.79,
+            675.16
           ],
           [
-            508.74,
-            300.51
+            1100.1,
+            680.99
           ],
           [
-            520.29,
-            308.29
+            1111.65,
+            688.77
           ],
           [
-            531.84,
-            324.35
+            1123.2,
+            704.83
           ],
           [
-            550.41,
-            363.52
+            1141.77,
+            744.0
           ]
         ]
       },
@@ -844,40 +1416,116 @@
         "type": "LineString",
         "coordinates": [
           [
-            501.17,
-            405.44
+            1092.53,
+            785.92
           ],
           [
-            491.47,
-            394.27
+            1082.82,
+            774.75
           ],
           [
-            472.09,
-            351.72
+            1063.45,
+            732.2
           ],
           [
-            470.18,
-            343.0
+            1061.54,
+            723.48
           ],
           [
-            468.07,
-            333.39
+            1059.43,
+            713.87
           ],
           [
-            467.07,
-            316.07
+            1058.43,
+            696.55
           ],
           [
-            469.08,
-            303.02
+            1060.44,
+            683.5
           ],
           [
-            474.35,
-            294.99
+            1065.71,
+            675.47
           ],
           [
-            488.41,
-            289.54
+            1079.77,
+            670.02
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-826344412",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            700.64,
+            657.9
+          ],
+          [
+            706.84,
+            647.69
+          ],
+          [
+            729.1,
+            611.02
+          ],
+          [
+            727.93,
+            604.63
+          ],
+          [
+            719.5,
+            599.98
+          ],
+          [
+            714.07,
+            601.05
+          ],
+          [
+            690.53,
+            636.53
+          ],
+          [
+            684.31,
+            645.89
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-890910074",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            875.63,
+            466.14
+          ],
+          [
+            882.22,
+            470.67
+          ],
+          [
+            894.71,
+            479.39
+          ],
+          [
+            920.11,
+            497.9
           ]
         ]
       },
@@ -894,12 +1542,12 @@
         "type": "LineString",
         "coordinates": [
           [
-            195.05,
-            510.98
+            786.41,
+            891.46
           ],
           [
-            205.55,
-            505.46
+            796.91,
+            885.94
           ]
         ]
       },
@@ -916,36 +1564,48 @@
         "type": "LineString",
         "coordinates": [
           [
-            401.78,
-            296.22
+            993.14,
+            676.7
           ],
           [
-            377.87,
-            278.68
+            969.23,
+            659.16
           ],
           [
-            367.36,
-            270.95
+            958.72,
+            651.43
           ],
           [
-            365.98,
-            269.94
+            957.34,
+            650.42
           ],
           [
-            273.01,
-            206.75
+            885.74,
+            601.76
           ],
           [
-            262.61,
-            199.69
+            877.05,
+            595.85
           ],
           [
-            230.41,
-            177.81
+            872.88,
+            593.02
           ],
           [
-            223.96,
-            173.43
+            864.37,
+            587.24
+          ],
+          [
+            853.97,
+            580.17
+          ],
+          [
+            821.77,
+            558.29
+          ],
+          [
+            815.33,
+            553.91
           ]
         ]
       },
@@ -956,34 +1616,244 @@
       }
     },
     {
+      "id": "c-964025361",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            727.37,
+            677.72
+          ],
+          [
+            718.56,
+            671.18
+          ],
+          [
+            700.64,
+            657.9
+          ],
+          [
+            693.88,
+            652.89
+          ],
+          [
+            684.31,
+            645.89
+          ],
+          [
+            673.35,
+            637.93
+          ],
+          [
+            650.49,
+            621.17
+          ],
+          [
+            586.87,
+            576.21
+          ],
+          [
+            546.4,
+            545.91
+          ],
+          [
+            462.24,
+            487.44
+          ],
+          [
+            456.87,
+            483.77
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Washington Avenue",
+        "category": "primary",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1059044868",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            815.92,
+            539.62
+          ],
+          [
+            801.62,
+            558.46
+          ],
+          [
+            779.6,
+            591.29
+          ],
+          [
+            775.28,
+            597.41
+          ],
+          [
+            768.46,
+            606.66
+          ],
+          [
+            765.77,
+            610.47
+          ],
+          [
+            745.66,
+            639.04
+          ],
+          [
+            730.97,
+            660.73
+          ],
+          [
+            726.91,
+            662.63
+          ],
+          [
+            724.39,
+            662.39
+          ],
+          [
+            723.28,
+            662.29
+          ],
+          [
+            706.84,
+            647.69
+          ],
+          [
+            690.53,
+            636.53
+          ],
+          [
+            676.61,
+            626.87
+          ],
+          [
+            648.14,
+            606.92
+          ],
+          [
+            552.72,
+            536.97
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Footway",
+        "category": "footway",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1059044869",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            923.91,
+            385.42
+          ],
+          [
+            896.52,
+            424.88
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Footway",
+        "category": "footway",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1059044870",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            968.75,
+            316.38
+          ],
+          [
+            949.15,
+            344.09
+          ],
+          [
+            927.3,
+            378.35
+          ],
+          [
+            923.91,
+            385.42
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Footway",
+        "category": "footway",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1059044871",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            927.3,
+            378.35
+          ],
+          [
+            900.47,
+            389.9
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Path",
+        "category": "path",
+        "is_accessible": true
+      }
+    },
+    {
       "id": "c-1100653699",
       "element_type": "corridor",
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            401.78,
-            296.22
+            993.14,
+            676.7
           ],
           [
-            421.14,
-            308.53
+            1012.5,
+            689.02
           ],
           [
-            427.58,
-            313.22
+            1018.94,
+            693.7
           ],
           [
-            455.96,
-            333.06
+            1047.32,
+            713.54
           ],
           [
-            459.87,
-            335.79
+            1051.23,
+            716.27
           ],
           [
-            470.18,
-            343.0
+            1061.54,
+            723.48
           ]
         ]
       },
@@ -1000,12 +1870,12 @@
         "type": "LineString",
         "coordinates": [
           [
-            183.04,
-            364.09
+            774.41,
+            744.57
           ],
           [
-            177.35,
-            364.36
+            768.71,
+            744.84
           ]
         ]
       },
@@ -1016,18 +1886,22 @@
       }
     },
     {
-      "id": "c-1125535200",
+      "id": "c-1125535197",
       "element_type": "corridor",
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            177.35,
-            364.36
+            833.29,
+            540.73
           ],
           [
-            167.5,
-            364.57
+            827.68,
+            536.16
+          ],
+          [
+            821.61,
+            531.16
           ]
         ]
       },
@@ -1038,22 +1912,96 @@
       }
     },
     {
+      "id": "c-1125535199",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            802.57,
+            631.52
+          ],
+          [
+            789.74,
+            622.3
+          ],
+          [
+            781.62,
+            615.93
+          ],
+          [
+            775.19,
+            610.72
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125535200",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            768.71,
+            744.84
+          ],
+          [
+            758.87,
+            745.05
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Footway",
+        "category": "footway",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125535202",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            823.3,
+            591.54
+          ],
+          [
+            808.67,
+            580.85
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
       "id": "c-1125535203",
       "element_type": "corridor",
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            185.41,
-            388.28
+            776.77,
+            768.76
           ],
           [
-            175.55,
-            376.56
+            766.92,
+            757.04
           ],
           [
-            166.48,
-            370.42
+            757.84,
+            750.9
           ]
         ]
       },
@@ -1064,22 +2012,182 @@
       }
     },
     {
+      "id": "c-1125535210",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            765.77,
+            610.47
+          ],
+          [
+            751.36,
+            601.22
+          ],
+          [
+            761.56,
+            587.7
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125535211",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            808.67,
+            580.85
+          ],
+          [
+            806.92,
+            579.58
+          ],
+          [
+            800.63,
+            574.89
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125535214",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            707.41,
+            742.35
+          ],
+          [
+            708.6,
+            724.47
+          ],
+          [
+            717.54,
+            712.25
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125535216",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            711.59,
+            688.34
+          ],
+          [
+            717.32,
+            692.01
+          ],
+          [
+            726.48,
+            698.8
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Footway",
+        "category": "footway",
+        "is_accessible": true
+      }
+    },
+    {
       "id": "c-1125535217",
       "element_type": "corridor",
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            152.52,
-            294.91
+            743.89,
+            675.39
           ],
           [
-            142.6,
-            288.04
+            733.97,
+            668.52
           ],
           [
-            133.02,
-            281.91
+            724.39,
+            662.39
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Footway",
+        "category": "footway",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125535219",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            708.6,
+            724.47
+          ],
+          [
+            699.52,
+            717.33
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125535220",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            269.9,
+            358.98
+          ],
+          [
+            458.85,
+            492.51
+          ],
+          [
+            567.81,
+            570.63
+          ],
+          [
+            609.79,
+            599.22
+          ],
+          [
+            639.27,
+            623.41
           ]
         ]
       },
@@ -1096,12 +2204,12 @@
         "type": "LineString",
         "coordinates": [
           [
-            179.73,
-            409.42
+            771.09,
+            789.9
           ],
           [
-            153.25,
-            405.3
+            744.62,
+            785.79
           ]
         ]
       },
@@ -1118,48 +2226,60 @@
         "type": "LineString",
         "coordinates": [
           [
-            173.49,
-            308.46
+            764.86,
+            688.94
           ],
           [
-            171.1,
-            308.72
+            762.47,
+            689.2
           ],
           [
-            152.52,
-            294.91
+            743.89,
+            675.39
           ],
           [
-            152.34,
-            288.96
+            743.71,
+            669.45
           ],
           [
-            161.64,
-            275.22
+            753.0,
+            655.7
           ],
           [
-            163.55,
-            272.6
+            754.91,
+            653.08
           ],
           [
-            179.76,
-            250.54
+            771.12,
+            631.02
           ],
           [
-            230.41,
-            177.81
+            781.62,
+            615.93
           ],
           [
-            241.93,
-            160.25
+            806.92,
+            579.58
           ],
           [
-            247.4,
-            153.88
+            821.77,
+            558.29
           ],
           [
-            315.07,
-            51.8
+            833.29,
+            540.73
+          ],
+          [
+            838.76,
+            534.36
+          ],
+          [
+            882.22,
+            470.67
+          ],
+          [
+            906.43,
+            432.28
           ]
         ]
       },
@@ -1176,12 +2296,12 @@
         "type": "LineString",
         "coordinates": [
           [
-            142.27,
-            382.11
+            733.64,
+            762.59
           ],
           [
-            171.13,
-            386.22
+            762.5,
+            766.71
           ]
         ]
       },
@@ -1198,36 +2318,48 @@
         "type": "LineString",
         "coordinates": [
           [
-            107.18,
-            358.73
+            698.54,
+            739.21
           ],
           [
-            166.48,
-            370.42
+            707.41,
+            742.35
           ],
           [
-            167.5,
-            364.57
+            735.38,
+            747.65
           ],
           [
-            169.23,
-            352.53
+            757.84,
+            750.9
           ],
           [
-            165.0,
-            343.56
+            758.87,
+            745.05
           ],
           [
-            132.11,
-            334.08
+            760.6,
+            733.01
           ],
           [
-            123.19,
-            330.19
+            756.36,
+            724.04
           ],
           [
-            116.33,
-            325.23
+            723.48,
+            714.56
+          ],
+          [
+            717.54,
+            712.25
+          ],
+          [
+            714.56,
+            710.67
+          ],
+          [
+            707.69,
+            705.71
           ]
         ]
       },
@@ -1238,18 +2370,66 @@
       }
     },
     {
+      "id": "c-1125535229",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            724.39,
+            662.39
+          ],
+          [
+            718.56,
+            671.18
+          ],
+          [
+            712.23,
+            680.58
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Footway",
+        "category": "footway",
+        "is_accessible": true
+      }
+    },
+    {
       "id": "c-1125535230",
       "element_type": "corridor",
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            153.25,
-            405.3
+            744.62,
+            785.79
           ],
           [
-            139.33,
-            403.21
+            730.7,
+            783.69
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125691857",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            858.45,
+            573.44
+          ],
+          [
+            853.97,
+            580.17
           ]
         ]
       },
@@ -1266,12 +2446,12 @@
         "type": "LineString",
         "coordinates": [
           [
-            198.52,
-            281.63
+            789.88,
+            662.11
           ],
           [
-            207.64,
-            267.12
+            799.0,
+            647.6
           ]
         ]
       },
@@ -1288,16 +2468,32 @@
         "type": "LineString",
         "coordinates": [
           [
-            267.09,
-            192.96
+            858.45,
+            573.44
           ],
           [
-            382.15,
-            273.12
+            866.11,
+            578.77
           ],
           [
-            377.87,
-            278.68
+            873.04,
+            583.61
+          ],
+          [
+            876.84,
+            586.26
+          ],
+          [
+            890.34,
+            595.66
+          ],
+          [
+            973.5,
+            653.6
+          ],
+          [
+            969.23,
+            659.16
           ]
         ]
       },
@@ -1308,68 +2504,18 @@
       }
     },
     {
-      "id": "c-1125691887",
+      "id": "c-1125691866",
       "element_type": "corridor",
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            270.18,
-            211.39
+            867.74,
+            559.24
           ],
           [
-            364.01,
-            275.67
-          ],
-          [
-            367.36,
-            270.95
-          ]
-        ]
-      },
-      "properties": {
-        "name": "Footway",
-        "category": "footway",
-        "is_accessible": true
-      }
-    },
-    {
-      "id": "c-1125691903",
-      "element_type": "corridor",
-      "geometry": {
-        "type": "LineString",
-        "coordinates": [
-          [
-            277.55,
-            466.82
-          ],
-          [
-            272.53,
-            474.85
-          ],
-          [
-            266.49,
-            537.39
-          ],
-          [
-            264.83,
-            547.74
-          ],
-          [
-            262.95,
-            559.42
-          ],
-          [
-            257.51,
-            571.16
-          ],
-          [
-            260.79,
-            606.17
-          ],
-          [
-            271.24,
-            636.12
+            858.45,
+            573.44
           ]
         ]
       },
@@ -1380,18 +2526,366 @@
       }
     },
     {
+      "id": "c-1125691875",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            876.84,
+            586.26
+          ],
+          [
+            872.88,
+            593.02
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125691883",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            861.55,
+            591.87
+          ],
+          [
+            864.37,
+            587.24
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125691886",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            861.55,
+            591.87
+          ],
+          [
+            850.59,
+            609.03
+          ],
+          [
+            851.17,
+            614.24
+          ],
+          [
+            855.78,
+            617.28
+          ],
+          [
+            862.9,
+            616.19
+          ],
+          [
+            874.17,
+            600.39
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125691887",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            861.55,
+            591.87
+          ],
+          [
+            874.17,
+            600.39
+          ],
+          [
+            889.42,
+            609.63
+          ],
+          [
+            955.37,
+            656.15
+          ],
+          [
+            958.72,
+            651.43
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Footway",
+        "category": "footway",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125691894",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            877.05,
+            595.85
+          ],
+          [
+            874.17,
+            600.39
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125691897",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            890.34,
+            595.66
+          ],
+          [
+            911.97,
+            571.03
+          ],
+          [
+            914.56,
+            562.78
+          ],
+          [
+            911.4,
+            551.88
+          ],
+          [
+            903.63,
+            540.05
+          ],
+          [
+            901.47,
+            536.79
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125691903",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            868.91,
+            847.3
+          ],
+          [
+            863.9,
+            855.33
+          ],
+          [
+            857.85,
+            917.87
+          ],
+          [
+            856.19,
+            928.22
+          ],
+          [
+            854.32,
+            939.9
+          ],
+          [
+            848.87,
+            951.64
+          ],
+          [
+            852.15,
+            986.65
+          ],
+          [
+            862.6,
+            1016.6
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125691908",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            866.11,
+            578.77
+          ],
+          [
+            867.02,
+            577.47
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Footway",
+        "category": "footway",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125691909",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            873.04,
+            583.61
+          ],
+          [
+            884.02,
+            567.28
+          ],
+          [
+            871.17,
+            558.68
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Path",
+        "category": "path",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125691911",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            890.34,
+            595.66
+          ],
+          [
+            885.74,
+            601.76
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125691913",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            887.4,
+            570.29
+          ],
+          [
+            876.84,
+            586.26
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1125691919",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            903.63,
+            540.05
+          ],
+          [
+            884.67,
+            553.58
+          ],
+          [
+            875.56,
+            557.71
+          ],
+          [
+            871.17,
+            558.68
+          ],
+          [
+            867.74,
+            559.24
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Path",
+        "category": "path",
+        "is_accessible": true
+      }
+    },
+    {
       "id": "c-1125694179",
       "element_type": "corridor",
       "geometry": {
         "type": "LineString",
         "coordinates": [
           [
-            163.55,
-            272.6
+            754.91,
+            653.08
           ],
           [
-            156.81,
-            268.21
+            748.18,
+            648.7
           ]
         ]
       },
@@ -1408,12 +2902,12 @@
         "type": "LineString",
         "coordinates": [
           [
-            213.02,
-            291.65
+            804.39,
+            672.13
           ],
           [
-            233.75,
-            303.14
+            825.11,
+            683.62
           ]
         ]
       },
@@ -1430,16 +2924,16 @@
         "type": "LineString",
         "coordinates": [
           [
-            263.03,
-            270.23
+            854.4,
+            650.71
           ],
           [
-            252.46,
-            286.68
+            843.82,
+            667.16
           ],
           [
-            241.8,
-            287.44
+            833.16,
+            667.92
           ]
         ]
       },
@@ -1456,12 +2950,12 @@
         "type": "LineString",
         "coordinates": [
           [
-            178.82,
-            283.1
+            770.19,
+            663.58
           ],
           [
-            163.55,
-            272.6
+            754.91,
+            653.08
           ]
         ]
       },
@@ -1478,12 +2972,12 @@
         "type": "LineString",
         "coordinates": [
           [
-            231.38,
-            262.28
+            822.74,
+            642.76
           ],
           [
-            222.14,
-            275.75
+            813.51,
+            656.23
           ]
         ]
       },
@@ -1500,16 +2994,16 @@
         "type": "LineString",
         "coordinates": [
           [
-            263.12,
-            547.36
+            854.48,
+            927.84
           ],
           [
-            259.11,
-            546.63
+            850.47,
+            927.11
           ],
           [
-            258.67,
-            551.32
+            850.03,
+            931.8
           ]
         ]
       },
@@ -1526,12 +3020,12 @@
         "type": "LineString",
         "coordinates": [
           [
-            258.67,
-            551.32
+            850.03,
+            931.8
           ],
           [
-            257.37,
-            548.01
+            848.74,
+            928.49
           ]
         ]
       },
@@ -1548,12 +3042,80 @@
         "type": "LineString",
         "coordinates": [
           [
-            263.12,
-            547.36
+            854.48,
+            927.84
           ],
           [
-            264.83,
-            547.74
+            856.19,
+            928.22
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Footway",
+        "category": "footway",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1162650240",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            896.52,
+            424.88
+          ],
+          [
+            892.65,
+            429.16
+          ],
+          [
+            882.73,
+            442.46
+          ],
+          [
+            867.85,
+            464.77
+          ],
+          [
+            860.79,
+            475.37
+          ],
+          [
+            843.08,
+            497.91
+          ],
+          [
+            821.61,
+            531.16
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Footway",
+        "category": "footway",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1162650241",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            821.61,
+            531.16
+          ],
+          [
+            819.25,
+            534.97
+          ],
+          [
+            815.92,
+            539.62
           ]
         ]
       },
@@ -1570,12 +3132,12 @@
         "type": "LineString",
         "coordinates": [
           [
-            183.89,
-            376.82
+            775.25,
+            757.3
           ],
           [
-            180.46,
-            376.64
+            771.82,
+            757.12
           ]
         ]
       },
@@ -1592,12 +3154,60 @@
         "type": "LineString",
         "coordinates": [
           [
-            180.46,
-            376.64
+            771.82,
+            757.12
           ],
           [
-            175.55,
-            376.56
+            766.92,
+            757.04
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Path",
+        "category": "path",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1163981008",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            1240.66,
+            548.62
+          ],
+          [
+            1234.44,
+            556.39
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Steps",
+        "category": "steps",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1163981009",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            1228.4,
+            562.78
+          ],
+          [
+            1232.54,
+            561.91
+          ],
+          [
+            1234.44,
+            556.39
           ]
         ]
       },
@@ -1614,16 +3224,16 @@
         "type": "LineString",
         "coordinates": [
           [
-            428.57,
-            274.56
+            1019.92,
+            655.04
           ],
           [
-            446.17,
-            307.07
+            1037.53,
+            687.55
           ],
           [
-            455.96,
-            333.06
+            1047.32,
+            713.54
           ]
         ]
       },
@@ -1634,13 +3244,642 @@
       }
     },
     {
+      "id": "c-1322828250",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            637.35,
+            405.32
+          ],
+          [
+            664.93,
+            366.02
+          ],
+          [
+            689.66,
+            330.8
+          ],
+          [
+            714.03,
+            296.08
+          ],
+          [
+            727.41,
+            277.03
+          ],
+          [
+            738.06,
+            261.85
+          ],
+          [
+            756.01,
+            274.43
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1322828253",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            689.66,
+            330.8
+          ],
+          [
+            712.89,
+            348.82
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1322828254",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            664.93,
+            366.02
+          ],
+          [
+            692.01,
+            384.97
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1358469521",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            690.42,
+            730.27
+          ],
+          [
+            657.12,
+            775.69
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Bates Street",
+        "category": "primary",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1361230357",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            932.57,
+            394.79
+          ],
+          [
+            940.86,
+            392.1
+          ],
+          [
+            952.69,
+            400.99
+          ],
+          [
+            979.73,
+            458.59
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Footway",
+        "category": "footway",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1361230358",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            906.43,
+            432.28
+          ],
+          [
+            932.57,
+            394.79
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Footway",
+        "category": "footway",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1460043134",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            673.35,
+            637.93
+          ],
+          [
+            676.61,
+            626.87
+          ],
+          [
+            681.82,
+            605.91
+          ],
+          [
+            686.99,
+            597.57
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1484736190",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            648.59,
+            629.89
+          ],
+          [
+            712.23,
+            680.58
+          ],
+          [
+            711.59,
+            688.34
+          ],
+          [
+            684.89,
+            726.06
+          ],
+          [
+            680.66,
+            725.83
+          ],
+          [
+            639.65,
+            784.69
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Footway",
+        "category": "footway",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1484736191",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            639.27,
+            623.41
+          ],
+          [
+            645.49,
+            627.84
+          ],
+          [
+            648.59,
+            629.89
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Footway",
+        "category": "footway",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1502842932",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            873.83,
+            468.77
+          ],
+          [
+            867.85,
+            464.77
+          ],
+          [
+            850.15,
+            452.52
+          ],
+          [
+            837.95,
+            438.43
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Service",
+        "category": "service",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1523278763",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            632.77,
+            791.16
+          ],
+          [
+            614.36,
+            803.06
+          ],
+          [
+            590.25,
+            812.52
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Footway",
+        "category": "footway",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "c-1523278764",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            639.65,
+            784.69
+          ],
+          [
+            634.94,
+            789.55
+          ],
+          [
+            632.77,
+            791.16
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Footway",
+        "category": "footway",
+        "is_accessible": true
+      }
+    },
+    {
+      "id": "i-101290021",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          1131.43,
+          558.27
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11385572",
+          "c-11396238",
+          "c-11411025"
+        ]
+      }
+    },
+    {
+      "id": "i-5267267268",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          657.12,
+          775.69
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11387471",
+          "c-544935648",
+          "c-1358469521"
+        ]
+      }
+    },
+    {
+      "id": "i-101314643",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          639.17,
+          794.5
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11387471",
+          "c-544935651",
+          "c-544935653"
+        ]
+      }
+    },
+    {
+      "id": "i-101354390",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          632.7,
+          646.21
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11390811",
+          "c-11418157"
+        ]
+      }
+    },
+    {
+      "id": "i-101354410",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          621.93,
+          659.88
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11390811",
+          "c-11418157"
+        ]
+      }
+    },
+    {
+      "id": "i-101401196",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          897.64,
+          433.1
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11393162",
+          "c-11415790"
+        ]
+      }
+    },
+    {
+      "id": "i-9730881730",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          892.65,
+          429.16
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11393162",
+          "c-1162650240"
+        ]
+      }
+    },
+    {
+      "id": "i-101433465",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          1200.03,
+          606.03
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11396238",
+          "c-11407753"
+        ]
+      }
+    },
+    {
+      "id": "i-101438414",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          1170.24,
+          493.93
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11397626",
+          "c-11411025"
+        ]
+      }
+    },
+    {
+      "id": "i-101458207",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          980.48,
+          321.05
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11403661",
+          "c-176819649"
+        ]
+      }
+    },
+    {
+      "id": "i-101547956",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          690.42,
+          730.27
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11403790",
+          "c-11410602",
+          "c-604553289",
+          "c-1358469521"
+        ]
+      }
+    },
+    {
+      "id": "i-101458585",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          698.54,
+          739.21
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11403790",
+          "c-1125535227"
+        ]
+      }
+    },
+    {
+      "id": "i-10292532348",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          730.7,
+          783.69
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11403790",
+          "c-1125535230"
+        ]
+      }
+    },
+    {
+      "id": "i-10292532436",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          733.64,
+          762.59
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11403790",
+          "c-1125535225"
+        ]
+      }
+    },
+    {
+      "id": "i-10292532424",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          735.38,
+          747.65
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11403790",
+          "c-1125535227"
+        ]
+      }
+    },
+    {
+      "id": "i-101503427",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          1228.4,
+          562.78
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11407753",
+          "c-1163981009"
+        ]
+      }
+    },
+    {
       "id": "i-101519936",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          458.76,
-          219.87
+          1050.12,
+          600.35
         ]
       },
       "properties": {
@@ -1652,13 +3891,31 @@
       }
     },
     {
+      "id": "i-101519940",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          1062.92,
+          599.79
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11408663",
+          "c-11411025"
+        ]
+      }
+    },
+    {
       "id": "i-101535825",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          172.56,
-          246.25
+          763.92,
+          626.73
         ]
       },
       "properties": {
@@ -1675,8 +3932,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          179.76,
-          250.54
+          771.12,
+          631.02
         ]
       },
       "properties": {
@@ -1693,8 +3950,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          207.64,
-          267.12
+          799.0,
+          647.6
         ]
       },
       "properties": {
@@ -1711,8 +3968,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          222.14,
-          275.75
+          813.51,
+          656.23
         ]
       },
       "properties": {
@@ -1729,8 +3986,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          241.8,
-          287.44
+          833.16,
+          667.92
         ]
       },
       "properties": {
@@ -1743,13 +4000,212 @@
       }
     },
     {
+      "id": "i-10292527462",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          699.52,
+          717.33
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11410602",
+          "c-1125535219"
+        ]
+      }
+    },
+    {
+      "id": "i-10292532497",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          707.69,
+          705.71
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11410602",
+          "c-1125535227"
+        ]
+      }
+    },
+    {
+      "id": "i-101556549",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          1198.66,
+          430.47
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11411025",
+          "c-11412162",
+          "c-11415760"
+        ]
+      }
+    },
+    {
+      "id": "i-101574811",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          958.05,
+          399.48
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11411858",
+          "c-11419463"
+        ]
+      }
+    },
+    {
+      "id": "i-101587908",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          825.74,
+          539.0
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11412512",
+          "c-11415790"
+        ]
+      }
+    },
+    {
+      "id": "i-12240693100",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          637.35,
+          405.32
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11412512",
+          "c-1322828250"
+        ]
+      }
+    },
+    {
+      "id": "i-4176913692",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          633.47,
+          402.54
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11412512",
+          "c-417064502"
+        ]
+      }
+    },
+    {
+      "id": "i-101626847",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          781.47,
+          601.8
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11414402",
+          "c-11415790"
+        ]
+      }
+    },
+    {
+      "id": "i-9730881723",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          775.28,
+          597.41
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11414402",
+          "c-1059044868"
+        ]
+      }
+    },
+    {
+      "id": "i-10292532404",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          761.56,
+          587.7
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11414402",
+          "c-1125535210"
+        ]
+      }
+    },
+    {
+      "id": "i-101654319",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          1230.94,
+          364.02
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11415760",
+          "c-11419516"
+        ]
+      }
+    },
+    {
       "id": "i-10293883454",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          156.81,
-          268.21
+          748.18,
+          648.7
         ]
       },
       "properties": {
@@ -1761,13 +4217,49 @@
       }
     },
     {
+      "id": "i-10292532528",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          775.19,
+          610.72
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11415790",
+          "c-1125535199"
+        ]
+      }
+    },
+    {
+      "id": "i-10292532526",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          800.63,
+          574.89
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11415790",
+          "c-1125535211"
+        ]
+      }
+    },
+    {
       "id": "i-101587964",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          223.96,
-          173.43
+          815.33,
+          553.91
         ]
       },
       "properties": {
@@ -1779,13 +4271,67 @@
       }
     },
     {
+      "id": "i-13754974317",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          873.83,
+          468.77
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11415790",
+          "c-1502842932"
+        ]
+      }
+    },
+    {
+      "id": "i-8280310920",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          875.63,
+          466.14
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11415790",
+          "c-890910074"
+        ]
+      }
+    },
+    {
+      "id": "i-101654667",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          900.74,
+          429.27
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-11415790",
+          "c-176819651"
+        ]
+      }
+    },
+    {
       "id": "i-101669491",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          233.75,
-          303.14
+          825.11,
+          683.62
         ]
       },
       "properties": {
@@ -1797,39 +4343,38 @@
       }
     },
     {
-      "id": "i-101590023",
+      "id": "i-101670913",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          242.55,
-          658.76
+          650.49,
+          621.17
         ]
       },
       "properties": {
         "name": "Intersection",
         "connected_corridors": [
-          "c-11416524",
-          "c-32565943"
+          "c-11418157",
+          "c-964025361"
         ]
       }
     },
     {
-      "id": "i-101350933",
+      "id": "i-101574808",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          220.74,
-          593.94
+          935.96,
+          380.48
         ]
       },
       "properties": {
         "name": "Intersection",
         "connected_corridors": [
-          "c-11416531",
-          "c-30158599",
-          "c-32565951"
+          "c-11419463",
+          "c-176819649"
         ]
       }
     },
@@ -1839,8 +4384,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          488.41,
-          289.54
+          1079.77,
+          670.02
         ]
       },
       "properties": {
@@ -1853,67 +4398,13 @@
       }
     },
     {
-      "id": "i-101588900",
-      "element_type": "intersection",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          328.7,
-          254.86
-        ]
-      },
-      "properties": {
-        "name": "Intersection",
-        "connected_corridors": [
-          "c-11419786",
-          "c-65381681"
-        ]
-      }
-    },
-    {
-      "id": "i-101733413",
-      "element_type": "intersection",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          245.28,
-          354.53
-        ]
-      },
-      "properties": {
-        "name": "Intersection",
-        "connected_corridors": [
-          "c-11419786",
-          "c-32565979"
-        ]
-      }
-    },
-    {
-      "id": "i-101588890",
-      "element_type": "intersection",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          241.38,
-          403.15
-        ]
-      },
-      "properties": {
-        "name": "Intersection",
-        "connected_corridors": [
-          "c-30158599",
-          "c-32566009"
-        ]
-      }
-    },
-    {
       "id": "i-316641243",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          206.61,
-          524.76
+          797.97,
+          905.24
         ]
       },
       "properties": {
@@ -1931,8 +4422,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          195.05,
-          510.98
+          786.41,
+          891.46
         ]
       },
       "properties": {
@@ -1944,128 +4435,59 @@
       }
     },
     {
-      "id": "i-101590038",
+      "id": "i-101733424",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          247.8,
-          422.07
+          654.24,
+          829.8
         ]
       },
       "properties": {
         "name": "Intersection",
         "connected_corridors": [
-          "c-32565943",
-          "c-32566006"
+          "c-30809849",
+          "c-604553273",
+          "c-604553294"
         ]
       }
     },
     {
-      "id": "i-101733778",
+      "id": "i-5736080226",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          192.58,
-          468.58
+          648.81,
+          829.58
         ]
       },
       "properties": {
         "name": "Intersection",
         "connected_corridors": [
-          "c-32565958",
-          "c-604553284"
+          "c-30809849",
+          "c-604553277",
+          "c-604553282",
+          "c-604553288"
         ]
       }
     },
     {
-      "id": "i-101733785",
+      "id": "i-366287718",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          288.19,
-          373.07
+          803.01,
+          1040.52
         ]
       },
       "properties": {
         "name": "Intersection",
         "connected_corridors": [
-          "c-32565958",
-          "c-32565964"
-        ]
-      }
-    },
-    {
-      "id": "i-101590048",
-      "element_type": "intersection",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          337.24,
-          264.07
-        ]
-      },
-      "properties": {
-        "name": "Intersection",
-        "connected_corridors": [
-          "c-32565964",
-          "c-32566007"
-        ]
-      }
-    },
-    {
-      "id": "i-101733414",
-      "element_type": "intersection",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          191.92,
-          421.03
-        ]
-      },
-      "properties": {
-        "name": "Intersection",
-        "connected_corridors": [
-          "c-32565979",
-          "c-32565980"
-        ]
-      }
-    },
-    {
-      "id": "i-101590044",
-      "element_type": "intersection",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          266.11,
-          377.65
-        ]
-      },
-      "properties": {
-        "name": "Intersection",
-        "connected_corridors": [
-          "c-32566006",
-          "c-32566007"
-        ]
-      }
-    },
-    {
-      "id": "i-101588895",
-      "element_type": "intersection",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          257.84,
-          366.16
-        ]
-      },
-      "properties": {
-        "name": "Intersection",
-        "connected_corridors": [
-          "c-32566009",
-          "c-65381681"
+          "c-32566104",
+          "c-32566116"
         ]
       }
     },
@@ -2075,8 +4497,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          205.55,
-          505.46
+          796.91,
+          885.94
         ]
       },
       "properties": {
@@ -2093,8 +4515,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          185.41,
-          388.28
+          776.77,
+          768.76
         ]
       },
       "properties": {
@@ -2111,8 +4533,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          183.89,
-          376.82
+          775.25,
+          757.3
         ]
       },
       "properties": {
@@ -2129,8 +4551,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          183.04,
-          364.09
+          774.41,
+          744.57
         ]
       },
       "properties": {
@@ -2142,13 +4564,31 @@
       }
     },
     {
+      "id": "i-10292532332",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          726.48,
+          698.8
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-131818344",
+          "c-1125535216"
+        ]
+      }
+    },
+    {
       "id": "i-10292532537",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          123.19,
-          330.19
+          714.56,
+          710.67
         ]
       },
       "properties": {
@@ -2160,13 +4600,87 @@
       }
     },
     {
+      "id": "i-101547963",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          652.36,
+          839.9
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-131830255",
+          "c-604553282",
+          "c-604553294"
+        ]
+      }
+    },
+    {
+      "id": "i-101654669",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          930.34,
+          388.89
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-176819649",
+          "c-176819651"
+        ]
+      }
+    },
+    {
+      "id": "i-5267267281",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          648.36,
+          809.81
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-544935648",
+          "c-544935651",
+          "c-604553288"
+        ]
+      }
+    },
+    {
+      "id": "i-5267267267",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          657.17,
+          806.51
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-604553273",
+          "c-604553289"
+        ]
+      }
+    },
+    {
       "id": "i-10073285911",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          470.18,
-          343.0
+          1061.54,
+          723.48
         ]
       },
       "properties": {
@@ -2178,13 +4692,103 @@
       }
     },
     {
+      "id": "i-7715313340",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          700.64,
+          657.9
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-826344412",
+          "c-964025361"
+        ]
+      }
+    },
+    {
+      "id": "i-9730881742",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          706.84,
+          647.69
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-826344412",
+          "c-1059044868"
+        ]
+      }
+    },
+    {
+      "id": "i-9730881721",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          690.53,
+          636.53
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-826344412",
+          "c-1059044868"
+        ]
+      }
+    },
+    {
+      "id": "i-7715313345",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          684.31,
+          645.89
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-826344412",
+          "c-964025361"
+        ]
+      }
+    },
+    {
+      "id": "i-10292532340",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          882.22,
+          470.67
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-890910074",
+          "c-1125535223"
+        ]
+      }
+    },
+    {
       "id": "i-101587955",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          401.78,
-          296.22
+          993.14,
+          676.7
         ]
       },
       "properties": {
@@ -2201,8 +4805,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          377.87,
-          278.68
+          969.23,
+          659.16
         ]
       },
       "properties": {
@@ -2219,8 +4823,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          367.36,
-          270.95
+          958.72,
+          651.43
         ]
       },
       "properties": {
@@ -2232,13 +4836,103 @@
       }
     },
     {
+      "id": "i-10293858451",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          885.74,
+          601.76
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-949430140",
+          "c-1125691911"
+        ]
+      }
+    },
+    {
+      "id": "i-10293879631",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          877.05,
+          595.85
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-949430140",
+          "c-1125691894"
+        ]
+      }
+    },
+    {
+      "id": "i-10293879644",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          872.88,
+          593.02
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-949430140",
+          "c-1125691875"
+        ]
+      }
+    },
+    {
+      "id": "i-10293879616",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          864.37,
+          587.24
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-949430140",
+          "c-1125691883"
+        ]
+      }
+    },
+    {
+      "id": "i-10293879254",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          853.97,
+          580.17
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-949430140",
+          "c-1125691857"
+        ]
+      }
+    },
+    {
       "id": "i-10292527492",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          230.41,
-          177.81
+          821.77,
+          558.29
         ]
       },
       "properties": {
@@ -2250,13 +4944,158 @@
       }
     },
     {
+      "id": "i-13390653900",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          673.35,
+          637.93
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-964025361",
+          "c-1460043134"
+        ]
+      }
+    },
+    {
+      "id": "i-10812777590",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          815.92,
+          539.62
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1059044868",
+          "c-1162650241"
+        ]
+      }
+    },
+    {
+      "id": "i-10292532610",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          765.77,
+          610.47
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1059044868",
+          "c-1125535210"
+        ]
+      }
+    },
+    {
+      "id": "i-10292532484",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          724.39,
+          662.39
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1059044868",
+          "c-1125535217",
+          "c-1125535229"
+        ]
+      }
+    },
+    {
+      "id": "i-13390756103",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          676.61,
+          626.87
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1059044868",
+          "c-1460043134"
+        ]
+      }
+    },
+    {
+      "id": "i-9730881717",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          923.91,
+          385.42
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1059044869",
+          "c-1059044870"
+        ]
+      }
+    },
+    {
+      "id": "i-9730881746",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          896.52,
+          424.88
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1059044869",
+          "c-1162650240"
+        ]
+      }
+    },
+    {
+      "id": "i-9730881724",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          927.3,
+          378.35
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1059044870",
+          "c-1059044871"
+        ]
+      }
+    },
+    {
       "id": "i-10964386700",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          455.96,
-          333.06
+          1047.32,
+          713.54
         ]
       },
       "properties": {
@@ -2273,8 +5112,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          177.35,
-          364.36
+          768.71,
+          744.84
         ]
       },
       "properties": {
@@ -2286,13 +5125,68 @@
       }
     },
     {
+      "id": "i-10292532393",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          833.29,
+          540.73
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125535197",
+          "c-1125535223"
+        ]
+      }
+    },
+    {
+      "id": "i-9730881722",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          821.61,
+          531.16
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125535197",
+          "c-1162650240",
+          "c-1162650241"
+        ]
+      }
+    },
+    {
+      "id": "i-10292527430",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          781.62,
+          615.93
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125535199",
+          "c-1125535223"
+        ]
+      }
+    },
+    {
       "id": "i-10292532489",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          167.5,
-          364.57
+          758.87,
+          745.05
         ]
       },
       "properties": {
@@ -2304,13 +5198,31 @@
       }
     },
     {
+      "id": "i-10292532474",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          808.67,
+          580.85
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125535202",
+          "c-1125535211"
+        ]
+      }
+    },
+    {
       "id": "i-10292532335",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          175.55,
-          376.56
+          766.92,
+          757.04
         ]
       },
       "properties": {
@@ -2327,8 +5239,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          166.48,
-          370.42
+          757.84,
+          750.9
         ]
       },
       "properties": {
@@ -2340,13 +5252,103 @@
       }
     },
     {
+      "id": "i-10292532316",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          806.92,
+          579.58
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125535211",
+          "c-1125535223"
+        ]
+      }
+    },
+    {
+      "id": "i-10292527433",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          707.41,
+          742.35
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125535214",
+          "c-1125535227"
+        ]
+      }
+    },
+    {
+      "id": "i-10292532430",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          708.6,
+          724.47
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125535214",
+          "c-1125535219"
+        ]
+      }
+    },
+    {
+      "id": "i-10292532441",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          717.54,
+          712.25
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125535214",
+          "c-1125535227"
+        ]
+      }
+    },
+    {
+      "id": "i-10292532369",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          711.59,
+          688.34
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125535216",
+          "c-1484736190"
+        ]
+      }
+    },
+    {
       "id": "i-10292532547",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          152.52,
-          294.91
+          743.89,
+          675.39
         ]
       },
       "properties": {
@@ -2358,13 +5360,31 @@
       }
     },
     {
+      "id": "i-13613017202",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          639.27,
+          623.41
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125535220",
+          "c-1484736191"
+        ]
+      }
+    },
+    {
       "id": "i-10292527477",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          153.25,
-          405.3
+          744.62,
+          785.79
         ]
       },
       "properties": {
@@ -2381,8 +5401,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          163.55,
-          272.6
+          754.91,
+          653.08
         ]
       },
       "properties": {
@@ -2395,13 +5415,216 @@
       }
     },
     {
+      "id": "i-12601620619",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          906.43,
+          432.28
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125535223",
+          "c-1361230358"
+        ]
+      }
+    },
+    {
+      "id": "i-10292532492",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          712.23,
+          680.58
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125535229",
+          "c-1484736190"
+        ]
+      }
+    },
+    {
+      "id": "i-10293879516",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          858.45,
+          573.44
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125691857",
+          "c-1125691865",
+          "c-1125691866"
+        ]
+      }
+    },
+    {
+      "id": "i-10293879559",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          866.11,
+          578.77
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125691865",
+          "c-1125691908"
+        ]
+      }
+    },
+    {
+      "id": "i-10293858434",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          873.04,
+          583.61
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125691865",
+          "c-1125691909"
+        ]
+      }
+    },
+    {
+      "id": "i-10293879330",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          876.84,
+          586.26
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125691865",
+          "c-1125691875",
+          "c-1125691913"
+        ]
+      }
+    },
+    {
+      "id": "i-10293879359",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          890.34,
+          595.66
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125691865",
+          "c-1125691897",
+          "c-1125691911"
+        ]
+      }
+    },
+    {
+      "id": "i-10293879289",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          867.74,
+          559.24
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125691866",
+          "c-1125691919"
+        ]
+      }
+    },
+    {
+      "id": "i-10293879449",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          861.55,
+          591.87
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125691883",
+          "c-1125691886",
+          "c-1125691887"
+        ]
+      }
+    },
+    {
+      "id": "i-10293879438",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          874.17,
+          600.39
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125691886",
+          "c-1125691887",
+          "c-1125691894"
+        ]
+      }
+    },
+    {
+      "id": "i-10293879587",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          903.63,
+          540.05
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125691897",
+          "c-1125691919"
+        ]
+      }
+    },
+    {
       "id": "i-10312418947",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          264.83,
-          547.74
+          856.19,
+          928.22
         ]
       },
       "properties": {
@@ -2413,13 +5636,31 @@
       }
     },
     {
+      "id": "i-10293879557",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          871.17,
+          558.68
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1125691909",
+          "c-1125691919"
+        ]
+      }
+    },
+    {
       "id": "i-10312419119",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          263.12,
-          547.36
+          854.48,
+          927.84
         ]
       },
       "properties": {
@@ -2436,8 +5677,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          258.67,
-          551.32
+          850.03,
+          931.8
         ]
       },
       "properties": {
@@ -2449,13 +5690,31 @@
       }
     },
     {
+      "id": "i-13754974320",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          867.85,
+          464.77
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1162650240",
+          "c-1502842932"
+        ]
+      }
+    },
+    {
       "id": "i-10825124669",
       "element_type": "intersection",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          180.46,
-          376.64
+          771.82,
+          757.12
         ]
       },
       "properties": {
@@ -2467,13 +5726,155 @@
       }
     },
     {
-      "id": "l-10292532311",
+      "id": "i-10825163596",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          1234.44,
+          556.39
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1163981008",
+          "c-1163981009"
+        ]
+      }
+    },
+    {
+      "id": "i-12240748809",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          664.93,
+          366.02
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1322828250",
+          "c-1322828254"
+        ]
+      }
+    },
+    {
+      "id": "i-12240748807",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          689.66,
+          330.8
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1322828250",
+          "c-1322828253"
+        ]
+      }
+    },
+    {
+      "id": "i-10292527442",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          932.57,
+          394.79
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1361230357",
+          "c-1361230358"
+        ]
+      }
+    },
+    {
+      "id": "i-13613017201",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          648.59,
+          629.89
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1484736190",
+          "c-1484736191"
+        ]
+      }
+    },
+    {
+      "id": "i-13886758136",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          639.65,
+          784.69
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1484736190",
+          "c-1523278764"
+        ]
+      }
+    },
+    {
+      "id": "i-13886758135",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          632.77,
+          791.16
+        ]
+      },
+      "properties": {
+        "name": "Intersection",
+        "connected_corridors": [
+          "c-1523278763",
+          "c-1523278764"
+        ]
+      }
+    },
+    {
+      "id": "l-367794873",
       "element_type": "landmark",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          142.6,
-          288.04
+          711.92,
+          774.62
+        ]
+      },
+      "properties": {
+        "name": "Greater Portland Council of Governments",
+        "category": "building",
+        "side": "right"
+      }
+    },
+    {
+      "id": "l-101733770",
+      "element_type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          591.49,
+          836.44
         ]
       },
       "properties": {
@@ -2483,13 +5884,13 @@
       }
     },
     {
-      "id": "l-10292532411",
+      "id": "l-10292527489",
       "element_type": "landmark",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          236.32,
-          155.68
+          458.85,
+          492.51
         ]
       },
       "properties": {
@@ -2504,8 +5905,8 @@
       "geometry": {
         "type": "Point",
         "coordinates": [
-          136.01,
-          297.24
+          727.37,
+          677.72
         ]
       },
       "properties": {
@@ -2515,13 +5916,221 @@
       }
     },
     {
+      "id": "l-9730881728",
+      "element_type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          819.25,
+          534.97
+        ]
+      },
+      "properties": {
+        "name": "Crossing",
+        "category": "crossing",
+        "side": "right"
+      }
+    },
+    {
+      "id": "l-10292532311",
+      "element_type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          733.97,
+          668.52
+        ]
+      },
+      "properties": {
+        "name": "Crossing",
+        "category": "crossing",
+        "side": "right"
+      }
+    },
+    {
+      "id": "l-1450267029",
+      "element_type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          592.2,
+          826.72
+        ]
+      },
+      "properties": {
+        "name": "Crossing",
+        "category": "crossing",
+        "side": "right"
+      }
+    },
+    {
+      "id": "l-10292532457",
+      "element_type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          645.49,
+          627.84
+        ]
+      },
+      "properties": {
+        "name": "Crossing",
+        "category": "crossing",
+        "side": "right"
+      }
+    },
+    {
+      "id": "l-10292532595",
+      "element_type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          718.56,
+          671.18
+        ]
+      },
+      "properties": {
+        "name": "Crossing",
+        "category": "crossing",
+        "side": "right"
+      }
+    },
+    {
+      "id": "l-101578032",
+      "element_type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          1109.62,
+          126.29
+        ]
+      },
+      "properties": {
+        "name": "Traffic signal",
+        "category": "traffic_signal",
+        "side": "right"
+      }
+    },
+    {
+      "id": "l-10292527457",
+      "element_type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          717.32,
+          692.01
+        ]
+      },
+      "properties": {
+        "name": "Crossing",
+        "category": "crossing",
+        "side": "right"
+      }
+    },
+    {
+      "id": "l-13778514918",
+      "element_type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          736.37,
+          735.98
+        ]
+      },
+      "properties": {
+        "name": "Otherside Diner",
+        "category": "restaurant",
+        "side": "right"
+      }
+    },
+    {
+      "id": "l-10292532411",
+      "element_type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          827.68,
+          536.16
+        ]
+      },
+      "properties": {
+        "name": "Crossing",
+        "category": "crossing",
+        "side": "right"
+      }
+    },
+    {
+      "id": "l-8917127170",
+      "element_type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          462.24,
+          487.44
+        ]
+      },
+      "properties": {
+        "name": "Traffic signal",
+        "category": "traffic_signal",
+        "side": "right"
+      }
+    },
+    {
+      "id": "l-101594312",
+      "element_type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          1190.02,
+          39.59
+        ]
+      },
+      "properties": {
+        "name": "Traffic signal",
+        "category": "traffic_signal",
+        "side": "right"
+      }
+    },
+    {
+      "id": "l-1450267030",
+      "element_type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          591.62,
+          818.26
+        ]
+      },
+      "properties": {
+        "name": "Crossing",
+        "category": "crossing",
+        "side": "right"
+      }
+    },
+    {
+      "id": "l-10292527452",
+      "element_type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          634.94,
+          789.55
+        ]
+      },
+      "properties": {
+        "name": "Crossing",
+        "category": "crossing",
+        "side": "right"
+      }
+    },
+    {
       "id": "l-roux-anchor",
       "element_type": "landmark",
       "geometry": {
         "type": "Point",
         "coordinates": [
-          354.46,
-          481.42
+          945.82,
+          861.9
         ]
       },
       "properties": {
