@@ -202,7 +202,7 @@
 			mainGroup = F1B019F62FBBE4D600BE0F00;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				F1B01A292FBBE5E400BE0F00 /* XCRemoteSwiftPackageReference "ProjectMultiNav" */,
+				F1B01A292FBBE5E400BE0F00 /* XCLocalSwiftPackageReference "Packages/TactileMapKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F1B01A002FBBE4D600BE0F00 /* Products */;
@@ -422,7 +422,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = UNARlabs.TactileNav;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vatsalya.TacticalNav;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -458,7 +458,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = UNARlabs.TactileNav;
+				PRODUCT_BUNDLE_IDENTIFIER = com.vatsalya.TacticalNav;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -597,16 +597,16 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		F1B01A292FBBE5E400BE0F00 /* XCLocalSwiftPackageReference "TactileMapKit" */ = {
+		F1B01A292FBBE5E400BE0F00 /* XCLocalSwiftPackageReference "Packages/TactileMapKit" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = "Packages/TactileMapKit";
+			relativePath = Packages/TactileMapKit;
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		F1B01A2A2FBBE5E400BE0F00 /* TactileMapKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = F1B01A292FBBE5E400BE0F00 /* XCRemoteSwiftPackageReference "ProjectMultiNav" */;
+			package = F1B01A292FBBE5E400BE0F00 /* XCLocalSwiftPackageReference "Packages/TactileMapKit" */;
 			productName = TactileMapKit;
 		};
 /* End XCSwiftPackageProductDependency section */

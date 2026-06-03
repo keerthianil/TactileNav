@@ -1,77 +1,75 @@
 # TactileNav
 
+An iOS accessibility app that turns the **Roux Institute** neighborhood (Portland, Maine) into a
+touch-explorable map for blind and low-vision users. The app has **one map screen**, "Roux Institute Map."
+
+## The map
+
+A real map (MKMapView) on a white background at true street positions. You explore by dragging a purple
+**"you are here" dot**: streets **buzz**, intersections **pulse**, and places **speak** their name and side
+("Howie's Pub, on your right"). It's built on the vendored **TactileMapKit** package (haptics / spatial audio /
+logging) and the bundled map data `TactileNav/Model/roux_portland.json`.
+
+### How you interact
+
+- **One finger** — drag to explore: the dot follows along the lanes, streets buzz, places speak.
+- **Two fingers** — drag to move the map around.
+- **Zoom** — the **+ / −** buttons (rotate is off so a rotor twist can't spin the map).
+- **• • • Options** — step to the **Next point of interest** / **Next intersection** (the dot jumps there and
+  announces it — the VoiceOver-friendly way to move), **Free explore (back to my dot)**, or **Fit whole area**.
+- **VoiceOver** — the map is a **Direct Touch** area: enable Direct Touch once in the rotor, then one finger
+  explores and two fingers pan. **Back** is the nav-bar button (the left-edge swipe-back is disabled).
+- Every session writes a **CSV touch log** (open **Data Files** to share / delete).
+
 ## Folder structure
 
 ```
 TactileNav/
-├── TactileNavApp.swift                  ← @main, just shows ContentView
-├── ContentView.swift                        ← NavigationStack home screen
+├── TactileNavApp.swift                  ← @main, shows ContentView
+├── ContentView.swift                    ← home list: Roux Institute Map + Tools
 ├── Model/
-│   ├── demo_building.json                   ← the placeholder map (rectangle loop)
-│   ├── custom_branch_map.json               ← map for the canvas demo
-│   ├── custom_map_draft_1/2.json, _final.json
-│   ├── roux_portland.json                   ← real OSM map: Roux Institute area, Portland ME
-│   ├── HapticFeedbackSelection.swift        ← enums + defaults for haptic picker
-│   └── StudyCondition.swift                 ← the 6 conditions + factory method
-├── ViewModel/
-│   └── MapViewModel.swift                   ← loads document + policy + logger
+│   ├── roux_portland.json               ← OSM-derived map data (Roux area; coords in meters)
+│   ├── RTMDocumentAdapter.swift          ← JSON → real latitude/longitude models
+│   ├── RTMDiscoveredStreet/Intersection/POI.swift  ← simple data models
+│   ├── RTMPOICategory.swift              ← place categories + pin icons
+│   └── HapticFeedbackSelection.swift     ← haptic picker config (Feedback Tester)
 ├── View/
-│   ├── LandmarkStudyView.swift              ← MapKit-backed tactile map
-│   ├── FeedbackCustomizationTesterView.swift← per-element haptic picker + map
-│   ├── FilesListView.swift                  ← list / share / delete CSV logs
-│   ├── GenericMapCanvasView.swift           ← custom SwiftUI Canvas renderer
-│   ├── MapCanvasView.swift, MapCanvasViewV2.swift
+│   ├── RTMRouxMapView.swift              ← the map screen + zoom / Options buttons
+│   ├── RTMLiveMapView.swift              ← MKMapView wrapper (Direct Touch, dot drag, follow)
+│   ├── RTMMapAnnotations.swift           ← purple dot / place pins / intersection dots
+│   ├── RTMMapOverlays.swift              ← white background + street styling
+│   ├── FeedbackCustomizationTesterView.swift  ← per-element haptic tuning tool
+│   └── FilesListView.swift               ← list / share / delete CSV logs
 ├── Services/
-│   ├── NLFeedbackService.swift              ← condition 1 policy
-│   ├── SpatialFeedbackService.swift         ← condition 2 policy
-│   └── IconsFeedbackService.swift           ← condition 3 policy
-├── Resources/                               ← landmark sound effects (mp3)
-└── Assets.xcassets/                         ← app icon, accent color
+│   └── RTMMapFeedbackController.swift     ← decides feedback under the dot; haptics + speech + CSV log
+├── Resources/                            ← landmark sound effects (mp3)
+└── Assets.xcassets/
 ```
 
-## How it is built
+## Dependency — TactileMapKit
 
-### Dependency
+The rendering/feedback foundation is the **TactileMapKit** Swift package, **vendored** at
+`Packages/TactileMapKit/` and referenced locally (the app builds with no external repo access). Four modules:
 
-The whole rendering and feedback stack lives in a Swift Package called **TactileMapKit**, **vendored into this repo** at `Packages/TactileMapKit/` and referenced as a **local** Swift Package. This keeps the app self-contained — it builds with no external repo access. The package has 4 modules:
-
-| Module | What we use from it |
+| Module | What the app uses |
 |---|---|
-| `TactileMapCore` | `TactileMapDocument.load(from:bundle:)`, `MapElement`, `TactileElementType`, `TactileProperties` |
-| `TactileMapFeedback` | `FeedbackPolicy` protocol, `CoreHapticsEngine`, `AVSpatialAudioEngine`, `SoundRegistry`, `HapticPattern` presets |
-| `TactileMapView` | The `TactileMapView` SwiftUI view (wraps `MKMapView`) |
-| `TactileMapLogging` | `CSVTouchLogger` for touch event logging |
+| `TactileMapCore` | `TactileMapDocument.load`, `MapElement`, `TactileElementType`, `TactileProperties` |
+| `TactileMapFeedback` | `FeedbackPolicy`, `CoreHapticsEngine`, `AVSpatialAudioEngine`, `HapticPattern` presets |
+| `TactileMapView` | The package's MapKit SwiftUI view — used only by the Feedback Customization Tester |
+| `TactileMapLogging` | `CSVTouchLogger` for the touch-event log |
 
-**Note:** the package exposes an umbrella library named `TactileMapKit` but it has no module of its own — so in code you import the four sub-modules individually (`import TactileMapCore`, etc.), not `import TactileMapKit`. This caught me out the first time.
-
-### Two render paths
-
-The app actually has **two ways** of drawing the map:
-
-1. **MapKit path** (`TactileMapView` from the package): white background, blue corridors, orange intersections, red landmarks. Backed by `MKMapView`, `MKPolyline`, `MKAnnotationView`, with a blank tile overlay that hides the Apple Maps tiles. Used by the Landmark Study screens and the Feedback Customization Tester's "Open Demo Map".
-
-2. **Custom Canvas path** (`GenericMapCanvasView`): pure SwiftUI `Canvas`, black background with the green/orange palette. I wrote this later because (a) the colors I wanted were closer to a real tactile-map mockup, and (b) at thick line widths MapKit's polyline renderer draws a "star artifact" at corridor junctions. The Canvas path covers that with a filled disc at each junction. Used for the "Branch Road Demo" entry.
+Import the sub-modules individually (`import TactileMapCore`, …), not an umbrella `TactileMapKit`.
 
 ## OSM data pipeline
 
-Real-world maps come from OpenStreetMap. `tools/osm_to_tactile.py` is an **offline** converter (not part of the app build) that turns a manual OSM XML export into a `TactileMapDocument` JSON:
+Map data comes from OpenStreetMap. `tools/osm_to_tactile.py` is an **offline** converter (not part of the app
+build) that turns a manual OSM XML export into a `TactileMapDocument` JSON:
 
 ```
-python3 tools/osm_to_tactile.py input.osm TactileNav/Model/output.json
+python3 tools/osm_to_tactile.py input.osm TactileNav/Model/roux_portland.json --pedestrian
 ```
 
-It keeps streets (corridors), junctions (intersections), and traffic signals / crossings / named anchors (landmarks). Long street geometry is simplified (Douglas–Peucker) but tagged nodes are never dropped. `roux_portland.json` was generated this way from a Roux Institute (Portland, ME) export; coordinates are in meters.
-
-## Roux navigation screen (`RouxStageMapView`)
-
-The OSM map is explored through a screen with two independent notions of zoom and a non-visual interaction model:
-
-- **Stage zoom (information level):** 3 levels — Neighborhood → Street → Intersection — each surfacing more detail. `StageFilter` filters the document per level. Exposed to VoiceOver as a **separate adjustable control** (focus it, swipe up/down). A **Magic Tap** (two-finger double-tap) jumps straight to the Intersection level.
-- **Map zoom (visual scale):** **pinch to zoom** and **two-finger drag to pan**, handled by UIKit gesture recognizers on the host so they never collide with one-finger exploration. The zoom baseline is coupled to the stage level (deeper level starts more zoomed in).
-- **Direct interaction:** the map is a VoiceOver direct-interaction region (`DirectInteractionHost`), so a single finger passes through for tactile exploration with haptics/audio. Three-finger swipe right and Z-scrub both go back.
-
-Design note: VoiceOver direct interaction and an Adjustable swipe cannot share one element, so the map (direct interaction) and the stage-level control (adjustable) are deliberately separate accessibility elements.
-
-
-
-
+It keeps walkable streets (corridors), real intersections, and traffic signals / crossings / named anchors
+(landmarks); `--pedestrian` drops motorways so the interstate interchange is excluded. Long geometry is
+simplified (Douglas–Peucker) but tagged nodes are never dropped. `roux_portland.json` was generated this way
+from a Roux Institute (Portland, ME) export; coordinates are in meters.

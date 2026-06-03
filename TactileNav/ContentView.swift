@@ -5,8 +5,8 @@ struct ContentView: View {
         NavigationStack {
             List {
                 Section("Map") {
-                    NavigationLink("Roux Institute — Portland (OSM)",
-                                   destination: RouxStageMapView())
+                    NavigationLink("Roux Institute Map",
+                                   destination: RTMRouxMapView())
                 }
 
                 Section("Tools") {
