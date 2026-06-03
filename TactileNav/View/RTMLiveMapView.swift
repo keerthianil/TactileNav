@@ -489,7 +489,9 @@ struct RTMLiveMapView: UIViewRepresentable {
                 lastDotCoordinate = coordinate
 
                 feedback?.update(at: coordinate, heading: travelHeading)
-                keepDotInView(mapView)
+                // No follow/auto-scroll: the map must NOT move while you drag the
+                // dot with one finger (that was the "moves on its own" / stuck).
+                // The map stays fixed; use two fingers to move it.
 
             case .ended, .cancelled, .failed:
                 lastDragPoint = nil
@@ -513,20 +515,6 @@ struct RTMLiveMapView: UIViewRepresentable {
             return CGFloat(atan2(east, north))
         }
 
-        /// Scrolls the map to keep the dot inside a margin from the edges (follow mode).
-        private func keepDotInView(_ mapView: MKMapView) {
-            let inset: CGFloat = 90
-            let bounds = mapView.bounds
-            let dotPoint = mapView.convert(simulated.coordinate, toPointTo: mapView)
-            var dx: CGFloat = 0, dy: CGFloat = 0
-            if dotPoint.x < bounds.minX + inset { dx = dotPoint.x - (bounds.minX + inset) }
-            else if dotPoint.x > bounds.maxX - inset { dx = dotPoint.x - (bounds.maxX - inset) }
-            if dotPoint.y < bounds.minY + inset { dy = dotPoint.y - (bounds.minY + inset) }
-            else if dotPoint.y > bounds.maxY - inset { dy = dotPoint.y - (bounds.maxY - inset) }
-            guard dx != 0 || dy != 0 else { return }
-            let shifted = CGPoint(x: bounds.midX + dx, y: bounds.midY + dy)
-            mapView.setCenter(mapView.convert(shifted, toCoordinateFrom: mapView), animated: false)
-        }
     }
 }
 
