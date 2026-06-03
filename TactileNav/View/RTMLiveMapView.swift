@@ -71,29 +71,22 @@ struct RTMLiveMapView: UIViewRepresentable {
             coordinator.performInitialSetupIfNeeded(mapView)
         }
 
-        // Fixed map (Nav_Indoor model): the user does NOT pan / zoom / rotate by
-        // gesture. That's deliberate — with Direct Touch on (below), a passed-
-        // through rotor twist or stray multi-finger gesture would otherwise
-        // drift or spin the map. Exploration is one-finger drag of the dot; zoom
-        // is the buttons; the map auto-scrolls to follow the dot.
+        // Blank, navigable, rotatable map. Gesture split: ONE finger drags the dot,
+        // TWO fingers pan the map (the map's pan is forced to two-finger below), pinch
+        // zooms (snapped to the 4 levels), twist rotates.
         mapView.showsUserLocation = false
-        mapView.isScrollEnabled = false
-        mapView.isZoomEnabled = false
-        mapView.isRotateEnabled = false
+        mapView.isScrollEnabled = true
+        mapView.isZoomEnabled = true
+        mapView.isRotateEnabled = true
         mapView.isPitchEnabled = false
-        mapView.pointOfInterestFilter = .excludingAll
-        mapView.showsCompass = false
 
-        // VoiceOver Direct Touch: one-finger touches pass through so a blind user
-        // can drag the dot to explore lanes (with buzz + speech) — the whole point
-        // of the map. Safe now because the map's own gestures are disabled above,
-        // so a passed-through twist can't move it. (Programmatic follow + button
-        // zoom still work; they don't depend on the user gestures.)
-        mapView.isAccessibilityElement = true
-        mapView.accessibilityTraits = .allowsDirectInteraction
-        mapView.accessibilityLabel = "Tactile map"
-        mapView.accessibilityHint = "Drag with one finger to explore streets and places. "
-            + "Use the zoom and Options buttons to change the view."
+        // Reserve one-finger gestures for the dot: make the map's own pan need two
+        // fingers. (Done before our dotPan is added, so only the built-ins change.)
+        for recognizer in mapView.gestureRecognizers ?? [] {
+            (recognizer as? UIPanGestureRecognizer)?.minimumNumberOfTouches = 2
+        }
+        mapView.pointOfInterestFilter = .excludingAll
+        mapView.showsCompass = true          // tap to reset north after rotating
 
         // White tile overlay blanks Apple's map (incl. labels). Added at .aboveLabels
         // with the streets right after at the same level so streets stay on top.
@@ -144,10 +137,14 @@ struct RTMLiveMapView: UIViewRepresentable {
         zoomPinch.delegate = coordinator
         mapView.addGestureRecognizer(zoomPinch)
 
-        // Lock panning to the OSM area (tight 2% margin).
+        // Keep panning roughly in the area, but with a GENEROUS margin (100% on
+        // each side). The old 2% margin clamped the camera so that following the
+        // dot to an edge lane left the dot stuck at the screen edge with no way
+        // to recenter. The wide margin lets the camera center on edge lanes;
+        // "Center on me" / "Fit whole area" always return to the start view.
         let rect = featuresRect()
         if !rect.isNull {
-            let padded = rect.insetBy(dx: -rect.size.width * 0.02, dy: -rect.size.height * 0.02)
+            let padded = rect.insetBy(dx: -rect.size.width, dy: -rect.size.height)
             mapView.cameraBoundary = MKMapView.CameraBoundary(mapRect: padded)
         }
 

@@ -21,6 +21,7 @@
 //
 
 import SwiftUI
+import UIKit
 import TactileMapCore
 
 struct RTMRouxMapView: View {
@@ -81,6 +82,9 @@ struct RTMRouxMapView: View {
                 .padding(.trailing, 16)
                 .padding(.bottom, 32)
         }
+        // Stop the swipe-from-edge "back" so swiping to move the map can't pop
+        // the screen. Back stays on the nav-bar button and VoiceOver Z-scrub.
+        .background(BackSwipeDisabler())
     }
 
     /// The stack of round buttons. Each one just sets `command`; the map reacts.
@@ -192,5 +196,27 @@ struct RTMRouxMapView: View {
             notification: .screenChanged,
             argument: "Roux Institute map. \(result.streets.count) streets, \(result.pois.count) places. Drag one finger to explore streets and places. Use the zoom and Options buttons to change the view."
         )
+    }
+}
+
+/// Disables the swipe-from-left-edge "back" gesture while this screen is shown,
+/// so swiping to move the map can't accidentally pop back. Back is still
+/// available via the navigation-bar button and the VoiceOver Z-scrub. The
+/// gesture is re-enabled when the screen leaves.
+private struct BackSwipeDisabler: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+    func updateUIViewController(_ controller: Controller, context: Context) {}
+
+    final class Controller: UIViewController {
+        override func didMove(toParent parent: UIViewController?) {
+            super.didMove(toParent: parent)
+            navigationController?.interactivePopGestureRecognizer?.isEnabled = false
+        }
+        override func willMove(toParent parent: UIViewController?) {
+            super.willMove(toParent: parent)
+            if parent == nil {
+                navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+            }
+        }
     }
 }

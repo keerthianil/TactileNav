@@ -3,11 +3,11 @@
 This is **TactileNav's map screen**, called **"Roux Institute Map."**
 You reach it from the app's home list: **Map → "Roux Institute Map."**
 
-> **Update:** this is now the app's **single** map (the earlier abstract "OSM" screen was removed). The map is
-> **fixed** (no gesture pan/zoom/rotate) and uses **VoiceOver Direct Touch**: a blind user enables Direct Touch
-> once in the rotor, then **drags one finger to explore** lanes and places with buzz + speech, and the map
-> auto-follows the finger. **Zoom / Center / Fit** are on-screen buttons (the • • • Options menu), and a
-> **CSV touch log** is written each session. The OSM comparison further down is historical.
+> **Update:** this is now the app's **single** map (the earlier abstract "OSM" screen was removed). It is the
+> original vtsly map: a real MKMapView where you **drag a purple dot** to explore (buzz + speech), with
+> two-finger pan, pinch (4 zoom levels), rotate, and follow. **Zoom / Center / Fit** are buttons (the • • •
+> Options menu); the left-edge swipe-back is disabled (use the nav button / Z-scrub); a **CSV touch log** is
+> written each session. The OSM comparison further down is historical.
 >
 > Files now live in the normal `View` / `Model` / `Services` folders (the old `RouxTactileMap/` folder was
 > dissolved); types still keep the `RTM` prefix.
