@@ -71,29 +71,29 @@ struct RTMLiveMapView: UIViewRepresentable {
             coordinator.performInitialSetupIfNeeded(mapView)
         }
 
-        // Blank, navigable, rotatable map. Gesture split: ONE finger drags the dot,
-        // TWO fingers pan the map (the map's pan is forced to two-finger below), pinch
-        // zooms (snapped to the 4 levels), twist rotates.
+        // Fixed map (Nav_Indoor model): the user does NOT pan / zoom / rotate by
+        // gesture. That's deliberate — with Direct Touch on (below), a passed-
+        // through rotor twist or stray multi-finger gesture would otherwise
+        // drift or spin the map. Exploration is one-finger drag of the dot; zoom
+        // is the buttons; the map auto-scrolls to follow the dot.
         mapView.showsUserLocation = false
-        mapView.isScrollEnabled = true
-        mapView.isZoomEnabled = true
-        mapView.isRotateEnabled = true
+        mapView.isScrollEnabled = false
+        mapView.isZoomEnabled = false
+        mapView.isRotateEnabled = false
         mapView.isPitchEnabled = false
-
-        // Reserve one-finger gestures for the dot: make the map's own pan need two
-        // fingers. (Done before our dotPan is added, so only the built-ins change.)
-        for recognizer in mapView.gestureRecognizers ?? [] {
-            (recognizer as? UIPanGestureRecognizer)?.minimumNumberOfTouches = 2
-        }
         mapView.pointOfInterestFilter = .excludingAll
-        mapView.showsCompass = true          // tap to reset north after rotating
+        mapView.showsCompass = false
 
-        // NOTE: No Direct Touch trait here on purpose. Direct Touch passes every
-        // multi-finger gesture through to the map (so the VoiceOver rotor twist
-        // drifted/stuck the map) and trapped VoiceOver focus. Instead we use
-        // standard VoiceOver: the places, intersections, and the dot are
-        // accessibility elements (swipe to hear them), and zoom/recenter/fit
-        // are the on-screen buttons + Options menu.
+        // VoiceOver Direct Touch: one-finger touches pass through so a blind user
+        // can drag the dot to explore lanes (with buzz + speech) — the whole point
+        // of the map. Safe now because the map's own gestures are disabled above,
+        // so a passed-through twist can't move it. (Programmatic follow + button
+        // zoom still work; they don't depend on the user gestures.)
+        mapView.isAccessibilityElement = true
+        mapView.accessibilityTraits = .allowsDirectInteraction
+        mapView.accessibilityLabel = "Tactile map"
+        mapView.accessibilityHint = "Drag with one finger to explore streets and places. "
+            + "Use the zoom and Options buttons to change the view."
 
         // White tile overlay blanks Apple's map (incl. labels). Added at .aboveLabels
         // with the streets right after at the same level so streets stay on top.
@@ -261,19 +261,26 @@ struct RTMLiveMapView: UIViewRepresentable {
             rescale(in: mapView)
         }
 
-        /// Zooms to enclose every feature (used by the "fit" button).
+        /// Centers on the data and zooms to the widest fixed level — the same
+        /// view you get by pressing "−" all the way. Excludes the white
+        /// background overlay (its bounds cover the whole world, which made the
+        /// old "fit" zoom out to a blank screen).
         func fitFeatures(in mapView: MKMapView, animated: Bool) {
             var rect = MKMapRect.null
-            for overlay in mapView.overlays {
+            for overlay in mapView.overlays where !(overlay is RTMWhiteTileOverlay) {
                 rect = rect.union(overlay.boundingMapRect)
             }
             for annotation in mapView.annotations where !(annotation is MKUserLocation) {
                 let point = MKMapPoint(annotation.coordinate)
                 rect = rect.union(MKMapRect(x: point.x, y: point.y, width: 0, height: 0))
             }
-            guard !rect.isNull else { return }
-            let insets = UIEdgeInsets(top: 24, left: 20, bottom: 90, right: 20)
-            mapView.setVisibleMapRect(rect, edgePadding: insets, animated: animated)
+            let center = rect.isNull
+                ? simulated.coordinate
+                : MKMapPoint(x: rect.midX, y: rect.midY).coordinate
+            guard CLLocationCoordinate2DIsValid(center) else { return }
+            let widest = zoomLevels.max() ?? 1000
+            let camera = MKMapCamera(lookingAtCenter: center, fromDistance: widest, pitch: 0, heading: 0)
+            mapView.setCamera(camera, animated: animated)
         }
 
         /// Centers on the simulated dot at the default zoom — used on launch and by

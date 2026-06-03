@@ -3,13 +3,14 @@
 This is **TactileNav's map screen**, called **"Roux Institute Map."**
 You reach it from the app's home list: **Map → "Roux Institute Map."**
 
-> **Update:** this is now the app's **single** map (the earlier abstract "OSM" screen was removed). It uses
-> **standard VoiceOver** — swipe through the labeled places and intersections, and use the **zoom + Options**
-> buttons (rotation and pinch work for sighted users). A **CSV touch log** is written each session. The OSM
-> comparison further down is kept only for historical context.
+> **Update:** this is now the app's **single** map (the earlier abstract "OSM" screen was removed). The map is
+> **fixed** (no gesture pan/zoom/rotate) and uses **VoiceOver Direct Touch**: a blind user enables Direct Touch
+> once in the rotor, then **drags one finger to explore** lanes and places with buzz + speech, and the map
+> auto-follows the finger. **Zoom / Center / Fit** are on-screen buttons (the • • • Options menu), and a
+> **CSV touch log** is written each session. The OSM comparison further down is historical.
 >
-> The files now live in the normal `View` / `Model` / `Services` folders (the old `RouxTactileMap/` folder
-> was dissolved); types still keep the `RTM` prefix.
+> Files now live in the normal `View` / `Model` / `Services` folders (the old `RouxTactileMap/` folder was
+> dissolved); types still keep the `RTM` prefix.
 
 It shows the Roux Institute neighborhood (Portland, Maine) as a clean, touch‑friendly map and lets you
 "walk" around it with a **purple location dot** while the phone **buzzes and speaks** what you're near.
