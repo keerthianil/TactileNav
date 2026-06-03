@@ -38,6 +38,7 @@ enum RTMMapCommand: Equatable {
     case centerOnUser  // jump back to the purple dot
     case zoomIn        // one zoom level closer
     case zoomOut       // one zoom level farther
+    case moveTo(lat: Double, lon: Double)  // jump the dot to a place / intersection
 }
 
 // MARK: - RTMLiveMapView
@@ -71,22 +72,25 @@ struct RTMLiveMapView: UIViewRepresentable {
             coordinator.performInitialSetupIfNeeded(mapView)
         }
 
-        // Blank, navigable, rotatable map. Gesture split: ONE finger drags the dot,
-        // TWO fingers pan the map (the map's pan is forced to two-finger below), pinch
-        // zooms (snapped to the 4 levels), twist rotates.
+        // Nav_Indoor model (BlankMapView): the map's own pan / zoom / rotate are
+        // DISABLED and the map is a VoiceOver Direct Touch area. That exact combo
+        // is what lets a blind user drag one finger to move the dot WITH VoiceOver
+        // on (Direct Touch passes the touch through to our dot-pan), while a stray
+        // rotor twist can't drift or spin the map (its own gestures are off).
+        // Zoom is the on-screen buttons; the map follows the dot programmatically.
         mapView.showsUserLocation = false
-        mapView.isScrollEnabled = true
-        mapView.isZoomEnabled = true
-        mapView.isRotateEnabled = true
+        mapView.isScrollEnabled = false
+        mapView.isZoomEnabled = false
+        mapView.isRotateEnabled = false
         mapView.isPitchEnabled = false
-
-        // Reserve one-finger gestures for the dot: make the map's own pan need two
-        // fingers. (Done before our dotPan is added, so only the built-ins change.)
-        for recognizer in mapView.gestureRecognizers ?? [] {
-            (recognizer as? UIPanGestureRecognizer)?.minimumNumberOfTouches = 2
-        }
         mapView.pointOfInterestFilter = .excludingAll
-        mapView.showsCompass = true          // tap to reset north after rotating
+        mapView.showsCompass = false
+
+        mapView.isAccessibilityElement = true
+        mapView.accessibilityTraits = .allowsDirectInteraction
+        mapView.accessibilityLabel = "Tactile map"
+        mapView.accessibilityHint = "Drag one finger to move the location dot and explore streets and places. "
+            + "Use the zoom and Options buttons to change the view."
 
         // White tile overlay blanks Apple's map (incl. labels). Added at .aboveLabels
         // with the streets right after at the same level so streets stay on top.
@@ -175,6 +179,9 @@ struct RTMLiveMapView: UIViewRepresentable {
             clearCommand()
         case .zoomOut:
             context.coordinator.stepZoom(closer: false)
+            clearCommand()
+        case .moveTo(let lat, let lon):
+            context.coordinator.moveDot(to: CLLocationCoordinate2D(latitude: lat, longitude: lon))
             clearCommand()
         }
     }
@@ -286,6 +293,18 @@ struct RTMLiveMapView: UIViewRepresentable {
             guard let mapView, CLLocationCoordinate2DIsValid(simulated.coordinate) else { return }
             let camera = MKMapCamera(lookingAtCenter: simulated.coordinate, fromDistance: focusDistance, pitch: 0, heading: 0)
             mapView.setCamera(camera, animated: animated)
+        }
+
+        /// Jumps the dot to a chosen place / intersection (from the Options menu),
+        /// centers on it, and fires feedback so it announces what's there. This is
+        /// the VoiceOver-friendly way to move without dragging.
+        func moveDot(to coord: CLLocationCoordinate2D) {
+            guard let mapView, CLLocationCoordinate2DIsValid(coord) else { return }
+            simulated.coordinate = coord
+            simulatedView?.center = mapView.convert(coord, toPointTo: mapView)
+            let camera = MKMapCamera(lookingAtCenter: coord, fromDistance: focusDistance, pitch: 0, heading: mapView.camera.heading)
+            mapView.setCamera(camera, animated: true)
+            feedback?.update(at: coord, heading: nil)
         }
 
         /// Steps the zoom one fixed level in or out (used by the + / − buttons, which

@@ -10,15 +10,16 @@ A real map (MKMapView) on a white background at true street positions. You explo
 ("Howie's Pub, on your right"). It's built on the vendored **TactileMapKit** package (haptics / spatial audio /
 logging) and the bundled map data `TactileNav/Model/roux_portland.json`.
 
-### How you interact
+### How you interact (Nav_Indoor model)
 
-- **One finger** — drag the dot to explore (streets buzz, places speak). The map **auto-follows** the dot.
-- **Two fingers** — pan the map. **Pinch** zooms (snaps to 4 levels), **twist** rotates — or use the **+ / −** buttons.
-- **• • • Options** — **Center on me**, **Fit whole area** (returns to the full view).
-- **Back** — the nav-bar back button or VoiceOver Z-scrub. The left-edge swipe-back is disabled so moving the
-  map can't accidentally pop the screen.
-- **VoiceOver** — swipe through the labeled places & intersections; the zoom / Options buttons are ordinary
-  VoiceOver buttons.
+- **One finger** — drag to move the dot and explore (streets buzz, places speak); the map auto-follows. This
+  works **with VoiceOver on** because the map is a **Direct Touch** area (enable Direct Touch once in the rotor).
+- **Zoom** — the **+ / −** buttons. The map's own pan / zoom / rotate gestures are **disabled**, so a stray
+  gesture (e.g. a rotor twist) can't drift or spin it.
+- **• • • Options** — jump to a **Point of interest** or **Intersection** (the dot jumps there and announces it
+  — the VoiceOver-friendly way to move without dragging), plus **Center on me** and **Fit whole area**.
+- **Back** — nav-bar button or VoiceOver Z-scrub. The left-edge swipe-back is disabled so moving the map can't
+  pop the screen.
 - Every session writes a **CSV touch log** (open **Data Files** to share / delete).
 
 ## Folder structure

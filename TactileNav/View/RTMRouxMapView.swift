@@ -22,6 +22,7 @@
 
 import SwiftUI
 import UIKit
+import CoreLocation
 import TactileMapCore
 
 struct RTMRouxMapView: View {
@@ -78,7 +79,7 @@ struct RTMRouxMapView: View {
             )
             .ignoresSafeArea()
 
-            controls
+            controls(pois: pois, intersections: intersections)
                 .padding(.trailing, 16)
                 .padding(.bottom, 32)
         }
@@ -89,7 +90,10 @@ struct RTMRouxMapView: View {
 
     /// The stack of round buttons. Each one just sets `command`; the map reacts.
     /// Order top→bottom: zoom in (+), zoom out (−), re-center on the dot.
-    private var controls: some View {
+    private func controls(
+        pois: [RTMDiscoveredPOI],
+        intersections: [RTMDiscoveredIntersection]
+    ) -> some View {
         VStack(spacing: 12) {
             controlButton(
                 systemImage: "plus",
@@ -103,15 +107,38 @@ struct RTMRouxMapView: View {
                 hint: "Moves one zoom level farther away."
             ) { command = .zoomOut }
 
-            optionsMenu
+            optionsMenu(pois: pois, intersections: intersections)
         }
     }
 
-    /// A tappable "Options" menu — the VoiceOver-friendly replacement for the
-    /// rotor (which Direct Touch makes unavailable on the map). VoiceOver reads
-    /// each item; double-tap to pick. New functions can be added here later.
-    private var optionsMenu: some View {
+    /// A tappable "Options" menu — the VoiceOver-friendly way to navigate without
+    /// dragging. Pick a Point of Interest or Intersection and the dot jumps there
+    /// and announces it (like choosing from a rotor). Also center / fit.
+    private func optionsMenu(
+        pois: [RTMDiscoveredPOI],
+        intersections: [RTMDiscoveredIntersection]
+    ) -> some View {
         Menu {
+            if !pois.isEmpty {
+                Menu("Points of interest") {
+                    ForEach(pois) { poi in
+                        Button(poi.name) {
+                            command = .moveTo(lat: poi.coordinate.latitude,
+                                              lon: poi.coordinate.longitude)
+                        }
+                    }
+                }
+            }
+            if !intersections.isEmpty {
+                Menu("Intersections") {
+                    ForEach(Array(intersections.enumerated()), id: \.element.id) { index, x in
+                        Button(x.name ?? "Intersection \(index + 1)") {
+                            command = .moveTo(lat: x.coordinate.latitude,
+                                              lon: x.coordinate.longitude)
+                        }
+                    }
+                }
+            }
             Button {
                 command = .centerOnUser
             } label: {
@@ -128,8 +155,8 @@ struct RTMRouxMapView: View {
                 .frame(width: 48, height: 48)
                 .background(.regularMaterial, in: Circle())
         }
-        .accessibilityLabel("More options")
-        .accessibilityHint("Center on your location, or fit the whole area.")
+        .accessibilityLabel("Options")
+        .accessibilityHint("Jump to a place or intersection, center on your location, or fit the whole map.")
     }
 
     /// Makes one round, VoiceOver-labeled button. We reuse this for every control so
