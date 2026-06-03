@@ -12,12 +12,13 @@ logging) and the bundled map data `TactileNav/Model/roux_portland.json`.
 
 ### How you interact
 
-- **Drag** — moves the map (pan). **Tap a lane** to drop your location dot there; it announces what's there.
-- **Zoom** — the **+ / −** buttons. Pinch/rotate are off (rotate off so a stray rotor twist can't spin the map).
+- **One finger** — drag to explore: the dot follows along the lanes, streets buzz, places speak.
+- **Two fingers** — drag to move the map around.
+- **Zoom** — the **+ / −** buttons (rotate is off so a rotor twist can't spin the map).
 - **• • • Options** — step to the **Next point of interest** / **Next intersection** (the dot jumps there and
   announces it — the VoiceOver-friendly way to move), **Free explore (back to my dot)**, or **Fit whole area**.
-- **VoiceOver** — the map is a **Direct Touch** area: enable Direct Touch once in the rotor, then drag to pan
-  and tap to place the dot. **Back** is the nav-bar button (the left-edge swipe-back is disabled).
+- **VoiceOver** — the map is a **Direct Touch** area: enable Direct Touch once in the rotor, then one finger
+  explores and two fingers pan. **Back** is the nav-bar button (the left-edge swipe-back is disabled).
 - Every session writes a **CSV touch log** (open **Data Files** to share / delete).
 
 ## Folder structure

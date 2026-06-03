@@ -72,22 +72,26 @@ struct RTMLiveMapView: UIViewRepresentable {
             coordinator.performInitialSetupIfNeeded(mapView)
         }
 
-        // Pan is ON (drag moves the map); zoom and rotate are OFF (zoom is the
-        // on-screen buttons; rotate off so a stray rotor twist can't spin the
-        // map). The map is also a VoiceOver Direct Touch area, so under VoiceOver
-        // a one-finger drag passes through to pan and a tap places the dot.
+        // ONE finger explores (drags the dot); TWO fingers move the map. So the
+        // map's own pan is forced to two fingers (loop below), and zoom/rotate are
+        // off (zoom is the buttons; rotate off so a rotor twist can't spin the map).
+        // The map is a VoiceOver Direct Touch area, so a one-finger drag passes
+        // through to the dot under VoiceOver.
         mapView.showsUserLocation = false
         mapView.isScrollEnabled = true
         mapView.isZoomEnabled = false
         mapView.isRotateEnabled = false
         mapView.isPitchEnabled = false
+        for recognizer in mapView.gestureRecognizers ?? [] {
+            (recognizer as? UIPanGestureRecognizer)?.minimumNumberOfTouches = 2
+        }
         mapView.pointOfInterestFilter = .excludingAll
         mapView.showsCompass = false
 
         mapView.isAccessibilityElement = true
         mapView.accessibilityTraits = .allowsDirectInteraction
         mapView.accessibilityLabel = "Tactile map"
-        mapView.accessibilityHint = "Drag to move the map. Tap a lane to place your location dot there. "
+        mapView.accessibilityHint = "Drag one finger to explore streets and places. Drag with two fingers to move the map. "
             + "Use the zoom and Options buttons to change the view."
 
         // White tile overlay blanks Apple's map (incl. labels). Added at .aboveLabels
@@ -123,12 +127,14 @@ struct RTMLiveMapView: UIViewRepresentable {
             mapView.addAnnotation(coordinator.simulated)
         }
 
-        // A single TAP places the dot on the nearest lane. A DRAG is left to the
-        // map's own pan (scroll), so dragging moves the map. The tap recognizer
-        // only fires on a tap (no movement), so it never competes with panning.
-        let placeTap = UITapGestureRecognizer(target: coordinator, action: #selector(Coordinator.handlePlaceTap(_:)))
-        placeTap.delegate = coordinator
-        mapView.addGestureRecognizer(placeTap)
+        // One finger drags the dot to explore. The map's own pan needs two fingers
+        // (set above), so there's no competition — two-finger drag moves the map.
+        let dotPan = UIPanGestureRecognizer(target: coordinator, action: #selector(Coordinator.handleDotPan(_:)))
+        dotPan.delegate = coordinator
+        dotPan.minimumNumberOfTouches = 1
+        dotPan.maximumNumberOfTouches = 1
+        coordinator.dotPanRecognizer = dotPan
+        mapView.addGestureRecognizer(dotPan)
 
         // A pinch recognizer (alongside the map's own) so we can snap to one of the 4
         // zoom levels the moment the pinch ends — more reliable than waiting on the
@@ -454,21 +460,45 @@ struct RTMLiveMapView: UIViewRepresentable {
             }
         }
 
-        /// A tap drops the dot on the nearest lane and announces it. (Dragging is
-        /// left to the map's own pan, so a drag moves the map.)
-        @objc func handlePlaceTap(_ gesture: UITapGestureRecognizer) {
-            guard let mapView else { return }
+        /// One finger drags the dot along the network to explore (buzz + speech).
+        @objc func handleDotPan(_ gesture: UIPanGestureRecognizer) {
+            guard let mapView, !isPinching else { return }   // don't move the dot mid-pinch
             let point = gesture.location(in: mapView)
-            let fingerCoordinate = mapView.convert(point, toCoordinateFrom: mapView)
-            // Snap to the nearest lane so a tap "on any lane" lands on it.
-            let coordinate = feedback?.snappedToPath(near: fingerCoordinate) ?? fingerCoordinate
-            simulated.coordinate = coordinate
-            simulatedView?.center = mapView.convert(coordinate, toPointTo: mapView)
-            feedback?.update(at: coordinate, heading: nil)
-            // It's a tap, not a held touch — end the continuous haptic shortly
-            // after so it doesn't buzz forever (speech keeps playing).
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-                self?.feedback?.stop()
+
+            switch gesture.state {
+            case .began, .changed:
+                // Snap to the nearest lane when close; otherwise follow the finger.
+                let fingerCoordinate = mapView.convert(point, toCoordinateFrom: mapView)
+                let coordinate = feedback?.snappedToPath(near: fingerCoordinate, within: pathSnapMeters) ?? fingerCoordinate
+                simulated.coordinate = coordinate
+                simulatedView?.center = mapView.convert(coordinate, toPointTo: mapView)
+
+                // Arrow points in the on-screen direction of finger movement.
+                if let last = lastDragPoint {
+                    let dx = point.x - last.x, dy = point.y - last.y
+                    if dx * dx + dy * dy > 4 { simulatedView?.setHeading(atan2(dx, -dy)) }
+                }
+                lastDragPoint = point
+
+                // Travel heading for POI side: geographic bearing between successive
+                // dot positions (rotation-proof, unlike a screen-pixel direction).
+                if let lastCoord = lastDotCoordinate,
+                   let bearing = Self.geographicBearing(from: lastCoord, to: coordinate) {
+                    travelHeading = bearing
+                }
+                lastDotCoordinate = coordinate
+
+                feedback?.update(at: coordinate, heading: travelHeading)
+                keepDotInView(mapView)
+
+            case .ended, .cancelled, .failed:
+                lastDragPoint = nil
+                lastDotCoordinate = nil
+                travelHeading = nil
+                feedback?.stop()
+
+            default:
+                break
             }
         }
 

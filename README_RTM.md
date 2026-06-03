@@ -4,9 +4,9 @@ This is **TactileNav's map screen**, called **"Roux Institute Map."**
 You reach it from the app's home list: **Map → "Roux Institute Map."**
 
 > **Update:** this is now the app's **single** map (the earlier abstract "OSM" screen was removed). It is the
-> vtsly map with **pan on, zoom/rotate off** (rotate off so a rotor twist can't spin it), and the map is a
-> **VoiceOver Direct Touch** area. **Drag** pans the map; **tap a lane** to drop the location dot there (buzz +
-> speech). **Zoom** is the + / − buttons; the **• • • Options** menu **steps to the next Point of interest /
+> vtsly map with **zoom/rotate off** (rotate off so a rotor twist can't spin it) and the map a **VoiceOver
+> Direct Touch** area. **One finger** drags the dot to explore (buzz + speech); **two fingers** drag to move
+> the map. **Zoom** is the + / − buttons; the **• • • Options** menu **steps to the next Point of interest /
 > Intersection** (dot jumps + announces), plus Free explore and Fit. Edge swipe-back is disabled (use the nav
 > button); a **CSV touch log** is written each session. The OSM comparison below is historical.
 >
