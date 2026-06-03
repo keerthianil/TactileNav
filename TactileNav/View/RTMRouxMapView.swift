@@ -190,7 +190,7 @@ struct RTMRouxMapView: View {
         // Tell VoiceOver users what just appeared and how to use it.
         UIAccessibility.post(
             notification: .screenChanged,
-            argument: "Exploring the Roux Institute area. \(result.streets.count) streets, \(result.pois.count) places. Drag with one finger to feel streets and places."
+            argument: "Roux Institute map. \(result.streets.count) streets, \(result.pois.count) places. Swipe left or right to move through places and intersections. Use the zoom and options buttons to move the map."
         )
     }
 }

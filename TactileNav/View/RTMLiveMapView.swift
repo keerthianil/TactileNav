@@ -77,10 +77,7 @@ struct RTMLiveMapView: UIViewRepresentable {
         mapView.showsUserLocation = false
         mapView.isScrollEnabled = true
         mapView.isZoomEnabled = true
-        // Rotation OFF: with VoiceOver Direct Touch a two-finger rotor twist
-        // passes through and would spin the map (and stick). There's no live
-        // heading here to align to, so north-up is clearer for non-visual use.
-        mapView.isRotateEnabled = false
+        mapView.isRotateEnabled = true
         mapView.isPitchEnabled = false
 
         // Reserve one-finger gestures for the dot: make the map's own pan need two
@@ -89,17 +86,14 @@ struct RTMLiveMapView: UIViewRepresentable {
             (recognizer as? UIPanGestureRecognizer)?.minimumNumberOfTouches = 2
         }
         mapView.pointOfInterestFilter = .excludingAll
-        mapView.showsCompass = false         // rotation disabled → no compass needed
+        mapView.showsCompass = true          // tap to reset north after rotating
 
-        // VoiceOver: mark the map as a Direct Touch area so one-finger drags
-        // pass straight through to move the dot. Without this, VoiceOver
-        // intercepts single-finger gestures for navigation and the dot can't
-        // be moved by a blind user. (Zoom/recenter stay on the buttons.)
-        mapView.isAccessibilityElement = true
-        mapView.accessibilityTraits = .allowsDirectInteraction
-        mapView.accessibilityLabel = "Tactile map"
-        mapView.accessibilityHint = "Drag with one finger to explore streets and places. "
-            + "Use the zoom and center buttons to move the view."
+        // NOTE: No Direct Touch trait here on purpose. Direct Touch passes every
+        // multi-finger gesture through to the map (so the VoiceOver rotor twist
+        // drifted/stuck the map) and trapped VoiceOver focus. Instead we use
+        // standard VoiceOver: the places, intersections, and the dot are
+        // accessibility elements (swipe to hear them), and zoom/recenter/fit
+        // are the on-screen buttons + Options menu.
 
         // White tile overlay blanks Apple's map (incl. labels). Added at .aboveLabels
         // with the streets right after at the same level so streets stay on top.
@@ -384,7 +378,7 @@ struct RTMLiveMapView: UIViewRepresentable {
                     ?? RTMSimulatedUserAnnotationView(annotation: simulated, reuseIdentifier: "simulated")
                 view.annotation = simulated
                 simulatedView = view
-                view.accessibilityLabel = "Simulated location. Drag to move."
+                view.accessibilityLabel = "Your location"
                 return view
             }
 
