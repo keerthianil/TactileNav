@@ -77,7 +77,10 @@ struct RTMLiveMapView: UIViewRepresentable {
         mapView.showsUserLocation = false
         mapView.isScrollEnabled = true
         mapView.isZoomEnabled = true
-        mapView.isRotateEnabled = true
+        // Rotation OFF: with VoiceOver Direct Touch a two-finger rotor twist
+        // passes through and would spin the map (and stick). There's no live
+        // heading here to align to, so north-up is clearer for non-visual use.
+        mapView.isRotateEnabled = false
         mapView.isPitchEnabled = false
 
         // Reserve one-finger gestures for the dot: make the map's own pan need two
@@ -86,7 +89,7 @@ struct RTMLiveMapView: UIViewRepresentable {
             (recognizer as? UIPanGestureRecognizer)?.minimumNumberOfTouches = 2
         }
         mapView.pointOfInterestFilter = .excludingAll
-        mapView.showsCompass = true          // tap to reset north after rotating
+        mapView.showsCompass = false         // rotation disabled → no compass needed
 
         // VoiceOver: mark the map as a Direct Touch area so one-finger drags
         // pass straight through to move the dot. Without this, VoiceOver

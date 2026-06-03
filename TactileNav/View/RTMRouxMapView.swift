@@ -53,7 +53,7 @@ struct RTMRouxMapView: View {
                 errorView(message)
             }
         }
-        .navigationTitle("Roux — Tactile Explorer")
+        .navigationTitle("Roux Institute Map")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }   // runs once when the screen appears
     }
@@ -99,12 +99,33 @@ struct RTMRouxMapView: View {
                 hint: "Moves one zoom level farther away."
             ) { command = .zoomOut }
 
-            controlButton(
-                systemImage: "location.fill",
-                label: "Center on my location",
-                hint: "Moves the map back to your purple location dot so you don't get lost."
-            ) { command = .centerOnUser }
+            optionsMenu
         }
+    }
+
+    /// A tappable "Options" menu — the VoiceOver-friendly replacement for the
+    /// rotor (which Direct Touch makes unavailable on the map). VoiceOver reads
+    /// each item; double-tap to pick. New functions can be added here later.
+    private var optionsMenu: some View {
+        Menu {
+            Button {
+                command = .centerOnUser
+            } label: {
+                Label("Center on my location", systemImage: "location.fill")
+            }
+            Button {
+                command = .fitFeatures
+            } label: {
+                Label("Fit whole area", systemImage: "map")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.title2.weight(.semibold))
+                .frame(width: 48, height: 48)
+                .background(.regularMaterial, in: Circle())
+        }
+        .accessibilityLabel("More options")
+        .accessibilityHint("Center on your location, or fit the whole area.")
     }
 
     /// Makes one round, VoiceOver-labeled button. We reuse this for every control so

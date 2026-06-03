@@ -5,7 +5,7 @@ struct ContentView: View {
         NavigationStack {
             List {
                 Section("Map") {
-                    NavigationLink("Roux Institute — Tactile Explorer",
+                    NavigationLink("Roux Institute Map",
                                    destination: RTMRouxMapView())
                 }
 
