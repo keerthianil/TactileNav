@@ -12,14 +12,12 @@ logging) and the bundled map data `TactileNav/Model/roux_portland.json`.
 
 ### How you interact
 
-- **One finger** — drag to move the dot and explore (streets buzz, places speak); the map auto-follows. This
-  works **with VoiceOver on** because the map is a **Direct Touch** area (enable Direct Touch once in the rotor).
-- **Zoom** — the **+ / −** buttons. The map's own pan / zoom / rotate gestures are **disabled**, so a stray
-  gesture (e.g. a rotor twist) can't drift or spin it.
-- **• • • Options** — jump to a **Point of interest** or **Intersection** (the dot jumps there and announces it
-  — the VoiceOver-friendly way to move without dragging), plus **Center on me** and **Fit whole area**.
-- **Back** — nav-bar button or VoiceOver Z-scrub. The left-edge swipe-back is disabled so moving the map can't
-  pop the screen.
+- **Drag** — moves the map (pan). **Tap a lane** to drop your location dot there; it announces what's there.
+- **Zoom** — the **+ / −** buttons. Pinch/rotate are off (rotate off so a stray rotor twist can't spin the map).
+- **• • • Options** — step to the **Next point of interest** / **Next intersection** (the dot jumps there and
+  announces it — the VoiceOver-friendly way to move), **Free explore (back to my dot)**, or **Fit whole area**.
+- **VoiceOver** — the map is a **Direct Touch** area: enable Direct Touch once in the rotor, then drag to pan
+  and tap to place the dot. **Back** is the nav-bar button (the left-edge swipe-back is disabled).
 - Every session writes a **CSV touch log** (open **Data Files** to share / delete).
 
 ## Folder structure
@@ -46,8 +44,6 @@ TactileNav/
 ├── Resources/                            ← landmark sound effects (mp3)
 └── Assets.xcassets/
 ```
-
-> Map types are prefixed `RTM` (Roux Tactile Map). See `README_RTM.md` (repo root) for a deeper per-file tour.
 
 ## Dependency — TactileMapKit
 

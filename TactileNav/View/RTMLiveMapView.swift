@@ -72,14 +72,12 @@ struct RTMLiveMapView: UIViewRepresentable {
             coordinator.performInitialSetupIfNeeded(mapView)
         }
 
-        // The map's own pan / zoom / rotate are DISABLED and the map is a
-        // VoiceOver Direct Touch area. That combo lets a blind user drag one
-        // finger to move the dot WITH VoiceOver on (Direct Touch passes the touch
-        // through to our dot-pan), while a stray rotor twist can't drift or spin
-        // the map (its own gestures are off). Zoom is the on-screen buttons; the
-        // map follows the dot programmatically.
+        // Pan is ON (drag moves the map); zoom and rotate are OFF (zoom is the
+        // on-screen buttons; rotate off so a stray rotor twist can't spin the
+        // map). The map is also a VoiceOver Direct Touch area, so under VoiceOver
+        // a one-finger drag passes through to pan and a tap places the dot.
         mapView.showsUserLocation = false
-        mapView.isScrollEnabled = false
+        mapView.isScrollEnabled = true
         mapView.isZoomEnabled = false
         mapView.isRotateEnabled = false
         mapView.isPitchEnabled = false
@@ -89,7 +87,7 @@ struct RTMLiveMapView: UIViewRepresentable {
         mapView.isAccessibilityElement = true
         mapView.accessibilityTraits = .allowsDirectInteraction
         mapView.accessibilityLabel = "Tactile map"
-        mapView.accessibilityHint = "Drag one finger to move the location dot and explore streets and places. "
+        mapView.accessibilityHint = "Drag to move the map. Tap a lane to place your location dot there. "
             + "Use the zoom and Options buttons to change the view."
 
         // White tile overlay blanks Apple's map (incl. labels). Added at .aboveLabels
@@ -125,13 +123,12 @@ struct RTMLiveMapView: UIViewRepresentable {
             mapView.addAnnotation(coordinator.simulated)
         }
 
-        // One-finger pan drives the dot (map scroll is off, so no competition).
-        let dotPan = UIPanGestureRecognizer(target: coordinator, action: #selector(Coordinator.handleDotPan(_:)))
-        dotPan.delegate = coordinator
-        dotPan.minimumNumberOfTouches = 1
-        dotPan.maximumNumberOfTouches = 1
-        coordinator.dotPanRecognizer = dotPan
-        mapView.addGestureRecognizer(dotPan)
+        // A single TAP places the dot on the nearest lane. A DRAG is left to the
+        // map's own pan (scroll), so dragging moves the map. The tap recognizer
+        // only fires on a tap (no movement), so it never competes with panning.
+        let placeTap = UITapGestureRecognizer(target: coordinator, action: #selector(Coordinator.handlePlaceTap(_:)))
+        placeTap.delegate = coordinator
+        mapView.addGestureRecognizer(placeTap)
 
         // A pinch recognizer (alongside the map's own) so we can snap to one of the 4
         // zoom levels the moment the pinch ends — more reliable than waiting on the
@@ -309,6 +306,9 @@ struct RTMLiveMapView: UIViewRepresentable {
             let camera = MKMapCamera(lookingAtCenter: coord, fromDistance: focusDistance, pitch: 0, heading: mapView.camera.heading)
             mapView.setCamera(camera, animated: true)
             feedback?.update(at: coord, heading: nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.feedback?.stop()
+            }
         }
 
         /// Steps the zoom one fixed level in or out (used by the + / − buttons, which
@@ -454,45 +454,21 @@ struct RTMLiveMapView: UIViewRepresentable {
             }
         }
 
-        @objc func handleDotPan(_ gesture: UIPanGestureRecognizer) {
-            guard let mapView, !isPinching else { return }   // don't move the dot mid-pinch
+        /// A tap drops the dot on the nearest lane and announces it. (Dragging is
+        /// left to the map's own pan, so a drag moves the map.)
+        @objc func handlePlaceTap(_ gesture: UITapGestureRecognizer) {
+            guard let mapView else { return }
             let point = gesture.location(in: mapView)
-
-            switch gesture.state {
-            case .began, .changed:
-                // Snap the dot to the nearest path so it stays on the network.
-                let fingerCoordinate = mapView.convert(point, toCoordinateFrom: mapView)
-                let coordinate = feedback?.snappedToPath(near: fingerCoordinate, within: pathSnapMeters) ?? fingerCoordinate
-                simulated.coordinate = coordinate
-                // Position the dot view immediately (no annotation-move lag).
-                simulatedView?.center = mapView.convert(coordinate, toPointTo: mapView)
-
-                // Arrow points in the on-screen direction of finger movement.
-                if let last = lastDragPoint {
-                    let dx = point.x - last.x, dy = point.y - last.y
-                    if dx * dx + dy * dy > 4 { simulatedView?.setHeading(atan2(dx, -dy)) }
-                }
-                lastDragPoint = point
-
-                // Travel heading for POI side: geographic bearing between successive
-                // dot positions — rotation-proof (unlike a screen-pixel direction).
-                if let lastCoord = lastDotCoordinate,
-                   let bearing = Self.geographicBearing(from: lastCoord, to: coordinate) {
-                    travelHeading = bearing
-                }
-                lastDotCoordinate = coordinate
-
-                feedback?.update(at: coordinate, heading: travelHeading)
-                keepDotInView(mapView)
-
-            case .ended, .cancelled, .failed:
-                lastDragPoint = nil
-                lastDotCoordinate = nil
-                travelHeading = nil
-                feedback?.stop()
-
-            default:
-                break
+            let fingerCoordinate = mapView.convert(point, toCoordinateFrom: mapView)
+            // Snap to the nearest lane so a tap "on any lane" lands on it.
+            let coordinate = feedback?.snappedToPath(near: fingerCoordinate) ?? fingerCoordinate
+            simulated.coordinate = coordinate
+            simulatedView?.center = mapView.convert(coordinate, toPointTo: mapView)
+            feedback?.update(at: coordinate, heading: nil)
+            // It's a tap, not a held touch — end the continuous haptic shortly
+            // after so it doesn't buzz forever (speech keeps playing).
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.feedback?.stop()
             }
         }
 

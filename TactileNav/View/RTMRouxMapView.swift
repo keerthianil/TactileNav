@@ -238,15 +238,13 @@ private struct BackSwipeDisabler: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: Controller, context: Context) {}
 
     final class Controller: UIViewController {
-        override func didMove(toParent parent: UIViewController?) {
-            super.didMove(toParent: parent)
+        override func viewWillAppear(_ animated: Bool) {
+            super.viewWillAppear(animated)
             navigationController?.interactivePopGestureRecognizer?.isEnabled = false
         }
-        override func willMove(toParent parent: UIViewController?) {
-            super.willMove(toParent: parent)
-            if parent == nil {
-                navigationController?.interactivePopGestureRecognizer?.isEnabled = true
-            }
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            navigationController?.interactivePopGestureRecognizer?.isEnabled = true
         }
     }
 }
