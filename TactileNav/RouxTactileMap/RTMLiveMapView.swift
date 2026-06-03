@@ -88,6 +88,16 @@ struct RTMLiveMapView: UIViewRepresentable {
         mapView.pointOfInterestFilter = .excludingAll
         mapView.showsCompass = true          // tap to reset north after rotating
 
+        // VoiceOver: mark the map as a Direct Touch area so one-finger drags
+        // pass straight through to move the dot. Without this, VoiceOver
+        // intercepts single-finger gestures for navigation and the dot can't
+        // be moved by a blind user. (Zoom/recenter stay on the buttons.)
+        mapView.isAccessibilityElement = true
+        mapView.accessibilityTraits = .allowsDirectInteraction
+        mapView.accessibilityLabel = "Tactile map"
+        mapView.accessibilityHint = "Drag with one finger to explore streets and places. "
+            + "Use the zoom and center buttons to move the view."
+
         // White tile overlay blanks Apple's map (incl. labels). Added at .aboveLabels
         // with the streets right after at the same level so streets stay on top.
         let blankOverlay = RTMWhiteTileOverlay()
@@ -177,6 +187,11 @@ struct RTMLiveMapView: UIViewRepresentable {
 
     private func clearCommand() {
         DispatchQueue.main.async { command = .none }
+    }
+
+    /// Ends the CSV logging session when the map screen goes away.
+    static func dismantleUIView(_ uiView: MKMapView, coordinator: Coordinator) {
+        coordinator.feedback?.endLog()
     }
 
     // MARK: Geometry helpers (over the feature set)

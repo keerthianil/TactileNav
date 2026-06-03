@@ -26,7 +26,9 @@
 
 import Foundation
 import CoreLocation
+import TactileMapCore
 import TactileMapFeedback
+import TactileMapLogging
 
 @MainActor
 final class RTMMapFeedbackController {
@@ -51,6 +53,11 @@ final class RTMMapFeedbackController {
 
     private let haptics: HapticEngine
     private let audio: SpatialAudioEngine
+
+    // MARK: - Logging (CSV touch trace, like Nav_Indoor / Indoor_Route)
+
+    private let logger: CSVTouchLogger
+    private let sessionStart = Date()
 
     // MARK: - State
 
@@ -79,6 +86,20 @@ final class RTMMapFeedbackController {
         }
         self.haptics = haptics ?? CoreHapticsEngine()
         self.audio = audio ?? AVSpatialAudioEngine()
+
+        self.logger = CSVTouchLogger(fileNameGenerator: { meta in
+            let name = meta["sessionName"] ?? "RouxTactileExplorer"
+            let df = DateFormatter()
+            df.locale = Locale(identifier: "en_US_POSIX")
+            df.dateFormat = "yyyyMMdd_HHmmss"
+            return "\(name)_\(df.string(from: Date()))"
+        })
+        logger.startSession(metadata: ["sessionName": "RouxTactileExplorer"])
+    }
+
+    /// Ends the CSV session. Called when the map view is torn down.
+    func endLog() {
+        logger.endSession()
     }
 
     // MARK: - Cursor updates
@@ -97,6 +118,7 @@ final class RTMMapFeedbackController {
 
         guard hit.id != activeID else { return }
         activeID = hit.id
+        logEntry(hit, at: coordinate)
 
         haptics.stopAll()
         switch hit.kind {
@@ -126,6 +148,29 @@ final class RTMMapFeedbackController {
     func stop() {
         haptics.stopAll()
         activeID = nil
+    }
+
+    /// Logs one CSV row each time the cursor enters a new feature.
+    private func logEntry(_ hit: Hit, at coordinate: CLLocationCoordinate2D) {
+        let type: TactileElementType?
+        switch hit.kind {
+        case .street:       type = .corridor
+        case .intersection: type = .intersection
+        case .poi:          type = .landmark
+        }
+        let event = TouchEvent(
+            timestamp: Date(),
+            sessionElapsed: Date().timeIntervalSince(sessionStart),
+            eventType: .touchMove,
+            elementName: hit.spokenName ?? "unknown",
+            elementType: type,
+            touchPoint: CGPoint(x: coordinate.longitude, y: coordinate.latitude),
+            custom: [
+                "lat": String(format: "%.6f", coordinate.latitude),
+                "lon": String(format: "%.6f", coordinate.longitude)
+            ]
+        )
+        _ = logger.logEvent(event)
     }
 
     // MARK: - Snap to path
