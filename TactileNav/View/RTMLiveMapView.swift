@@ -59,6 +59,11 @@ struct RTMLiveMapView: UIViewRepresentable {
         mapView.pointOfInterestFilter = .excludingAll
         mapView.showsCompass = true
 
+        mapView.isAccessibilityElement = true
+        mapView.accessibilityTraits = .allowsDirectInteraction
+        mapView.accessibilityLabel = "Tactile map"
+        mapView.accessibilityHint = "Drag one finger to explore streets and places. Drag with two fingers to move the map. Use the zoom and Options buttons to change the view."
+
         let blankOverlay = RTMWhiteTileOverlay()
         blankOverlay.canReplaceMapContent = true
         mapView.addOverlay(blankOverlay, level: .aboveLabels)
