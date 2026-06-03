@@ -72,19 +72,14 @@ struct RTMLiveMapView: UIViewRepresentable {
             coordinator.performInitialSetupIfNeeded(mapView)
         }
 
-        // ONE finger explores (drags the dot); TWO fingers move the map. So the
-        // map's own pan is forced to two fingers (loop below), and zoom/rotate are
-        // off (zoom is the buttons; rotate off so a rotor twist can't spin the map).
-        // The map is a VoiceOver Direct Touch area, so a one-finger drag passes
-        // through to the dot under VoiceOver.
+        // ONE finger explores (drags the dot); TWO fingers move the map via our
+        // own pan recognizer (not MKMapView's built-in scroll, which conflicts
+        // with VoiceOver Direct Touch and causes the map to get stuck).
         mapView.showsUserLocation = false
-        mapView.isScrollEnabled = true
+        mapView.isScrollEnabled = false
         mapView.isZoomEnabled = false
         mapView.isRotateEnabled = false
         mapView.isPitchEnabled = false
-        for recognizer in mapView.gestureRecognizers ?? [] {
-            (recognizer as? UIPanGestureRecognizer)?.minimumNumberOfTouches = 2
-        }
         mapView.pointOfInterestFilter = .excludingAll
         mapView.showsCompass = false
 
@@ -143,6 +138,14 @@ struct RTMLiveMapView: UIViewRepresentable {
         let zoomPinch = UIPinchGestureRecognizer(target: coordinator, action: #selector(Coordinator.handlePinch(_:)))
         zoomPinch.delegate = coordinator
         mapView.addGestureRecognizer(zoomPinch)
+
+        // Two-finger pan moves the map. We handle this ourselves instead of
+        // using MKMapView's built-in scroll to avoid VoiceOver/gesture conflicts.
+        let mapPan = UIPanGestureRecognizer(target: coordinator, action: #selector(Coordinator.handleMapPan(_:)))
+        mapPan.minimumNumberOfTouches = 2
+        mapPan.maximumNumberOfTouches = 2
+        mapPan.delegate = coordinator
+        mapView.addGestureRecognizer(mapPan)
 
         // Keep panning roughly in the area, but with a GENEROUS margin (100% on
         // each side). The old 2% margin clamped the camera so that following the
@@ -239,6 +242,7 @@ struct RTMLiveMapView: UIViewRepresentable {
         private var lastDotCoordinate: CLLocationCoordinate2D?
         private var travelHeading: CGFloat?   // geographic bearing of travel (radians, 0 = N)
         private var isPinching = false        // true while a zoom pinch is in progress
+        private var isPanning = false         // true while a two-finger map pan is in progress
 
         // Street renderers + ground width (m), rescaled on every zoom change.
         private var streetRenderers: [(renderer: MKPolylineRenderer, groundMeters: CGFloat)] = []
@@ -357,7 +361,7 @@ struct RTMLiveMapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
-            snapZoomIfNeeded(mapView)
+            if !isPanning { snapZoomIfNeeded(mapView) }
             rescale(in: mapView)
         }
 
@@ -460,9 +464,40 @@ struct RTMLiveMapView: UIViewRepresentable {
             }
         }
 
+        /// Two-finger pan moves the map camera. We do this ourselves instead of
+        /// relying on MKMapView's built-in scroll, which fights VoiceOver
+        /// Direct Touch and causes the map to lock up.
+        @objc func handleMapPan(_ gesture: UIPanGestureRecognizer) {
+            guard let mapView else { return }
+
+            switch gesture.state {
+            case .began:
+                isPanning = true
+
+            case .changed:
+                let translation = gesture.translation(in: mapView)
+                let center = mapView.centerCoordinate
+                let centerPt = mapView.convert(center, toPointTo: mapView)
+                let newCenterPt = CGPoint(x: centerPt.x - translation.x,
+                                          y: centerPt.y - translation.y)
+                let newCenter = mapView.convert(newCenterPt, toCoordinateFrom: mapView)
+
+                let camera = mapView.camera.copy() as! MKMapCamera
+                camera.centerCoordinate = newCenter
+                mapView.setCamera(camera, animated: false)
+                gesture.setTranslation(.zero, in: mapView)
+
+            case .ended, .cancelled, .failed:
+                isPanning = false
+
+            default:
+                break
+            }
+        }
+
         /// One finger drags the dot along the network to explore (buzz + speech).
         @objc func handleDotPan(_ gesture: UIPanGestureRecognizer) {
-            guard let mapView, !isPinching else { return }   // don't move the dot mid-pinch
+            guard let mapView, !isPinching, !isPanning else { return }
             let point = gesture.location(in: mapView)
 
             switch gesture.state {
