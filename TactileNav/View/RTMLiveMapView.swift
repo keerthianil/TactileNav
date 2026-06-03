@@ -44,25 +44,21 @@ struct RTMLiveMapView: UIViewRepresentable {
             coordinator.performInitialSetupIfNeeded(mapView)
         }
 
-        // Blank, navigable, rotatable map. ONE finger drags the dot,
-        // TWO fingers pan the map (the map's pan is forced to two-finger below),
-        // pinch zooms (snapped to 4 levels), twist rotates.
+        // All built-in gestures OFF — we handle everything ourselves so
+        // nothing fights with VoiceOver Direct Touch (same as NavIndoor).
         mapView.showsUserLocation = false
-        mapView.isScrollEnabled = true
-        mapView.isZoomEnabled = true
-        mapView.isRotateEnabled = true
+        mapView.isScrollEnabled = false
+        mapView.isZoomEnabled = false
+        mapView.isRotateEnabled = false
         mapView.isPitchEnabled = false
-
-        for recognizer in mapView.gestureRecognizers ?? [] {
-            (recognizer as? UIPanGestureRecognizer)?.minimumNumberOfTouches = 2
-        }
         mapView.pointOfInterestFilter = .excludingAll
-        mapView.showsCompass = true
+        mapView.showsCompass = false
 
+        // VoiceOver: Direct Touch lets one-finger drags pass through.
         mapView.isAccessibilityElement = true
         mapView.accessibilityTraits = .allowsDirectInteraction
         mapView.accessibilityLabel = "Tactile map"
-        mapView.accessibilityHint = "Drag one finger to explore streets and places. Drag with two fingers to move the map. Use the zoom and Options buttons to change the view."
+        mapView.accessibilityHint = "Drag one finger to explore streets and places. Use the zoom and Options buttons to change the view."
 
         let blankOverlay = RTMWhiteTileOverlay()
         blankOverlay.canReplaceMapContent = true
@@ -90,20 +86,22 @@ struct RTMLiveMapView: UIViewRepresentable {
             mapView.addAnnotation(coordinator.simulated)
         }
 
+        // One-finger pan drags the dot. The map auto-follows via keepDotInView.
         let dotPan = UIPanGestureRecognizer(target: coordinator, action: #selector(Coordinator.handleDotPan(_:)))
         dotPan.delegate = coordinator
         dotPan.minimumNumberOfTouches = 1
         dotPan.maximumNumberOfTouches = 1
-        coordinator.dotPanRecognizer = dotPan
         mapView.addGestureRecognizer(dotPan)
 
+        // Pinch to zoom (we drive it ourselves since built-in zoom is off).
         let zoomPinch = UIPinchGestureRecognizer(target: coordinator, action: #selector(Coordinator.handlePinch(_:)))
         zoomPinch.delegate = coordinator
         mapView.addGestureRecognizer(zoomPinch)
 
+        // Wide boundary so keepDotInView can follow the dot to the edges.
         let rect = featuresRect()
         if !rect.isNull {
-            let padded = rect.insetBy(dx: -rect.size.width * 0.02, dy: -rect.size.height * 0.02)
+            let padded = rect.insetBy(dx: -rect.size.width, dy: -rect.size.height)
             mapView.cameraBoundary = MKMapView.CameraBoundary(mapRect: padded)
         }
 
@@ -173,7 +171,6 @@ struct RTMLiveMapView: UIViewRepresentable {
     final class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
 
         weak var mapView: MKMapView?
-        weak var dotPanRecognizer: UIPanGestureRecognizer?
         var feedback: RTMMapFeedbackController?
         var onZoomChanged: ((CLLocationDistance) -> Void)?
 
@@ -185,6 +182,7 @@ struct RTMLiveMapView: UIViewRepresentable {
         private var lastDotCoordinate: CLLocationCoordinate2D?
         private var travelHeading: CGFloat?
         private var isPinching = false
+        private var pinchStartDistance: CLLocationDistance?
 
         // Street renderers + ground width (m), rescaled on every zoom change.
         private var streetRenderers: [(renderer: MKPolylineRenderer, groundMeters: CGFloat)] = []
@@ -282,7 +280,7 @@ struct RTMLiveMapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
-            snapZoomIfNeeded(mapView)
+            if !isPinching { snapZoomIfNeeded(mapView) }
             rescale(in: mapView)
         }
 
@@ -364,24 +362,38 @@ struct RTMLiveMapView: UIViewRepresentable {
             return nil
         }
 
-        // MARK: Dot dragging
+        // MARK: Gestures
 
         func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
             true
         }
 
+        // Pinch zoom — we drive it ourselves since built-in zoom is off.
         @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+            guard let mapView else { return }
             switch gesture.state {
-            case .began, .changed:
+            case .began:
                 isPinching = true
+                pinchStartDistance = mapView.camera.centerCoordinateDistance
+            case .changed:
+                guard let start = pinchStartDistance else { break }
+                let newDist = start / Double(gesture.scale)
+                let minDist = zoomLevels.min() ?? 120
+                let maxDist = zoomLevels.max() ?? 1000
+                let clamped = min(max(newDist, minDist), maxDist)
+                let camera = mapView.camera.copy() as! MKMapCamera
+                camera.centerCoordinateDistance = clamped
+                mapView.setCamera(camera, animated: false)
             case .ended, .cancelled, .failed:
                 isPinching = false
-                if let mapView { snapZoomIfNeeded(mapView) }
+                pinchStartDistance = nil
+                snapZoomIfNeeded(mapView)
             default:
                 break
             }
         }
 
+        // One finger drags the dot. Map auto-follows via keepDotInView.
         @objc func handleDotPan(_ gesture: UIPanGestureRecognizer) {
             guard let mapView, !isPinching else { return }
             let point = gesture.location(in: mapView)
@@ -428,6 +440,7 @@ struct RTMLiveMapView: UIViewRepresentable {
             return CGFloat(atan2(east, north))
         }
 
+        // Auto-pans the map when the dot nears the screen edge.
         private func keepDotInView(_ mapView: MKMapView) {
             let inset: CGFloat = 90
             let bounds = mapView.bounds
