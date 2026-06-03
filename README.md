@@ -10,7 +10,7 @@ A real map (MKMapView) on a white background at true street positions. You explo
 ("Howie's Pub, on your right"). It's built on the vendored **TactileMapKit** package (haptics / spatial audio /
 logging) and the bundled map data `TactileNav/Model/roux_portland.json`.
 
-### How you interact (Nav_Indoor model)
+### How you interact
 
 - **One finger** — drag to move the dot and explore (streets buzz, places speak); the map auto-follows. This
   works **with VoiceOver on** because the map is a **Direct Touch** area (enable Direct Touch once in the rotor).

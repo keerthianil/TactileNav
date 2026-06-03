@@ -41,6 +41,11 @@ struct RTMRouxMapView: View {
     // needs somewhere to report it.
     @State private var zoom: Double = 0
 
+    // Rotor-style cursors: each "Next place / Next intersection" tap advances
+    // through the list and jumps the dot there (wraps around).
+    @State private var poiCursor = -1
+    @State private var intersectionCursor = -1
+
     var body: some View {
         Group {
             switch phase {
@@ -120,29 +125,27 @@ struct RTMRouxMapView: View {
     ) -> some View {
         Menu {
             if !pois.isEmpty {
-                Menu("Points of interest") {
-                    ForEach(pois) { poi in
-                        Button(poi.name) {
-                            command = .moveTo(lat: poi.coordinate.latitude,
-                                              lon: poi.coordinate.longitude)
-                        }
-                    }
+                Button {
+                    poiCursor = (poiCursor + 1) % pois.count
+                    let p = pois[poiCursor]
+                    command = .moveTo(lat: p.coordinate.latitude, lon: p.coordinate.longitude)
+                } label: {
+                    Label("Next point of interest", systemImage: "mappin.and.ellipse")
                 }
             }
             if !intersections.isEmpty {
-                Menu("Intersections") {
-                    ForEach(Array(intersections.enumerated()), id: \.element.id) { index, x in
-                        Button(x.name ?? "Intersection \(index + 1)") {
-                            command = .moveTo(lat: x.coordinate.latitude,
-                                              lon: x.coordinate.longitude)
-                        }
-                    }
+                Button {
+                    intersectionCursor = (intersectionCursor + 1) % intersections.count
+                    let x = intersections[intersectionCursor]
+                    command = .moveTo(lat: x.coordinate.latitude, lon: x.coordinate.longitude)
+                } label: {
+                    Label("Next intersection", systemImage: "arrow.triangle.branch")
                 }
             }
             Button {
                 command = .centerOnUser
             } label: {
-                Label("Center on my location", systemImage: "location.fill")
+                Label("Free explore (back to my dot)", systemImage: "hand.draw")
             }
             Button {
                 command = .fitFeatures
@@ -156,7 +159,7 @@ struct RTMRouxMapView: View {
                 .background(.regularMaterial, in: Circle())
         }
         .accessibilityLabel("Options")
-        .accessibilityHint("Jump to a place or intersection, center on your location, or fit the whole map.")
+        .accessibilityHint("Step to the next place or intersection, return to free explore, or fit the whole map.")
     }
 
     /// Makes one round, VoiceOver-labeled button. We reuse this for every control so

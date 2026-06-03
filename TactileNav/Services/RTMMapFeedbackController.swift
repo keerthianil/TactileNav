@@ -8,7 +8,7 @@
 //  closest thing under the dot and makes the phone buzz and/or speak accordingly,
 //  using the TactileMapKit haptic + speech engines.
 //
-//  THE RULES (kept like the original Indoor Route app)
+//  THE RULES
 //   • Priority when several things are nearby: places (POIs) > intersections > streets.
 //   • Feedback fires once when the dot ENTERS a new thing (not continuously), so it
 //     doesn't repeat over and over while you sit on the same street.
@@ -54,7 +54,7 @@ final class RTMMapFeedbackController {
     private let haptics: HapticEngine
     private let audio: SpatialAudioEngine
 
-    // MARK: - Logging (CSV touch trace, like Nav_Indoor / Indoor_Route)
+    // MARK: - Logging (CSV touch trace)
 
     private let logger: CSVTouchLogger
     private let sessionStart = Date()

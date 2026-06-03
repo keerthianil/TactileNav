@@ -72,12 +72,12 @@ struct RTMLiveMapView: UIViewRepresentable {
             coordinator.performInitialSetupIfNeeded(mapView)
         }
 
-        // Nav_Indoor model (BlankMapView): the map's own pan / zoom / rotate are
-        // DISABLED and the map is a VoiceOver Direct Touch area. That exact combo
-        // is what lets a blind user drag one finger to move the dot WITH VoiceOver
-        // on (Direct Touch passes the touch through to our dot-pan), while a stray
-        // rotor twist can't drift or spin the map (its own gestures are off).
-        // Zoom is the on-screen buttons; the map follows the dot programmatically.
+        // The map's own pan / zoom / rotate are DISABLED and the map is a
+        // VoiceOver Direct Touch area. That combo lets a blind user drag one
+        // finger to move the dot WITH VoiceOver on (Direct Touch passes the touch
+        // through to our dot-pan), while a stray rotor twist can't drift or spin
+        // the map (its own gestures are off). Zoom is the on-screen buttons; the
+        // map follows the dot programmatically.
         mapView.showsUserLocation = false
         mapView.isScrollEnabled = false
         mapView.isZoomEnabled = false
@@ -110,7 +110,7 @@ struct RTMLiveMapView: UIViewRepresentable {
             mapView.addOverlay(polyline, level: .aboveLabels)
         }
 
-        // POI markers snapped onto the nearest path (Indoor Route anchor style), using
+        // POI markers snapped onto the nearest path, using
         // the same snapping as the feedback controller so marker and feedback align.
         let poiAnnotations = pois.map { poi -> RTMPOIAnnotation in
             let anchor = RTMMapFeedbackController.nearestPointOnPath(to: poi.coordinate, in: streets) ?? poi.coordinate
@@ -246,6 +246,10 @@ struct RTMLiveMapView: UIViewRepresentable {
         private let zoomLevels: [CLLocationDistance] = [120, 300, 650, 1000]
         /// Distance the map opens at and the "center on me" button returns to.
         private let focusDistance: CLLocationDistance = 300
+        /// How close (meters) the finger must be to a path for the dot to snap
+        /// onto it. Beyond this the dot follows the finger freely, so you can
+        /// move through open areas that aren't on a lane (and the map follows).
+        private let pathSnapMeters: CLLocationDistance = 30
         private var isSnappingZoom = false
         private var hasPerformedInitialSetup = false
 
@@ -458,7 +462,7 @@ struct RTMLiveMapView: UIViewRepresentable {
             case .began, .changed:
                 // Snap the dot to the nearest path so it stays on the network.
                 let fingerCoordinate = mapView.convert(point, toCoordinateFrom: mapView)
-                let coordinate = feedback?.snappedToPath(near: fingerCoordinate) ?? fingerCoordinate
+                let coordinate = feedback?.snappedToPath(near: fingerCoordinate, within: pathSnapMeters) ?? fingerCoordinate
                 simulated.coordinate = coordinate
                 // Position the dot view immediately (no annotation-move lag).
                 simulatedView?.center = mapView.convert(coordinate, toPointTo: mapView)

@@ -4,7 +4,7 @@ This is **TactileNav's map screen**, called **"Roux Institute Map."**
 You reach it from the app's home list: **Map → "Roux Institute Map."**
 
 > **Update:** this is now the app's **single** map (the earlier abstract "OSM" screen was removed). It is the
-> vtsly map adjusted to the **Nav_Indoor interaction model**: the map's own pan / zoom / rotate are **disabled**
+> vtsly map with the map's own pan / zoom / rotate **disabled**
 > and the map is a **VoiceOver Direct Touch** area, so a blind user can **drag one finger to move the dot and
 > explore** (buzz + speech) with VoiceOver on, while a stray rotor twist can't drift the map. **Zoom** is the
 > + / − buttons; the **• • • Options** menu lets you **jump to a Point of interest / Intersection** (dot jumps
