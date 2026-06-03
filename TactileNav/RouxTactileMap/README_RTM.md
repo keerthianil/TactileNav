@@ -1,7 +1,12 @@
 # Roux Tactile Map (RTM) — what this is
 
-This folder adds a **second map screen** to TactileNav, called **"Roux Institute — Tactile Explorer."**
+This folder is **TactileNav's map screen**, called **"Roux Institute — Tactile Explorer."**
 You reach it from the app's home list: **Map → "Roux Institute — Tactile Explorer."**
+
+> **Update:** this is now the app's **single** map. The earlier abstract "OSM" screen was removed and its
+> two key strengths were folded in here: **VoiceOver Direct Touch** (drag one finger to explore with buzz +
+> speech — works for blind users) and a **CSV touch log** of each session. The OSM comparison further down is
+> kept only for historical context.
 
 It shows the Roux Institute neighborhood (Portland, Maine) as a clean, touch‑friendly map and lets you
 "walk" around it with a **purple location dot** while the phone **buzzes and speaks** what you're near.
