@@ -44,9 +44,10 @@ final class RTMIntersectionAnnotation: NSObject, MKAnnotation {
     }
 }
 
-/// The draggable stand-in for the user's location. MKPointAnnotation's `coordinate`
-/// is KVO-compliant, so reassigning it moves the view smoothly.
-final class RTMSimulatedUserAnnotation: MKPointAnnotation {}
+// (No location dot.) This map follows the Nav-Indoor / Indoor_Route design where the
+// user's FINGER is the cursor: wherever the finger is, that point triggers feedback.
+// While exploring, a transient ring + arrow (RTMTouchIndicatorView) is drawn right
+// under the fingertip — see the bottom of this file.
 
 // MARK: - Annotation views
 
@@ -76,64 +77,74 @@ final class RTMIntersectionAnnotationView: MKAnnotationView {
 
     /// Scales the dot to the current zoom, clamped so it stays tappable but never
     /// dominates the screen when zoomed out.
-    func applyGroundScale(pointsPerMeter: CGFloat) {
-        let desired = min(max(groundDiameterMeters * pointsPerMeter, 8), 34)
+    func applyGroundScale(pointsPerMeter: CGFloat, maxDiameter: CGFloat = 34) {
+        let desired = min(max(groundDiameterMeters * pointsPerMeter, 8), maxDiameter)
         transform = CGAffineTransform(scaleX: desired / baseDiameter, y: desired / baseDiameter)
     }
 }
 
-/// The simulated user location: a blue dot with a heading arrow above it. The view
-/// rotates about its center (where the dot sits), so the arrow swings to point in
-/// the direction of travel.
-final class RTMSimulatedUserAnnotationView: MKAnnotationView {
+// MARK: - Touch indicator (the finger cursor)
 
-    override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
-        super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
+/// The "finger cursor," matching the old apps' touch indicator: a translucent yellow
+/// ring with a white center dot and a white arrow that points the way the finger is
+/// moving. It is NOT a map annotation — it's a plain overlay view positioned at the
+/// finger's screen point. It only shows while the user is touching the map, and sits
+/// exactly under the fingertip (no snapping), so what you feel matches where you touch.
+final class RTMTouchIndicatorView: UIView {
 
-        let side: CGFloat = 48
-        frame = CGRect(x: 0, y: 0, width: side, height: side)
+    private let arrowLayer = CAShapeLayer()
+
+    /// Square view; everything is drawn around its center, which we place at the finger.
+    init() {
+        super.init(frame: CGRect(x: 0, y: 0, width: 80, height: 80))
+        isUserInteractionEnabled = false   // purely visual — never eats touches
+        isHidden = true
         backgroundColor = .clear
-        isUserInteractionEnabled = false   // dragging is handled by the map's pan recognizer
-        centerOffset = .zero
 
-        let center = CGPoint(x: side / 2, y: side / 2)
-        let dotRadius: CGFloat = 11
+        let center = CGPoint(x: bounds.midX, y: bounds.midY)
 
-        // Heading arrow: a triangle pointing up, sitting just above the dot.
+        // Translucent yellow ring + white outline.
+        let ringRadius: CGFloat = 20
+        let ringRect = CGRect(x: center.x - ringRadius, y: center.y - ringRadius,
+                              width: ringRadius * 2, height: ringRadius * 2)
+        let ring = CAShapeLayer()
+        ring.path = UIBezierPath(ovalIn: ringRect).cgPath
+        ring.fillColor = UIColor(red: 1, green: 0.88, blue: 0, alpha: 0.28).cgColor
+        ring.strokeColor = UIColor.white.withAlphaComponent(0.9).cgColor
+        ring.lineWidth = 2.5
+        layer.addSublayer(ring)
+
+        // Small white center dot — marks the exact touch point.
+        let dotRadius: CGFloat = 5
+        let dotRect = CGRect(x: center.x - dotRadius, y: center.y - dotRadius,
+                             width: dotRadius * 2, height: dotRadius * 2)
+        let dot = CAShapeLayer()
+        dot.path = UIBezierPath(ovalIn: dotRect).cgPath
+        dot.fillColor = UIColor.white.cgColor
+        layer.addSublayer(dot)
+
+        // White arrow above the center, pointing "up" by default; we rotate the whole
+        // view so it points the direction the finger is moving.
         let arrow = UIBezierPath()
-        arrow.move(to: CGPoint(x: center.x, y: center.y - dotRadius - 12))
-        arrow.addLine(to: CGPoint(x: center.x - 7, y: center.y - dotRadius - 1))
-        arrow.addLine(to: CGPoint(x: center.x + 7, y: center.y - dotRadius - 1))
+        arrow.move(to: CGPoint(x: center.x, y: center.y - 36))        // tip
+        arrow.addLine(to: CGPoint(x: center.x - 7, y: center.y - 22)) // base left
+        arrow.addLine(to: CGPoint(x: center.x + 7, y: center.y - 22)) // base right
         arrow.close()
-        let arrowLayer = CAShapeLayer()
         arrowLayer.path = arrow.cgPath
-        // Purple — distinct from blue roads, green paths, orange intersections, and
-        // red POI markers, so the location dot stands out from every feature.
-        arrowLayer.fillColor = UIColor.systemPurple.cgColor
+        arrowLayer.fillColor = UIColor.white.cgColor
         layer.addSublayer(arrowLayer)
-
-        // The location dot: purple fill, white ring, soft shadow.
-        let dotRect = CGRect(x: center.x - dotRadius, y: center.y - dotRadius, width: dotRadius * 2, height: dotRadius * 2)
-        let dotLayer = CAShapeLayer()
-        dotLayer.path = UIBezierPath(ovalIn: dotRect).cgPath
-        dotLayer.fillColor = UIColor.systemPurple.cgColor
-        dotLayer.strokeColor = UIColor.white.cgColor
-        dotLayer.lineWidth = 3
-        dotLayer.shadowColor = UIColor.black.cgColor
-        dotLayer.shadowOpacity = 0.3
-        dotLayer.shadowRadius = 3
-        dotLayer.shadowOffset = .zero
-        layer.addSublayer(dotLayer)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    /// Rotates the arrow to face `heading` (radians, 0 = up, clockwise positive).
-    func setHeading(_ heading: CGFloat) {
+    /// Moves the indicator under the fingertip and (optionally) turns the arrow to the
+    /// direction of travel. `heading` is in radians, 0 = up, clockwise positive.
+    func move(to point: CGPoint, heading: CGFloat?) {
         CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        transform = CGAffineTransform(rotationAngle: heading)
+        CATransaction.setDisableActions(true)   // follow the finger crisply, no lag
+        center = point
+        if let heading { transform = CGAffineTransform(rotationAngle: heading) }
         CATransaction.commit()
     }
 }
