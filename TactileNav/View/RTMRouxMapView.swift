@@ -16,8 +16,8 @@
 //  way for a blind / VoiceOver user to control the map — VoiceOver can read and tap
 //  buttons normally, whereas pinching to zoom is hard without sight.
 //
-//  Note: exploration uses a simulated dot (not real GPS), so this screen needs no
-//  location permission.
+//  Note: exploration uses the finger as the cursor (not real GPS), so this screen
+//  needs no location permission.
 //
 
 import SwiftUI
@@ -40,11 +40,11 @@ struct RTMRouxMapView: View {
     // The map writes its current zoom distance here; we don't show it, but the map
     // needs somewhere to report it.
     @State private var zoom: Double = 0
+    @State private var currentZoomLevel: RTMFunctionalZoomLevel = .streets
 
-    // Rotor-style cursors: each "Next place / Next intersection" tap advances
-    // through the list and jumps the dot there (wraps around).
+    // Rotor-style cursor: each "Next point of interest" tap advances through the
+    // list and jumps the camera there (wraps around).
     @State private var poiCursor = -1
-    @State private var intersectionCursor = -1
 
     var body: some View {
         Group {
@@ -62,6 +62,8 @@ struct RTMRouxMapView: View {
         }
         .navigationTitle("Roux Institute Map")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .background(BackSwipeDisabler())
         .task { await load() }   // runs once when the screen appears
     }
 
@@ -80,76 +82,70 @@ struct RTMRouxMapView: View {
                 intersections: intersections,
                 pois: pois,
                 command: $command,
-                debugZoom: $zoom
+                debugZoom: $zoom,
+                currentZoomLevel: $currentZoomLevel
             )
             .ignoresSafeArea()
 
-            controls(pois: pois, intersections: intersections)
+            controls(pois: pois)
                 .padding(.trailing, 16)
                 .padding(.bottom, 32)
         }
-        // Stop the swipe-from-edge "back" so swiping to move the map can't pop
-        // the screen. Back stays on the nav-bar button and VoiceOver Z-scrub.
-        .background(BackSwipeDisabler())
     }
 
     /// The stack of round buttons. Each one just sets `command`; the map reacts.
     /// Order top→bottom: zoom in (+), zoom out (−), re-center on the dot.
-    private func controls(
-        pois: [RTMDiscoveredPOI],
-        intersections: [RTMDiscoveredIntersection]
-    ) -> some View {
+    private func controls(pois: [RTMDiscoveredPOI]) -> some View {
         VStack(spacing: 12) {
             controlButton(
                 systemImage: "plus",
                 label: "Zoom in",
-                hint: "Moves one zoom level closer."
-            ) { command = .zoomIn }
+                hint: "Currently \(currentZoomLevel.voiceOverLabel). Moves one level closer to detail. Or triple tap the map to cycle zoom."
+            ) { sendCommand(.zoomIn) }
 
             controlButton(
                 systemImage: "minus",
                 label: "Zoom out",
-                hint: "Moves one zoom level farther away."
-            ) { command = .zoomOut }
+                hint: "Currently \(currentZoomLevel.voiceOverLabel). Moves one level toward overview. Or triple tap the map to cycle zoom."
+            ) { sendCommand(.zoomOut) }
 
-            optionsMenu(pois: pois, intersections: intersections)
+            optionsMenu(pois: pois)
         }
     }
 
     /// A tappable "Options" menu — the VoiceOver-friendly way to navigate without
-    /// dragging. Pick a Point of Interest or Intersection and the dot jumps there
-    /// and announces it (like choosing from a rotor). Also center / fit.
-    private func optionsMenu(
-        pois: [RTMDiscoveredPOI],
-        intersections: [RTMDiscoveredIntersection]
-    ) -> some View {
+    /// dragging. Pick a point of interest and the camera jumps there and announces
+    /// it (like choosing from a rotor). Also page turn, center, and fit.
+    private func optionsMenu(pois: [RTMDiscoveredPOI]) -> some View {
         Menu {
-            if !pois.isEmpty {
+            if currentZoomLevel.showPOIs, !pois.isEmpty {
                 Button {
                     poiCursor = (poiCursor + 1) % pois.count
                     let p = pois[poiCursor]
-                    command = .moveTo(lat: p.coordinate.latitude, lon: p.coordinate.longitude)
+                    sendCommand(.moveTo(lat: p.coordinate.latitude, lon: p.coordinate.longitude))
                 } label: {
                     Label("Next point of interest", systemImage: "mappin.and.ellipse")
                 }
             }
-            if !intersections.isEmpty {
-                Button {
-                    intersectionCursor = (intersectionCursor + 1) % intersections.count
-                    let x = intersections[intersectionCursor]
-                    command = .moveTo(lat: x.coordinate.latitude, lon: x.coordinate.longitude)
-                } label: {
-                    Label("Next intersection", systemImage: "arrow.triangle.branch")
-                }
+            Button { sendCommand(.pageTurn(.north)) } label: {
+                Label("Go north", systemImage: "arrow.up")
             }
-            Button {
-                command = .centerOnUser
-            } label: {
-                Label("Free explore (back to my dot)", systemImage: "hand.draw")
+            Button { sendCommand(.pageTurn(.south)) } label: {
+                Label("Go south", systemImage: "arrow.down")
             }
-            Button {
-                command = .fitFeatures
-            } label: {
+            Button { sendCommand(.pageTurn(.east)) } label: {
+                Label("Go east", systemImage: "arrow.right")
+            }
+            Button { sendCommand(.pageTurn(.west)) } label: {
+                Label("Go west", systemImage: "arrow.left")
+            }
+            Button { sendCommand(.goBackPage) } label: {
+                Label("Go back", systemImage: "arrow.uturn.backward")
+            }
+            Button { sendCommand(.centerOnUser) } label: {
+                Label("Center map", systemImage: "scope")
+            }
+            Button { sendCommand(.fitFeatures) } label: {
                 Label("Fit whole area", systemImage: "map")
             }
         } label: {
@@ -159,7 +155,13 @@ struct RTMRouxMapView: View {
                 .background(.regularMaterial, in: Circle())
         }
         .accessibilityLabel("Options")
-        .accessibilityHint("Step to the next place or intersection, return to free explore, or fit the whole map.")
+        .accessibilityHint("Step to places, turn the page north south east or west, go back, center, or fit the whole area.")
+    }
+
+    /// Resets then sets `command` so repeated taps of the same action always reach the map.
+    private func sendCommand(_ newCommand: RTMMapCommand) {
+        command = .none
+        DispatchQueue.main.async { command = newCommand }
     }
 
     /// Makes one round, VoiceOver-labeled button. We reuse this for every control so
@@ -224,27 +226,106 @@ struct RTMRouxMapView: View {
         // Tell VoiceOver users what just appeared and how to use it.
         UIAccessibility.post(
             notification: .screenChanged,
-            argument: "Roux Institute map. \(result.streets.count) streets, \(result.pois.count) places. Drag one finger to explore streets and places. Use the zoom and Options buttons to change the view."
+            argument: "Roux Institute map. \(result.streets.count) streets, \(result.pois.count) places. Drag one finger to explore. Triple tap to cycle zoom. At the edge, double tap to turn the page. Two-finger double tap to go back."
         )
     }
 }
 
-/// Disables the swipe-from-left-edge "back" gesture while this screen is shown,
-/// so swiping to move the map can't accidentally pop back. Back is still
-/// available via the navigation-bar button and the VoiceOver Z-scrub. The
-/// gesture is re-enabled when the screen leaves.
-private struct BackSwipeDisabler: UIViewControllerRepresentable {
-    func makeUIViewController(context: Context) -> Controller { Controller() }
-    func updateUIViewController(_ controller: Controller, context: Context) {}
+/// Shared orientation mask — AppDelegate reads this for per-screen locking.
+enum RTMOrientationLock {
+    private static let defaultMask: UIInterfaceOrientationMask = [.portrait, .landscapeLeft, .landscapeRight]
+    static var mask: UIInterfaceOrientationMask = defaultMask
 
-    final class Controller: UIViewController {
-        override func viewWillAppear(_ animated: Bool) {
-            super.viewWillAppear(animated)
-            navigationController?.interactivePopGestureRecognizer?.isEnabled = false
+    static func lockToPortrait(for view: UIView) {
+        mask = .portrait
+        if #available(iOS 16.0, *), let windowScene = view.window?.windowScene {
+            windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait)) { _ in }
         }
-        override func viewWillDisappear(_ animated: Bool) {
-            super.viewWillDisappear(animated)
-            navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+        UIViewController.attemptRotationToDeviceOrientation()
+    }
+
+    static func unlock() {
+        mask = defaultMask
+        UIViewController.attemptRotationToDeviceOrientation()
+    }
+}
+
+/// Disables the swipe-from-left-edge "back" gesture while this screen is shown.
+/// Uses a hidden UIView (not a separate UIViewController) so `findViewController()`
+/// reaches the SwiftUI hosting controller that actually sits in the nav stack.
+private struct BackSwipeDisabler: UIViewRepresentable {
+    func makeUIView(context: Context) -> BlockingView { BlockingView() }
+
+    func updateUIView(_ uiView: BlockingView, context: Context) {
+        uiView.applyIfNeeded()
+    }
+
+    final class BlockingView: UIView {
+        private weak var popGesture: UIGestureRecognizer?
+        private var savedEnabled = true
+        private weak var savedDelegate: (any UIGestureRecognizerDelegate)?
+        private let blocker = PopGestureBlocker()
+
+        override init(frame: CGRect) {
+            super.init(frame: .zero)
+            isHidden = true
+            isUserInteractionEnabled = false
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window != nil {
+                applyIfNeeded()
+            } else {
+                restorePopGesture()
+            }
+        }
+
+        func applyIfNeeded() {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.window != nil else { return }
+                guard let nav = self.findHostingViewController()?.navigationController,
+                      let pop = nav.interactivePopGestureRecognizer else { return }
+
+                if self.popGesture !== pop {
+                    self.restorePopGesture()
+                    self.popGesture = pop
+                    self.savedEnabled = pop.isEnabled
+                    self.savedDelegate = pop.delegate
+                }
+
+                pop.isEnabled = false
+                pop.delegate = self.blocker
+                RTMOrientationLock.lockToPortrait(for: self)
+            }
+        }
+
+        private func restorePopGesture() {
+            guard let pop = popGesture else { return }
+            pop.isEnabled = savedEnabled
+            pop.delegate = savedDelegate
+            popGesture = nil
+            RTMOrientationLock.unlock()
+        }
+
+        deinit { restorePopGesture() }
+
+        private func findHostingViewController() -> UIViewController? {
+            var responder: UIResponder? = self
+            while let next = responder?.next {
+                if let vc = next as? UIViewController { return vc }
+                responder = next
+            }
+            return nil
+        }
+    }
+
+    final class PopGestureBlocker: NSObject, UIGestureRecognizerDelegate {
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            false
         }
     }
 }

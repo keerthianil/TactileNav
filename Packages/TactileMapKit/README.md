@@ -1,6 +1,6 @@
-# ProjectMultiNav
+# TactileMapKit
 
-A foundational Swift Package to load a JSON map, and get a working tactile map with haptics, spatial audio, and VoiceOver support.
+A foundational Swift Package to load a JSON tactile map and get haptics, spatial audio, and VoiceOver support. Used by **TactileNav** for shared engines and data models; the Roux Institute Map (`RTM`) implements its own `RTMLiveMapView` on top of MapKit rather than using the package's `TactileMapView`.
 
 ## Quick Start
 
@@ -25,6 +25,8 @@ struct MyMapView: View {
 ```
 
 You get: corridors, intersections, landmarks rendered on a map with haptic feedback per element type, spoken names via TTS, VoiceOver direct-interaction, and anchor points on corridors for landmarks.
+
+> **TactileNav RTM note:** the app's **Roux Institute Map** imports `TactileMapCore`, `TactileMapFeedback`, and `TactileMapLogging` only. It loads `roux_portland.json` via `TactileMapDocument`, converts coordinates in `RTMDocumentAdapter`, and renders with custom `RTMLiveMapView` (finger-as-cursor, page-turn panning, three functional zoom levels). See `TactileNav/RTM_DEVELOPER_GUIDE.md` and `README_RTM.md` in the app repo.
 
 ## Rendering Modes
 
@@ -190,12 +192,28 @@ Run unit tests in Xcode: **Product > Test** (Cmd+U). Three test suites: Core, Fe
 
 Haptics/audio require a physical iPhone — connect via USB, select the device, Cmd+R.
 
+## TactileNav RTM — which modules are used
+
+The Roux Institute Map in TactileNav is a separate implementation from `TactileMapView`. Module usage:
+
+| Module | Used by RTM? | How |
+|---|---|---|
+| **TactileMapCore** | Yes | `TactileMapDocument.load`, `PhysicalDimensions`, element types |
+| **TactileMapFeedback** | Yes | `CoreHapticsEngine`, `AVSpatialAudioEngine`, `HapticPattern` presets |
+| **TactileMapLogging** | Yes | `CSVTouchLogger` touch-session CSV files |
+| **TactileMapView** | No | RTM uses `RTMLiveMapView` (custom `MKMapView` + Coordinator) |
+
+RTM-specific behavior (not in this package): finger-as-cursor explore (no location dot), page-turn panning at screen edges, three functional zoom levels (1000 / 300 / 120 m), triple-tap zoom cycle, off-path haptic tick, zoom-aware street widths, and system-background tile overlay hiding Apple Maps.
+
+---
+
 ## Troubleshooting
 
 - **No haptics on Simulator** — Expected. Needs a physical iPhone 8+.
 - **Spatial audio sounds the same from both sides** — Use headphones/AirPods on a physical device.
 - **Map is blank** — Check your JSON file is in Build Phases > Copy Bundle Resources.
 - **VoiceOver back gesture not working** — VoiceOver must be on, `onBackGesture` must be set, view must be in a `NavigationStack`.
+- **TactileNav map shows Apple labels** — RTM hides tiles with `RTMWhiteTileOverlay` + muted `MKStandardMapConfiguration`; see `RTMLiveMapView.swift`, not `TactileMapView`.
 
 ## Project Structure
 

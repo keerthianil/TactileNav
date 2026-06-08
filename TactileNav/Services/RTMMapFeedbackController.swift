@@ -25,6 +25,8 @@
 //
 
 import Foundation
+import UIKit
+import MapKit
 import CoreLocation
 import TactileMapCore
 import TactileMapFeedback
@@ -63,6 +65,9 @@ final class RTMMapFeedbackController {
 
     /// Id of the feature the cursor is on, so we only fire on enter.
     private var activeID: String?
+
+    /// Current functional zoom level — only features visible at this level trigger feedback.
+    var currentZoomLevel: RTMFunctionalZoomLevel = .streets
 
     // MARK: - Detection radii (meters)
 
@@ -107,11 +112,18 @@ final class RTMMapFeedbackController {
     /// Called as the cursor moves. Resolves the feature under the cursor and, on a
     /// change, delivers haptic + spoken feedback. `heading` is the direction of
     /// travel (radians, 0 = north, clockwise) used only to orient a place's side.
+    private static let offPathPattern = HapticPattern(
+        intensity: 0.2,
+        sharpness: 0.8,
+        mode: .pulsing(onDuration: 0.03, offDuration: 0.15, count: 100)
+    )
+
     func update(at coordinate: CLLocationCoordinate2D, heading: CGFloat?) {
         guard let hit = nearestFeature(to: coordinate) else {
-            if activeID != nil {
+            if let activeID, activeID != "off_path" {
                 haptics.stopAll()
-                activeID = nil
+                haptics.start(pattern: Self.offPathPattern)
+                self.activeID = "off_path"
             }
             return
         }
@@ -136,11 +148,22 @@ final class RTMMapFeedbackController {
     /// Streets/intersections speak their name; places add a side relative to travel.
     private func speak(_ hit: Hit, heading: CGFloat?) {
         guard let name = hit.spokenName else { return }
+        let message: String
         if case .poi = hit.kind, let context = hit.sideContext {
             let side = resolvedSide(context, heading: heading)
-            audio.speak("\(name), on your \(side)")
+            message = "\(name), on your \(side)"
         } else {
-            audio.speak(name)
+            message = name
+        }
+        announce(message)
+    }
+
+    /// VoiceOver ON → UIAccessibility only. VoiceOver OFF → spatial audio speech only.
+    private func announce(_ message: String) {
+        if UIAccessibility.isVoiceOverRunning {
+            UIAccessibility.post(notification: .announcement, argument: message)
+        } else {
+            audio.speak(message)
         }
     }
 
@@ -148,6 +171,197 @@ final class RTMMapFeedbackController {
     func stop() {
         haptics.stopAll()
         activeID = nil
+    }
+
+    // MARK: - Zoom / pan feedback
+
+    private static let mediumTap = HapticPattern(intensity: 0.7, sharpness: 0.5, mode: .transient)
+    private static let lightTap = HapticPattern(intensity: 0.4, sharpness: 0.3, mode: .transient)
+
+    func announceZoomTransition(to level: RTMFunctionalZoomLevel) {
+        haptics.stopAll()
+        haptics.start(pattern: Self.mediumTap)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.announce(level.announcement)
+        }
+    }
+
+    func announceAlreadyAtOverviewLevel() {
+        haptics.start(pattern: Self.lightTap)
+        announce("Already at overview.")
+    }
+
+    func announceAlreadyAtDetailLevel() {
+        haptics.start(pattern: Self.lightTap)
+        announce("Already at detail.")
+    }
+
+    func playPanModeEnterFeedback() {
+        haptics.start(pattern: Self.lightTap)
+    }
+
+    func playPanModeExitFeedback() {
+        haptics.start(pattern: Self.lightTap)
+    }
+
+    func announcePanDirection(_ direction: RTMPanDirection) {
+        announce("Panned \(direction.announcement)")
+    }
+
+    // MARK: - Page-turn panning
+
+    struct OffScreenSummary: Sendable {
+        let streetCount: Int
+        let namedStreets: [String]
+        let poiNames: [String]
+        let intersectionCount: Int
+
+        var hasContent: Bool {
+            streetCount > 0 || !poiNames.isEmpty || intersectionCount > 0
+        }
+    }
+
+    func featuresOffScreen(direction: RTMEdgeDirection, visibleRect: MKMapRect) -> OffScreenSummary {
+        var streetIDs = Set<String>()
+        var namedStreets: [String] = []
+        var poiNames: [String] = []
+        var intersectionCount = 0
+
+        for street in streets where street.coordinates.count >= 2 {
+            guard currentZoomLevel.isStreetVisible(street.roadType) else { continue }
+            guard street.coordinates.contains(where: { isOffScreen($0, direction: direction, visibleRect: visibleRect) }) else { continue }
+            guard streetIDs.insert(street.id).inserted else { continue }
+            if let name = street.name, !name.isEmpty, namedStreets.count < 2 {
+                namedStreets.append(name)
+            }
+        }
+
+        if currentZoomLevel.showPOIs {
+            for anchored in anchoredPOIs where isOffScreen(anchored.anchor, direction: direction, visibleRect: visibleRect) {
+                guard poiNames.count < 2 else { break }
+                poiNames.append(anchored.poi.name)
+            }
+        }
+
+        if currentZoomLevel.showIntersections {
+            for intersection in intersections where isOffScreen(intersection.coordinate, direction: direction, visibleRect: visibleRect) {
+                intersectionCount += 1
+            }
+        }
+
+        return OffScreenSummary(
+            streetCount: streetIDs.count,
+            namedStreets: namedStreets,
+            poiNames: poiNames,
+            intersectionCount: intersectionCount
+        )
+    }
+
+    func findOrientationAnchor(comingFrom edge: RTMEdgeDirection, visibleRect: MKMapRect) -> String {
+        let marginX = visibleRect.size.width * 0.2
+        let marginY = visibleRect.size.height * 0.2
+        let edgeRect: MKMapRect = {
+            switch edge {
+            case .west:
+                return MKMapRect(x: visibleRect.minX, y: visibleRect.minY, width: marginX, height: visibleRect.size.height)
+            case .east:
+                return MKMapRect(x: visibleRect.maxX - marginX, y: visibleRect.minY, width: marginX, height: visibleRect.size.height)
+            case .north:
+                return MKMapRect(x: visibleRect.minX, y: visibleRect.minY, width: visibleRect.size.width, height: marginY)
+            case .south:
+                return MKMapRect(x: visibleRect.minX, y: visibleRect.maxY - marginY, width: visibleRect.size.width, height: marginY)
+            }
+        }()
+
+        if currentZoomLevel.showPOIs {
+            for anchored in anchoredPOIs {
+                let point = MKMapPoint(anchored.anchor)
+                if edgeRect.contains(point) { return anchored.poi.name }
+            }
+        }
+
+        for street in streets where street.coordinates.count >= 2 {
+            guard currentZoomLevel.isStreetVisible(street.roadType) else { continue }
+            for coord in street.coordinates {
+                if edgeRect.contains(MKMapPoint(coord)), let name = street.name, !name.isEmpty {
+                    return name
+                }
+            }
+        }
+
+        if currentZoomLevel.showIntersections {
+            for intersection in intersections {
+                if edgeRect.contains(MKMapPoint(intersection.coordinate)) {
+                    return intersection.name ?? "an intersection"
+                }
+            }
+        }
+
+        return "the map"
+    }
+
+    func announceEdgeEntry(direction: RTMEdgeDirection, summary: OffScreenSummary) {
+        haptics.start(pattern: Self.mediumTap)
+        announce(buildEdgeAnnouncement(direction: direction, summary: summary))
+    }
+
+    func announceNothingOffScreen(direction: RTMEdgeDirection) {
+        haptics.start(pattern: Self.lightTap)
+        announce("Nothing more \(direction.announcement).")
+    }
+
+    func announcePageTurn(direction: RTMEdgeDirection, anchor: String) {
+        haptics.start(pattern: Self.mediumTap)
+        let edge = direction.opposite.orientationEdgeLabel
+        announce("Moved \(direction.announcement). \(anchor), \(edge) edge.")
+    }
+
+    func announceGoBack() {
+        haptics.start(pattern: Self.mediumTap)
+        announce("Moved back.")
+    }
+
+    private func buildEdgeAnnouncement(direction: RTMEdgeDirection, summary: OffScreenSummary) -> String {
+        let dir = direction.announcement
+        var parts: [String] = []
+
+        if let street = summary.namedStreets.first {
+            parts.append(street)
+        }
+        if !summary.poiNames.isEmpty {
+            if summary.poiNames.count == 1 {
+                parts.append(summary.poiNames[0])
+            } else {
+                parts.append("\(summary.poiNames[0]), \(summary.poiNames[1])")
+            }
+        }
+
+        let remainingStreets = summary.streetCount - min(summary.namedStreets.count, 1)
+        if remainingStreets > 0 {
+            let noun = remainingStreets == 1 ? "street" : "streets"
+            parts.append("\(remainingStreets) \(noun)")
+        }
+        if summary.intersectionCount > 0, summary.poiNames.isEmpty, summary.namedStreets.isEmpty {
+            let noun = summary.intersectionCount == 1 ? "intersection" : "intersections"
+            parts.append("\(summary.intersectionCount) \(noun)")
+        }
+
+        if parts.isEmpty {
+            return "More, \(dir). Double tap."
+        }
+
+        let featureText = parts.joined(separator: " and ")
+        return "\(featureText), \(dir). Double tap."
+    }
+
+    private func isOffScreen(_ coordinate: CLLocationCoordinate2D, direction: RTMEdgeDirection, visibleRect: MKMapRect) -> Bool {
+        let point = MKMapPoint(coordinate)
+        switch direction {
+        case .east: return point.x > visibleRect.maxX
+        case .west: return point.x < visibleRect.minX
+        case .north: return point.y < visibleRect.minY
+        case .south: return point.y > visibleRect.maxY
+        }
     }
 
     /// Logs one CSV row each time the cursor enters a new feature.
@@ -293,9 +507,11 @@ final class RTMMapFeedbackController {
     }
 
     /// Highest-priority feature within range: POI → intersection → street.
+    /// Only considers features visible at ``currentZoomLevel``.
     private func nearestFeature(to coordinate: CLLocationCoordinate2D) -> Hit? {
         // 1. POIs — detected against their on-path anchor.
-        if let match = closest(anchoredPOIs, to: coordinate, within: poiRadius, point: { $0.anchor }) {
+        if currentZoomLevel.showPOIs,
+           let match = closest(anchoredPOIs, to: coordinate, within: poiRadius, point: { $0.anchor }) {
             return Hit(
                 id: "poi_\(match.poi.id)",
                 kind: .poi(match.poi.category),
@@ -305,7 +521,8 @@ final class RTMMapFeedbackController {
         }
 
         // 2. Intersections.
-        if let intersection = closest(intersections, to: coordinate, within: intersectionRadius, point: \.coordinate) {
+        if currentZoomLevel.showIntersections,
+           let intersection = closest(intersections, to: coordinate, within: intersectionRadius, point: \.coordinate) {
             return Hit(id: "int_\(intersection.id)", kind: .intersection, spokenName: intersection.name, sideContext: nil)
         }
 
@@ -313,6 +530,7 @@ final class RTMMapFeedbackController {
         var bestStreet: RTMDiscoveredStreet?
         var bestDistance = streetRadius
         for street in streets where street.coordinates.count >= 2 {
+            guard currentZoomLevel.isStreetVisible(street.roadType) else { continue }
             let distance = distanceToPolyline(street.coordinates, from: coordinate)
             if distance <= bestDistance {
                 bestDistance = distance
