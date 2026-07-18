@@ -152,7 +152,9 @@ final class PortlandCorridor: NSObject, PortlandMapFeature, MKOverlay {
 // MARK: - PortlandIntersection
 
 /// An intersection point rendered as an MKAnnotation.
-final class PortlandIntersection: NSObject, PortlandMapFeature, MKAnnotation {
+final class PortlandIntersection: NSObject, PortlandMapFeature, MKAnnotation, Identifiable {
+
+    var id: String { featureId }
 
     let featureId: String
     let featureType: PortlandFeatureType = .intersection
@@ -243,6 +245,8 @@ final class PortlandIntersectionAnnotationView: MKAnnotationView {
 
     static let reuseIdentifier = "PortlandIntersection"
 
+    private let trafficLightDot = UIView()
+
     override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
         super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
         setup()
@@ -260,12 +264,25 @@ final class PortlandIntersectionAnnotationView: MKAnnotationView {
         frame = CGRect(x: 0, y: 0, width: side, height: side)
         centerOffset = CGPoint(x: 0, y: 0)
 
-        backgroundColor = UIColor(red: 0xC1/255.0, green: 0x12/255.0, blue: 0x1F/255.0, alpha: 1.0) // #c1121f
+        backgroundColor = UIColor(red: 0xC1/255.0, green: 0x12/255.0, blue: 0x1F/255.0, alpha: 1.0)
         layer.borderColor = UIColor.white.cgColor
         layer.borderWidth = borderWidth
 
+        let dotSize: CGFloat = 8
+        trafficLightDot.frame = CGRect(x: side - dotSize / 2, y: -dotSize / 2, width: dotSize, height: dotSize)
+        trafficLightDot.backgroundColor = .systemGreen
+        trafficLightDot.layer.cornerRadius = dotSize / 2
+        trafficLightDot.layer.borderColor = UIColor.white.cgColor
+        trafficLightDot.layer.borderWidth = 1
+        trafficLightDot.isHidden = true
+        addSubview(trafficLightDot)
+
         isUserInteractionEnabled = false
         isAccessibilityElement = false
+    }
+
+    func showTrafficLight(_ visible: Bool) {
+        trafficLightDot.isHidden = !visible
     }
 
     override func prepareForReuse() {

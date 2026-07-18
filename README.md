@@ -13,20 +13,25 @@ Congress Street, Middle Street, and Fore Street. Five streets, six intersections
   which shows road legs at 12mm width, sidewalks, and crosswalks.
 - **Drag to explore**: Touch and drag across the map. A yellow touch indicator follows your finger.
   Each feature type has a distinct haptic pattern (roads buzz, intersections pulse, crosswalks tick).
-- **Traffic data**: Time-of-day selector (AM, Mid, PM, Eve, Night) changes the traffic density
-  announced when touching a road. Includes lane count and traffic level.
-- **APS signals**: Three intersections have simulated Accessible Pedestrian Signals. Announced
+- **Traffic visualization**: Time-of-day selector (AM, Mid, PM, Eve, Night) changes road colors
+  based on traffic density. Green = light, blue = moderate, orange = heavy. Traffic level and
+  lane count are announced when touching a road.
+- **Traffic lights**: Green dot indicators on signalized intersections.
+- **APS signals**: Three intersections have simulated Accessible Pedestrian Signals, announced
   when touching those intersections.
+- **VoiceOver support**: Full direct-touch exploration with VoiceOver enabled. Gesture recognizers
+  are automatically disabled when VoiceOver is active to prevent interference. Manual double-tap
+  detection handles intersection drill-down under VoiceOver.
 - **Back navigation**: Double-tap anywhere in Level 2, use the back button, three-finger swipe right,
   or VoiceOver escape gesture to return to Level 1.
 
 ### Street Crossing Simulation
-Spatial audio simulation of vehicles passing at a street crossing. Uses AVAudioEngine with
+Bird's-eye lane view of a two-lane street crossing with spatial audio. Uses AVAudioEngine with
 AVAudioEnvironmentNode and HRTF-HQ rendering. The listener stands at the curb while a vehicle
-sound source moves left to right.
+passes from left to right across two lanes with crosswalk markings and a traffic light.
 
-- Vehicle types: Car (200-1200 Hz), Bus (100-350 Hz), Truck (80-500 Hz), EV (2000-4000 Hz)
-- Speed slider: 15-50 mph
+- Vehicle types: Car, Bus, Truck, EV — each with distinct frequency profiles
+- Speed slider: 15–50 mph
 - Doppler effect applied automatically by AVAudioEnvironmentNode
 - Use headphones for the best spatial audio experience
 
@@ -35,20 +40,20 @@ Touch-explorable map of the Roux Institute neighborhood (Portland, ME) with real
 Drag to explore with haptic feedback. Built on the TactileMapKit package.
 
 ### Tools
-- **Feedback Customization Tester** - Per-element haptic tuning tool
-- **Data Files** - List, share, and delete CSV touch logs
+- **Feedback Customization Tester** — Per-element haptic tuning tool
+- **Data Files** — List, share, and delete CSV touch logs
 
 ## Haptic Patterns
 
-| Feature    | Pattern                  | Intensity | Sharpness |
-|------------|--------------------------|-----------|-----------|
-| Road       | Continuous buzz          | 1.0       | 0.1       |
-| Intersection | Pulse (0.25s interval) | 1.0       | 0.5       |
-| Landmark   | Fast pulse (0.12s)       | 1.0       | 0.7       |
-| Sidewalk   | Continuous (softer)      | 0.78      | 0.78      |
-| Crosswalk  | Transient ticks (0.17s)  | 1.0       | 1.0       |
+| Feature      | Pattern                  | Intensity | Sharpness |
+|--------------|--------------------------|-----------|-----------|
+| Road         | Continuous buzz          | 1.0       | 0.1       |
+| Intersection | Pulse (0.25s interval)   | 1.0       | 0.5       |
+| Landmark     | Fast pulse (0.12s)       | 1.0       | 0.7       |
+| Sidewalk     | Continuous (softer)      | 0.78      | 0.78      |
+| Crosswalk    | Transient ticks (0.17s)  | 1.0       | 1.0       |
 
-## Dependency - TactileMapKit
+## Dependency — TactileMapKit
 
 Built on **TactileMapKit**, vendored at `Packages/TactileMapKit/` from the ProjectMultiNav repository.
 
@@ -77,9 +82,9 @@ TactileNav/
     RTMDiscovered*.swift                 - Roux map data models
   View/
     PortlandMapScreen.swift              - Level 1 map + time-of-day picker
-    PortlandMapView.swift                - UIViewRepresentable with touch indicator and hit testing
+    PortlandMapView.swift                - UIViewRepresentable with touch, VoiceOver, traffic colors
     PortlandIntersectionDetailView.swift - Level 2 detail with back button
-    SpatialAudioSimulationView.swift     - Street crossing audio sandbox
+    SpatialAudioSimulationView.swift     - Lane view with spatial audio pass-by
     RTMRouxMapView.swift                 - Roux Institute map screen
     RTMLiveMapView.swift                 - MKMapView wrapper for Roux map
     RTMMapAnnotations.swift              - Roux map annotations

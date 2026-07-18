@@ -2,13 +2,13 @@ import SwiftUI
 
 struct PortlandMapScreen: View {
 
+    @Environment(\.dismiss) private var dismiss
     @State private var selectedTimeOfDay: TrafficTimeOfDay = .midday
     @State private var features: [PortlandMapFeature] = []
     @State private var apsLocations: [PortlandAPSLocation] = []
     @State private var trafficSegments: [PortlandTrafficSegment] = []
     @State private var trafficIntersections: [PortlandTrafficIntersection] = []
     @State private var selectedIntersection: PortlandIntersection?
-    @State private var showingDetail = false
     @State private var hasAppeared = false
 
     var body: some View {
@@ -18,9 +18,12 @@ struct PortlandMapScreen: View {
                 isInteractionEnabled: true,
                 onDoubleTapIntersection: { intersection in
                     selectedIntersection = intersection
-                    showingDetail = true
+                },
+                onBackGesture: {
+                    dismiss()
                 },
                 trafficSegments: trafficSegments,
+                trafficIntersections: trafficIntersections,
                 apsLocations: apsLocations,
                 selectedTimeOfDay: selectedTimeOfDay,
                 level: 1
@@ -31,10 +34,14 @@ struct PortlandMapScreen: View {
         }
         .navigationTitle("Portland Old Port")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(isPresented: $showingDetail) {
-            if let intersection = selectedIntersection {
-                PortlandIntersectionDetailView(intersection: intersection)
-            }
+        .fullScreenCover(item: $selectedIntersection) { intersection in
+            PortlandIntersectionDetailView(
+                intersection: intersection,
+                trafficSegments: trafficSegments,
+                trafficIntersections: trafficIntersections,
+                apsLocations: apsLocations,
+                selectedTimeOfDay: selectedTimeOfDay
+            )
         }
         .onAppear {
             guard !hasAppeared else { return }
@@ -63,7 +70,7 @@ struct PortlandMapScreen: View {
             .pickerStyle(.segmented)
             .padding(.horizontal)
             .accessibilityLabel("Traffic time of day")
-            .accessibilityHint("Changes the traffic density announced when touching a road")
+            .accessibilityHint("Changes the traffic density shown on roads and announced when exploring")
 
             Text(selectedTimeOfDay.description)
                 .font(.caption2)

@@ -18,31 +18,22 @@ enum VehicleType: String, CaseIterable {
 
     var description: String {
         switch self {
-        case .car:
-            return "Standard passenger car with internal combustion engine"
-        case .bus:
-            return "City transit bus with heavy diesel engine"
-        case .truck:
-            return "Large freight truck with deep exhaust rumble"
-        case .ev:
-            return "Electric vehicle with quiet high-pitched motor whine"
+        case .car:   return "Standard passenger car"
+        case .bus:   return "City transit bus"
+        case .truck: return "Large freight truck"
+        case .ev:    return "Electric vehicle, quiet at low speeds"
         }
     }
 
     var soundInfo: String {
         switch self {
-        case .car:
-            return "~70 dBA at 25 ft. Broadband engine noise centered around 200-1200 Hz."
-        case .bus:
-            return "~80 dBA at 25 ft. Low-frequency rumble dominant at 100-350 Hz."
-        case .truck:
-            return "~85 dBA at 25 ft. Deep engine drone and exhaust at 80-500 Hz."
-        case .ev:
-            return "~50 dBA at 25 ft. Very quiet high-frequency whine at 2000-4000 Hz. Hard to detect at low speeds."
+        case .car:   return "~70 dBA, 200-1200 Hz"
+        case .bus:   return "~80 dBA, 100-350 Hz"
+        case .truck: return "~85 dBA, 80-500 Hz"
+        case .ev:    return "~50 dBA, 2000-4000 Hz"
         }
     }
 
-    /// Each entry is (frequencyHz, amplitude).
     var frequencies: [(Double, Float)] {
         switch self {
         case .car:   return [(200, 0.5), (800, 0.5), (1200, 0.5)]
@@ -60,6 +51,15 @@ enum VehicleType: String, CaseIterable {
         case .ev:    return .green
         }
     }
+
+    var icon: String {
+        switch self {
+        case .car:   return "car.fill"
+        case .bus:   return "bus.fill"
+        case .truck: return "truck.box.fill"
+        case .ev:    return "bolt.car.fill"
+        }
+    }
 }
 
 // MARK: - Vehicle Audio Simulator
@@ -67,26 +67,21 @@ enum VehicleType: String, CaseIterable {
 @MainActor
 final class VehicleAudioSimulator: ObservableObject {
 
-    // Audio graph
     private let audioEngine = AVAudioEngine()
     private let environment = AVAudioEnvironmentNode()
     private let vehicleNode = AVAudioPlayerNode()
 
-    // Playback state
     @Published var isPlaying = false
-    @Published var vehicleScreenX: CGFloat = 0
+    @Published var vehicleProgress: CGFloat = 0
 
     private var positionTimer: Timer?
     private var startTime: Date = .distantPast
     private var duration: Double = 2.0
     private var audioBuffer: AVAudioPCMBuffer?
 
-    // Position range in 3D space
     private let startX: Float = -20
     private let endX: Float = 20
     private let forwardZ: Float = 2
-
-    // MARK: - Setup
 
     init() {
         configureEngine()
@@ -99,34 +94,25 @@ final class VehicleAudioSimulator: ObservableObject {
     }
 
     private func configureEngine() {
-        // Attach nodes
         audioEngine.attach(environment)
         audioEngine.attach(vehicleNode)
 
-        // Spatialization settings
         vehicleNode.renderingAlgorithm = .HRTFHQ
         vehicleNode.sourceMode = .spatializeIfMono
 
-        // Distance attenuation
         environment.distanceAttenuationParameters.distanceAttenuationModel = .inverse
         environment.distanceAttenuationParameters.referenceDistance = 5.0
         environment.distanceAttenuationParameters.maximumDistance = 50.0
         environment.distanceAttenuationParameters.rolloffFactor = 1.0
 
-        // Connect: vehicleNode -> environment -> mainMixer -> output
         let monoFormat = AVAudioFormat(standardFormatWithSampleRate: 44100, channels: 1)
         guard let monoFormat else { return }
         audioEngine.connect(vehicleNode, to: environment, format: monoFormat)
         audioEngine.connect(environment, to: audioEngine.mainMixerNode, format: nil)
 
-        // Initial position off-screen left
         vehicleNode.position = AVAudio3DPoint(x: startX, y: 0, z: forwardZ)
     }
 
-    // MARK: - Tone Buffer Generation
-
-    /// Creates a looping PCM buffer that mixes the given sine-wave components
-    /// with subtle amplitude modulation for a more realistic engine sound.
     private func generateToneBuffer(frequencies: [(Double, Float)]) -> AVAudioPCMBuffer? {
         let sampleRate: Double = 44100
         let lengthSeconds: Double = 3.0
@@ -140,24 +126,20 @@ final class VehicleAudioSimulator: ObservableObject {
 
         guard let channelData = buffer.floatChannelData?[0] else { return nil }
 
-        // Amplitude modulation frequency (slight tremolo for realism)
-        let amFreq = 6.0  // Hz – subtle engine pulse
+        let amFreq = 6.0
 
         for frame in 0..<Int(frameCount) {
             let t = Double(frame) / sampleRate
             var sample: Float = 0
 
-            // Mix all frequency components
             for (freq, amp) in frequencies {
                 let sine = sin(2.0 * .pi * freq * t)
                 sample += amp * Float(sine)
             }
 
-            // Apply subtle amplitude modulation
             let am = Float(1.0 + 0.15 * sin(2.0 * .pi * amFreq * t))
             sample *= am
 
-            // Normalize so total peak stays <= 1.0
             let componentCount = Float(frequencies.count)
             sample /= componentCount
 
@@ -167,66 +149,44 @@ final class VehicleAudioSimulator: ObservableObject {
         return buffer
     }
 
-    // MARK: - Playback
-
     func play(vehicle: VehicleType, speedMPH: Double) {
-        // If already playing, stop first
         if isPlaying { stop() }
 
-        // Configure audio session
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .spokenAudio, options: [.mixWithOthers])
             try session.setActive(true)
         } catch {
-            print("Audio session configuration failed: \(error)")
             return
         }
 
-        // Generate tone
-        guard let buffer = generateToneBuffer(frequencies: vehicle.frequencies) else {
-            print("Failed to generate tone buffer")
-            return
-        }
+        guard let buffer = generateToneBuffer(frequencies: vehicle.frequencies) else { return }
         audioBuffer = buffer
 
-        // Reset position
         vehicleNode.position = AVAudio3DPoint(x: startX, y: 0, z: forwardZ)
-        vehicleScreenX = -150
+        vehicleProgress = 0
 
-        // Calculate duration: distance / speed
-        let distanceMeters: Double = Double(endX - startX) // 40 meters
+        let distanceMeters: Double = Double(endX - startX)
         let speedMS = speedMPH * 0.447
         duration = distanceMeters / speedMS
 
-        // Start engine
         do {
             if !audioEngine.isRunning {
                 try audioEngine.start()
             }
         } catch {
-            print("Audio engine failed to start: \(error)")
             return
         }
 
-        // Schedule looping buffer
         vehicleNode.scheduleBuffer(buffer, at: nil, options: .loops, completionHandler: nil)
         vehicleNode.play()
 
         isPlaying = true
         startTime = Date()
 
-        // VoiceOver announcement
-        UIAccessibility.post(
-            notification: .announcement,
-            argument: "Vehicle simulation started"
-        )
+        UIAccessibility.post(notification: .announcement, argument: "Vehicle simulation started")
 
-        // Start position update timer
-        positionTimer = Timer.scheduledTimer(
-            withTimeInterval: 0.02,
-            repeats: true
-        ) { [weak self] _ in
+        positionTimer = Timer.scheduledTimer(withTimeInterval: 0.02, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.updatePosition()
@@ -237,16 +197,10 @@ final class VehicleAudioSimulator: ObservableObject {
     func stop() {
         positionTimer?.invalidate()
         positionTimer = nil
-
         vehicleNode.stop()
-
         isPlaying = false
-        vehicleScreenX = 0
-
-        UIAccessibility.post(
-            notification: .announcement,
-            argument: "Vehicle simulation stopped"
-        )
+        vehicleProgress = 0
+        UIAccessibility.post(notification: .announcement, argument: "Vehicle simulation stopped")
     }
 
     private func updatePosition() {
@@ -254,38 +208,26 @@ final class VehicleAudioSimulator: ObservableObject {
         let progress = elapsed / duration
 
         if progress >= 1.0 {
-            // Simulation complete
             positionTimer?.invalidate()
             positionTimer = nil
             vehicleNode.stop()
             isPlaying = false
-            vehicleScreenX = 150
-
-            UIAccessibility.post(
-                notification: .announcement,
-                argument: "Vehicle has passed"
-            )
+            vehicleProgress = 1.0
+            UIAccessibility.post(notification: .announcement, argument: "Vehicle has passed")
             return
         }
 
-        // Interpolate 3D position from startX to endX
         let currentX = startX + Float(progress) * (endX - startX)
         vehicleNode.position = AVAudio3DPoint(x: currentX, y: 0, z: forwardZ)
-
-        // Map to screen offset (-150 ... +150)
-        let normalized = CGFloat((currentX - startX) / (endX - startX))
-        vehicleScreenX = -150 + normalized * 300
+        vehicleProgress = CGFloat(progress)
     }
 
-    /// Tears down the audio engine completely.
     func tearDown() {
         stop()
         audioEngine.stop()
         do {
             try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        } catch {
-            print("Failed to deactivate audio session: \(error)")
-        }
+        } catch { }
     }
 }
 
@@ -298,8 +240,6 @@ struct SpatialAudioSimulationView: View {
     @State private var isPlaying = false
     @StateObject private var audioSimulator = VehicleAudioSimulator()
 
-    /// Doppler shift percentages for display purposes.
-    /// The actual Doppler effect is handled automatically by AVAudioEnvironmentNode.
     private var dopplerShift: (approaching: Double, receding: Double) {
         let speedMS = speed * 0.447
         let soundSpeed = 343.0
@@ -308,24 +248,14 @@ struct SpatialAudioSimulationView: View {
         return (approaching, receding)
     }
 
-    private var vehicleColor: Color {
-        selectedVehicle.color
-    }
-
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                headerSection
-                roadVisualization
-                vehicleSelector
-                speedControl
-                playButton
-                dopplerInfoSection
-                soundCharacteristicsSection
-                Spacer(minLength: 30)
-            }
+        VStack(spacing: 0) {
+            laneView
+                .frame(maxHeight: .infinity)
+
+            controlPanel
         }
-        .navigationTitle("Street Crossing Simulation")
+        .navigationTitle("Street Crossing")
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear {
             audioSimulator.tearDown()
@@ -335,192 +265,203 @@ struct SpatialAudioSimulationView: View {
         }
     }
 
-    // MARK: - Header
+    // MARK: - Lane View (Bird's Eye)
 
-    private var headerSection: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "figure.walk.motion")
-                .font(.system(size: 40))
-                .foregroundColor(.blue)
-                .accessibilityHidden(true)
+    private var laneView: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let height = geo.size.height
+            let sidewalkH: CGFloat = 40
+            let roadH = height - sidewalkH * 2
+            let laneH = roadH / 2
 
-            Text("Street Crossing Simulation")
-                .font(.title2)
-                .fontWeight(.bold)
-
-            Text("Simulates vehicle sounds at a street crossing. Stand at the curb and hear traffic pass in front of you with spatial audio.")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(.top)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Street Crossing Simulation. Simulates vehicle sounds at a street crossing with spatial audio.")
-    }
-
-    // MARK: - Road Visualization
-
-    private var roadVisualization: some View {
-        VStack(spacing: 0) {
-            Rectangle()
-                .fill(Color.gray.opacity(0.15))
-                .frame(height: 20)
-
-            ZStack {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.gray.opacity(0.35))
-                    .frame(height: 80)
-
+            ZStack(alignment: .topLeading) {
+                // Top sidewalk
                 Rectangle()
-                    .fill(Color.yellow)
-                    .frame(height: 3)
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(width: width, height: sidewalkH)
 
+                // Road surface
+                Rectangle()
+                    .fill(Color.gray.opacity(0.45))
+                    .frame(width: width, height: roadH)
+                    .offset(y: sidewalkH)
+
+                // Lane divider (dashed yellow center line)
+                Path { path in
+                    let y = sidewalkH + laneH
+                    path.move(to: CGPoint(x: 0, y: y))
+                    path.addLine(to: CGPoint(x: width, y: y))
+                }
+                .stroke(Color.yellow, style: StrokeStyle(lineWidth: 3, dash: [10, 8]))
+
+                // Lane direction arrows
+                ForEach(0..<3, id: \.self) { i in
+                    let x = width * CGFloat(i + 1) / 4
+                    Image(systemName: "arrow.left")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white.opacity(0.4))
+                        .position(x: x, y: sidewalkH + laneH / 2)
+                }
+                ForEach(0..<3, id: \.self) { i in
+                    let x = width * CGFloat(i + 1) / 4
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white.opacity(0.4))
+                        .position(x: x, y: sidewalkH + laneH + laneH / 2)
+                }
+
+                // Vehicle (moves across lane 2)
                 if isPlaying {
-                    Circle()
-                        .fill(vehicleColor)
-                        .frame(width: 24, height: 24)
-                        .offset(x: audioSimulator.vehicleScreenX)
-                        .animation(.linear(duration: 0.02), value: audioSimulator.vehicleScreenX)
+                    let vehicleX = width * audioSimulator.vehicleProgress
+                    Image(systemName: selectedVehicle.icon)
+                        .font(.system(size: 28))
+                        .foregroundColor(selectedVehicle.color)
+                        .position(x: vehicleX, y: sidewalkH + laneH + laneH / 2)
+                        .animation(.linear(duration: 0.02), value: audioSimulator.vehicleProgress)
                 }
-            }
 
-            ZStack {
+                // Bottom sidewalk
                 Rectangle()
-                    .fill(Color.gray.opacity(0.15))
-                    .frame(height: 20)
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(width: width, height: sidewalkH)
+                    .offset(y: sidewalkH + roadH)
 
-                Image(systemName: "figure.stand")
-                    .font(.system(size: 14))
-                    .foregroundColor(.blue)
+                // Pedestrian on bottom sidewalk
+                VStack(spacing: 2) {
+                    Image(systemName: "figure.stand")
+                        .font(.system(size: 22))
+                        .foregroundColor(.blue)
+                    Text("You")
+                        .font(.caption2)
+                        .foregroundColor(.blue)
+                }
+                .position(x: width / 2, y: sidewalkH + roadH + sidewalkH / 2)
+
+                // Crosswalk stripes at center
+                ForEach(0..<6, id: \.self) { i in
+                    let y = sidewalkH + CGFloat(i) * (roadH / 6) + roadH / 12
+                    Rectangle()
+                        .fill(Color.white.opacity(0.6))
+                        .frame(width: 30, height: 4)
+                        .position(x: width / 2, y: y)
+                }
+
+                // Traffic light at top
+                VStack(spacing: 2) {
+                    Circle()
+                        .fill(isPlaying ? Color.green : Color.red)
+                        .frame(width: 10, height: 10)
+                    Rectangle()
+                        .fill(Color.gray)
+                        .frame(width: 3, height: 12)
+                }
+                .position(x: width / 2 + 25, y: sidewalkH / 2)
+
+                // Labels
+                Text("Lane 1")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.5))
+                    .position(x: 35, y: sidewalkH + laneH / 2)
+
+                Text("Lane 2")
+                    .font(.caption2)
+                    .foregroundColor(.white.opacity(0.5))
+                    .position(x: 35, y: sidewalkH + laneH + laneH / 2)
             }
         }
-        .padding(.horizontal)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Street crossing visualization. You are standing at the curb.")
-        .accessibilityValue(isPlaying ? "Vehicle passing from left to right" : "Ready")
+        .accessibilityLabel("Street crossing lane view. Two-lane road with crosswalk. You are at the curb.")
+        .accessibilityValue(isPlaying ? "\(selectedVehicle.label) passing in lane 2" : "Ready to simulate")
     }
 
-    // MARK: - Vehicle Selector
+    // MARK: - Control Panel
 
-    private var vehicleSelector: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Vehicle Type")
-                .font(.headline)
-
-            Picker("Vehicle Type", selection: $selectedVehicle) {
+    private var controlPanel: some View {
+        VStack(spacing: 12) {
+            // Vehicle picker
+            HStack(spacing: 8) {
                 ForEach(VehicleType.allCases, id: \.self) { type in
-                    Text(type.label).tag(type)
+                    Button {
+                        if !isPlaying { selectedVehicle = type }
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: type.icon)
+                                .font(.system(size: 18))
+                            Text(type.label)
+                                .font(.caption2)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(selectedVehicle == type ? type.color.opacity(0.2) : Color.clear)
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(selectedVehicle == type ? type.color : Color.gray.opacity(0.3), lineWidth: 1)
+                        )
+                    }
+                    .foregroundColor(selectedVehicle == type ? type.color : .secondary)
+                    .disabled(isPlaying)
+                    .accessibilityLabel("\(type.label). \(type.description)")
+                    .accessibilityAddTraits(selectedVehicle == type ? .isSelected : [])
                 }
             }
-            .pickerStyle(.segmented)
-            .accessibilityHint("Select the type of vehicle to simulate")
-            .disabled(isPlaying)
+            .padding(.horizontal)
 
-            Text(selectedVehicle.description)
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .accessibilityLabel(selectedVehicle.description)
-        }
-        .padding(.horizontal)
-    }
-
-    // MARK: - Speed Control
-
-    private var speedControl: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Speed: \(Int(speed)) mph")
-                .font(.headline)
-
-            Slider(value: $speed, in: 15...50, step: 5)
-                .accessibilityLabel("Vehicle speed")
-                .accessibilityValue("\(Int(speed)) miles per hour")
-                .accessibilityHint("Adjust the speed of the simulated vehicle")
-                .disabled(isPlaying)
-
+            // Speed + sound info
             HStack {
-                Text("15 mph")
+                Text("\(Int(speed)) mph")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .frame(width: 50)
+
+                Slider(value: $speed, in: 15...50, step: 5)
+                    .disabled(isPlaying)
+                    .accessibilityLabel("Vehicle speed")
+                    .accessibilityValue("\(Int(speed)) miles per hour")
+
+                Text(selectedVehicle.soundInfo)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .frame(width: 90)
+            }
+            .padding(.horizontal)
+
+            // Play button
+            Button(action: playSimulation) {
+                HStack {
+                    Image(systemName: isPlaying ? "stop.fill" : "play.fill")
+                    Text(isPlaying ? "Stop" : "Play Pass-By")
+                }
+                .font(.headline)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(isPlaying ? Color.red : Color.blue)
+                .cornerRadius(10)
+            }
+            .padding(.horizontal)
+            .accessibilityLabel(isPlaying ? "Stop simulation" : "Play pass-by simulation")
+            .accessibilityHint("Vehicle crosses from left to right with spatial audio")
+
+            // Doppler + headphone note
+            HStack {
+                let shift = dopplerShift
+                Image(systemName: "headphones")
+                    .foregroundColor(.secondary)
+                Text("Use headphones")
                     .font(.caption2)
                     .foregroundColor(.secondary)
                 Spacer()
-                Text("50 mph")
+                Text("Doppler: +\(String(format: "%.1f", shift.approaching))% / -\(String(format: "%.1f", shift.receding))%")
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
+            .padding(.horizontal)
         }
-        .padding(.horizontal)
+        .padding(.vertical, 12)
+        .background(Color(.systemBackground))
     }
-
-    // MARK: - Play Button
-
-    private var playButton: some View {
-        Button(action: playSimulation) {
-            HStack {
-                Image(systemName: isPlaying ? "stop.fill" : "play.fill")
-                Text(isPlaying ? "Stop" : "Play Pass-By")
-            }
-            .font(.headline)
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(isPlaying ? Color.red : Color.blue)
-            .cornerRadius(12)
-        }
-        .padding(.horizontal)
-        .accessibilityLabel(isPlaying ? "Stop simulation" : "Play pass-by simulation")
-        .accessibilityHint(
-            isPlaying
-                ? "Stop the vehicle simulation"
-                : "Start the vehicle passing from left to right with spatial audio and Doppler effect"
-        )
-    }
-
-    // MARK: - Doppler Info
-
-    private var dopplerInfoSection: some View {
-        let shift = dopplerShift
-
-        return VStack(alignment: .leading, spacing: 12) {
-            Label("Doppler Effect", systemImage: "waveform.badge.magnifyingglass")
-                .font(.headline)
-
-            Text("As the vehicle approaches, its pitch rises slightly. As it passes and moves away, the pitch drops. This is the Doppler effect.")
-                .font(.subheadline)
-
-            Text("At \(Int(speed)) mph: +\(String(format: "%.1f", shift.approaching))% pitch approaching, -\(String(format: "%.1f", shift.receding))% receding")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            Text("Use headphones for the best spatial audio experience. The sound will move from your left ear to your right ear as the vehicle passes.")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .padding(.top, 4)
-        }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
-        .padding(.horizontal)
-        .accessibilityElement(children: .combine)
-    }
-
-    // MARK: - Sound Characteristics
-
-    private var soundCharacteristicsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Sound Characteristics", systemImage: "speaker.wave.3")
-                .font(.headline)
-
-            Text(selectedVehicle.soundInfo)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-        }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
-        .padding(.horizontal)
-        .accessibilityElement(children: .combine)
-    }
-
-    // MARK: - Actions
 
     private func playSimulation() {
         if isPlaying {
@@ -532,8 +473,6 @@ struct SpatialAudioSimulationView: View {
         }
     }
 }
-
-// MARK: - Preview
 
 #if DEBUG
 struct SpatialAudioSimulationView_Previews: PreviewProvider {

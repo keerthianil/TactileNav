@@ -16,6 +16,7 @@ protocol PortlandMapTouchDelegate: AnyObject {
 final class PortlandAccessibleMapView: MKMapView {
 
     weak var touchDelegate: PortlandMapTouchDelegate?
+    var onEscapeGesture: (() -> Void)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -31,7 +32,7 @@ final class PortlandAccessibleMapView: MKMapView {
         isAccessibilityElement = true
         accessibilityTraits = [.allowsDirectInteraction]
         accessibilityLabel = "Tactile map"
-        accessibilityHint = "Drag to explore streets and intersections. Double tap an intersection for detail."
+        accessibilityHint = "Drag to explore streets and intersections. Double tap an intersection for detail. Two finger scrub to go back."
 
         if #available(iOS 17.0, *) {
             accessibilityDirectTouchOptions = .silentOnTouch
@@ -45,6 +46,10 @@ final class PortlandAccessibleMapView: MKMapView {
 
     override func accessibilityPerformEscape() -> Bool {
         touchDelegate?.touchEnded(at: .zero, in: self)
+        if let handler = onEscapeGesture {
+            handler()
+            return true
+        }
         return false
     }
 
@@ -119,8 +124,11 @@ final class PortlandTouchIndicatorView: UIView {
     }
 
     func show(at point: CGPoint) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         center = point
         isHidden = false
+        CATransaction.commit()
     }
 
     func hide() {
@@ -145,10 +153,11 @@ final class PortlandWhiteTileRenderer: MKTileOverlayRenderer {
     }
 }
 
-// MARK: - Overlay Feature Type Tagging
+// MARK: - Overlay Feature Tagging
 
 private var overlayFeatureTypeKey: UInt8 = 0
 private var overlayLevelKey: UInt8 = 0
+private var overlayFeatureIdKey: UInt8 = 0
 
 extension MKPolyline {
     var portlandFeatureType: PortlandFeatureType? {
@@ -158,6 +167,10 @@ extension MKPolyline {
     var portlandLevel: Int {
         get { (objc_getAssociatedObject(self, &overlayLevelKey) as? Int) ?? 1 }
         set { objc_setAssociatedObject(self, &overlayLevelKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+    }
+    var portlandFeatureId: String? {
+        get { objc_getAssociatedObject(self, &overlayFeatureIdKey) as? String }
+        set { objc_setAssociatedObject(self, &overlayFeatureIdKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
     }
 }
 
@@ -170,6 +183,7 @@ struct PortlandMapView: UIViewRepresentable {
     var onDoubleTapIntersection: ((PortlandIntersection) -> Void)?
     var onBackGesture: (() -> Void)?
     var trafficSegments: [PortlandTrafficSegment]
+    var trafficIntersections: [PortlandTrafficIntersection]
     var apsLocations: [PortlandAPSLocation]
     var selectedTimeOfDay: TrafficTimeOfDay
     var level: Int = 1
@@ -200,25 +214,59 @@ struct PortlandMapView: UIViewRepresentable {
         mapView.addSubview(touchIndicator)
         context.coordinator.touchIndicator = touchIndicator
 
-        // Gesture recognizers
+        // Gesture recognizers (non-VoiceOver mode only)
         let doubleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleDoubleTap(_:)))
         doubleTap.numberOfTapsRequired = 2
+        doubleTap.delegate = context.coordinator
+        doubleTap.delaysTouchesBegan = false
+        doubleTap.cancelsTouchesInView = false
         mapView.addGestureRecognizer(doubleTap)
+        context.coordinator.doubleTapGesture = doubleTap
 
         let singleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleSingleTap(_:)))
         singleTap.numberOfTapsRequired = 1
         singleTap.require(toFail: doubleTap)
+        singleTap.delegate = context.coordinator
         mapView.addGestureRecognizer(singleTap)
+        context.coordinator.singleTapGesture = singleTap
 
         let longPress = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleLongPress(_:)))
         longPress.minimumPressDuration = 0
+        longPress.require(toFail: doubleTap)
+        longPress.delegate = context.coordinator
+        longPress.delaysTouchesBegan = false
+        longPress.cancelsTouchesInView = false
         mapView.addGestureRecognizer(longPress)
+        context.coordinator.longPressGesture = longPress
 
-        // Three-finger swipe back (Level 2)
-        let threeFingerSwipe = UISwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleThreeFingerSwipe(_:)))
-        threeFingerSwipe.numberOfTouchesRequired = 3
-        threeFingerSwipe.direction = .right
-        mapView.addGestureRecognizer(threeFingerSwipe)
+        let threeFingerSwipeRight = UISwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleThreeFingerSwipe(_:)))
+        threeFingerSwipeRight.numberOfTouchesRequired = 3
+        threeFingerSwipeRight.direction = .right
+        mapView.addGestureRecognizer(threeFingerSwipeRight)
+
+        let threeFingerSwipeLeft = UISwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleThreeFingerSwipe(_:)))
+        threeFingerSwipeLeft.numberOfTouchesRequired = 3
+        threeFingerSwipeLeft.direction = .left
+        mapView.addGestureRecognizer(threeFingerSwipeLeft)
+
+        // When VoiceOver is on, disable ALL custom gesture recognizers.
+        // Touch delegate handles exploration and double-tap detection.
+        // VoiceOver Z-gesture (two-finger scrub) triggers accessibilityPerformEscape.
+        let isVO = UIAccessibility.isVoiceOverRunning
+        singleTap.isEnabled = !isVO
+        longPress.isEnabled = !isVO
+        doubleTap.isEnabled = !isVO
+        threeFingerSwipeRight.isEnabled = !isVO
+        threeFingerSwipeLeft.isEnabled = !isVO
+
+        context.coordinator.mapViewRef = mapView
+
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.voiceOverStatusChanged),
+            name: UIAccessibility.voiceOverStatusDidChangeNotification,
+            object: nil
+        )
 
         return mapView
     }
@@ -228,13 +276,26 @@ struct PortlandMapView: UIViewRepresentable {
         let featuresChanged = coordinator.features.count != features.count ||
             coordinator.features.first?.featureId != features.first?.featureId
 
+        let timeChanged = coordinator.lastRenderedTimeOfDay != selectedTimeOfDay
+
         coordinator.features = features
         coordinator.trafficSegments = trafficSegments
+        coordinator.trafficIntersections = trafficIntersections
         coordinator.apsLocations = apsLocations
         coordinator.selectedTimeOfDay = selectedTimeOfDay
         coordinator.onDoubleTapIntersection = onDoubleTapIntersection
         coordinator.onBackGesture = onBackGesture
         coordinator.level = level
+
+        if level == 2 {
+            mapView.onEscapeGesture = { [weak coordinator] in
+                guard let coordinator else { return }
+                coordinator.feedbackManager.stopAllFeedback()
+                coordinator.onBackGesture?()
+            }
+        } else {
+            mapView.onEscapeGesture = nil
+        }
 
         if featuresChanged {
             let existingOverlays = mapView.overlays.filter { !($0 is PortlandBlankTileOverlay) }
@@ -247,6 +308,7 @@ struct PortlandMapView: UIViewRepresentable {
                     let polyline = corridor.polyline
                     polyline.portlandFeatureType = .corridor
                     polyline.portlandLevel = corridor.level
+                    polyline.portlandFeatureId = corridor.featureId
                     mapView.addOverlay(polyline, level: .aboveLabels)
 
                 case let sidewalk as PortlandSidewalk:
@@ -272,7 +334,11 @@ struct PortlandMapView: UIViewRepresentable {
                 }
             }
 
+            coordinator.lastRenderedTimeOfDay = selectedTimeOfDay
             setFixedViewport(mapView)
+        } else if timeChanged {
+            coordinator.lastRenderedTimeOfDay = selectedTimeOfDay
+            coordinator.updateTrafficColors(on: mapView)
         }
     }
 
@@ -326,30 +392,103 @@ struct PortlandMapView: UIViewRepresentable {
 
     // MARK: - Coordinator
 
-    final class Coordinator: NSObject, MKMapViewDelegate, PortlandMapTouchDelegate {
+    final class Coordinator: NSObject, MKMapViewDelegate, PortlandMapTouchDelegate, UIGestureRecognizerDelegate {
 
         var features: [PortlandMapFeature] = []
         var trafficSegments: [PortlandTrafficSegment] = []
+        var trafficIntersections: [PortlandTrafficIntersection] = []
         var apsLocations: [PortlandAPSLocation] = []
         var selectedTimeOfDay: TrafficTimeOfDay = .midday
+        var lastRenderedTimeOfDay: TrafficTimeOfDay?
         var onDoubleTapIntersection: ((PortlandIntersection) -> Void)?
         var onBackGesture: (() -> Void)?
         var level: Int = 1
         var touchIndicator: PortlandTouchIndicatorView?
+        weak var mapViewRef: PortlandAccessibleMapView?
 
-        private let feedbackManager = PortlandFeedbackManager.shared
+        // Gesture recognizer references
+        weak var singleTapGesture: UITapGestureRecognizer?
+        weak var longPressGesture: UILongPressGestureRecognizer?
+        weak var doubleTapGesture: UITapGestureRecognizer?
+
+        // VoiceOver manual double-tap detection
+        private var voTouchStartPoint: CGPoint?
+        private var voTouchStartTime: Date?
+        private var voLastTapPoint: CGPoint?
+        private var voLastTapTime: Date?
+        private var voPendingSingleTap: DispatchWorkItem?
+        private var voIsDragging = false
+
+        let feedbackManager = PortlandFeedbackManager.shared
         private var currentFeature: PortlandMapFeature?
         private var lastAnnouncedFeatureId: String?
 
         init(parent: PortlandMapView) {
             self.features = parent.features
             self.trafficSegments = parent.trafficSegments
+            self.trafficIntersections = parent.trafficIntersections
             self.apsLocations = parent.apsLocations
             self.selectedTimeOfDay = parent.selectedTimeOfDay
             self.onDoubleTapIntersection = parent.onDoubleTapIntersection
             self.onBackGesture = parent.onBackGesture
             self.level = parent.level
             super.init()
+        }
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+
+        // MARK: - UIGestureRecognizerDelegate
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            true
+        }
+
+        // MARK: - VoiceOver State Change
+
+        @objc func voiceOverStatusChanged() {
+            let isVO = UIAccessibility.isVoiceOverRunning
+            singleTapGesture?.isEnabled = !isVO
+            longPressGesture?.isEnabled = !isVO
+            doubleTapGesture?.isEnabled = !isVO
+        }
+
+        // MARK: - Traffic Colors
+
+        func trafficColor(forCorridorId corridorId: String) -> UIColor {
+            guard let segment = trafficSegments.first(where: { $0.id == corridorId }),
+                  let profile = segment.hourlyProfile[selectedTimeOfDay.rawValue] else {
+                return UIColor(red: 0x02/255.0, green: 0x3E/255.0, blue: 0x8A/255.0, alpha: 1.0)
+            }
+
+            switch profile.level {
+            case "very_light":
+                return UIColor(red: 0x4A/255.0, green: 0x9E/255.0, blue: 0x4A/255.0, alpha: 1.0)
+            case "light":
+                return UIColor(red: 0x21/255.0, green: 0x96/255.0, blue: 0xF3/255.0, alpha: 1.0)
+            case "moderate":
+                return UIColor(red: 0x02/255.0, green: 0x3E/255.0, blue: 0x8A/255.0, alpha: 1.0)
+            case "heavy":
+                return UIColor(red: 0xE6/255.0, green: 0x7E/255.0, blue: 0x22/255.0, alpha: 1.0)
+            case "very_heavy":
+                return UIColor(red: 0xC1/255.0, green: 0x12/255.0, blue: 0x1F/255.0, alpha: 1.0)
+            default:
+                return UIColor(red: 0x02/255.0, green: 0x3E/255.0, blue: 0x8A/255.0, alpha: 1.0)
+            }
+        }
+
+        func updateTrafficColors(on mapView: MKMapView) {
+            for overlay in mapView.overlays {
+                guard let polyline = overlay as? MKPolyline,
+                      polyline.portlandFeatureType == .corridor,
+                      let featureId = polyline.portlandFeatureId else { continue }
+
+                if let renderer = mapView.renderer(for: overlay) as? MKPolylineRenderer {
+                    renderer.strokeColor = trafficColor(forCorridorId: featureId)
+                    renderer.setNeedsDisplay()
+                }
+            }
         }
 
         // MARK: - MKMapViewDelegate
@@ -364,7 +503,11 @@ struct PortlandMapView: UIViewRepresentable {
 
                 switch polyline.portlandFeatureType {
                 case .corridor:
-                    renderer.strokeColor = UIColor(red: 0x02/255.0, green: 0x3E/255.0, blue: 0x8A/255.0, alpha: 1.0)
+                    if let featureId = polyline.portlandFeatureId {
+                        renderer.strokeColor = trafficColor(forCorridorId: featureId)
+                    } else {
+                        renderer.strokeColor = UIColor(red: 0x02/255.0, green: 0x3E/255.0, blue: 0x8A/255.0, alpha: 1.0)
+                    }
                     let roadWidth = polyline.portlandLevel == 2
                         ? PortlandPhysicalDimensions.mmToPoints(12.0)
                         : PortlandPhysicalDimensions.mmToPoints(4.0)
@@ -400,6 +543,8 @@ struct PortlandMapView: UIViewRepresentable {
                 let view = mapView.dequeueReusableAnnotationView(withIdentifier: PortlandIntersectionAnnotationView.reuseIdentifier)
                     ?? PortlandIntersectionAnnotationView(annotation: intersection, reuseIdentifier: PortlandIntersectionAnnotationView.reuseIdentifier)
                 view.annotation = intersection
+                let hasLight = trafficIntersections.contains { $0.id == intersection.featureId && ($0.hasTrafficLight ?? false) }
+                (view as? PortlandIntersectionAnnotationView)?.showTrafficLight(hasLight)
                 return view
             }
 
@@ -413,7 +558,7 @@ struct PortlandMapView: UIViewRepresentable {
             return nil
         }
 
-        // MARK: - Gesture Handlers
+        // MARK: - Gesture Handlers (non-VoiceOver)
 
         @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
             guard let mapView = gesture.view as? MKMapView else { return }
@@ -426,20 +571,19 @@ struct PortlandMapView: UIViewRepresentable {
             }
 
             if let intersection = hitTestIntersection(at: point, in: mapView) {
+                feedbackManager.stopAllFeedback()
                 feedbackManager.playSingleTap()
                 onDoubleTapIntersection?(intersection)
             }
         }
 
         @objc func handleSingleTap(_ gesture: UITapGestureRecognizer) {
-            guard !UIAccessibility.isVoiceOverRunning else { return }
             guard let mapView = gesture.view as? MKMapView else { return }
             let point = gesture.location(in: mapView)
             announceFeatureAt(point: point, in: mapView)
         }
 
         @objc func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
-            guard !UIAccessibility.isVoiceOverRunning else { return }
             guard let mapView = gesture.view as? MKMapView else { return }
             let point = gesture.location(in: mapView)
 
@@ -459,24 +603,37 @@ struct PortlandMapView: UIViewRepresentable {
         }
 
         @objc func handleThreeFingerSwipe(_ gesture: UISwipeGestureRecognizer) {
-            if level == 2 {
-                feedbackManager.stopAllFeedback()
-                feedbackManager.playSingleTap()
-                feedbackManager.speak("Going back")
-                onBackGesture?()
-            }
+            feedbackManager.stopAllFeedback()
+            feedbackManager.playSingleTap()
+            feedbackManager.speak("Going back")
+            onBackGesture?()
         }
 
         // MARK: - Touch Delegate (VoiceOver direct touch)
 
         func touchBegan(at point: CGPoint, in view: UIView) {
             guard let mapView = view as? MKMapView else { return }
+
+            voTouchStartPoint = point
+            voTouchStartTime = Date()
+            voIsDragging = false
+            voPendingSingleTap?.cancel()
+
             startExploration(at: point, in: mapView)
             touchIndicator?.show(at: point)
         }
 
         func touchMoved(to point: CGPoint, in view: UIView) {
             guard let mapView = view as? MKMapView else { return }
+
+            if let start = voTouchStartPoint {
+                let displacement = hypot(point.x - start.x, point.y - start.y)
+                if displacement > 8 {
+                    voIsDragging = true
+                    voPendingSingleTap?.cancel()
+                }
+            }
+
             updateExploration(at: point, in: mapView)
             touchIndicator?.show(at: point)
         }
@@ -484,9 +641,65 @@ struct PortlandMapView: UIViewRepresentable {
         func touchEnded(at point: CGPoint, in view: UIView) {
             stopExploration()
             touchIndicator?.hide()
+
+            guard let mapView = view as? MKMapView,
+                  let startPoint = voTouchStartPoint,
+                  let startTime = voTouchStartTime,
+                  !voIsDragging else {
+                voTouchStartPoint = nil
+                voTouchStartTime = nil
+                return
+            }
+
+            let displacement = hypot(point.x - startPoint.x, point.y - startPoint.y)
+            let duration = Date().timeIntervalSince(startTime)
+
+            voTouchStartPoint = nil
+            voTouchStartTime = nil
+
+            guard displacement < 28, duration < 0.45 else { return }
+
+            if let lastTime = voLastTapTime, let lastPoint = voLastTapPoint,
+               Date().timeIntervalSince(lastTime) < 0.45,
+               hypot(point.x - lastPoint.x, point.y - lastPoint.y) < 48 {
+                // Double-tap detected
+                voPendingSingleTap?.cancel()
+                voLastTapTime = nil
+                voLastTapPoint = nil
+
+                if level == 2 {
+                    feedbackManager.stopAllFeedback()
+                    onBackGesture?()
+                } else if let intersection = hitTestIntersection(at: point, in: mapView) {
+                    feedbackManager.stopAllFeedback()
+                    feedbackManager.playSingleTap()
+                    onDoubleTapIntersection?(intersection)
+                }
+            } else {
+                voLastTapTime = Date()
+                voLastTapPoint = point
+
+                let work = DispatchWorkItem { [weak self] in
+                    guard let self else { return }
+                    self.announceFeatureAt(point: point, in: mapView)
+                    self.voLastTapTime = nil
+                    self.voLastTapPoint = nil
+                }
+                voPendingSingleTap = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
+            }
         }
 
         // MARK: - Exploration Logic
+
+        private func trafficLevel(for feature: PortlandMapFeature) -> String? {
+            guard let corridor = feature as? PortlandCorridor,
+                  let segment = trafficSegments.first(where: { $0.id == corridor.featureId }),
+                  let profile = segment.hourlyProfile[selectedTimeOfDay.rawValue] else {
+                return nil
+            }
+            return profile.level
+        }
 
         private func startExploration(at point: CGPoint, in mapView: MKMapView) {
             let feature = hitTestFeature(at: point, in: mapView)
@@ -494,7 +707,8 @@ struct PortlandMapView: UIViewRepresentable {
             lastAnnouncedFeatureId = nil
 
             if let feature = feature {
-                feedbackManager.startFeedback(for: feature)
+                let traffic = trafficLevel(for: feature)
+                feedbackManager.startFeedback(for: feature, trafficLevel: traffic)
                 announceFeature(feature)
                 lastAnnouncedFeatureId = feature.featureId
             }
@@ -510,7 +724,8 @@ struct PortlandMapView: UIViewRepresentable {
                 currentFeature = feature
 
                 if let feature = feature {
-                    feedbackManager.startFeedback(for: feature)
+                    let traffic = trafficLevel(for: feature)
+                    feedbackManager.startFeedback(for: feature, trafficLevel: traffic)
                     if feature.featureId != lastAnnouncedFeatureId {
                         announceFeature(feature)
                         lastAnnouncedFeatureId = feature.featureId
@@ -633,8 +848,15 @@ struct PortlandMapView: UIViewRepresentable {
 
             if let intersection = feature as? PortlandIntersection {
                 let hasAPS = apsLocations.contains { $0.intersectionId == intersection.featureId }
+                let hasLight = trafficIntersections.contains { $0.id == intersection.featureId && ($0.hasTrafficLight ?? false) }
+                if hasLight {
+                    text = "Signalized intersection with traffic light. " + text
+                }
                 if hasAPS {
-                    text = "Signalized intersection with accessible pedestrian signal. " + text
+                    text += ". Accessible pedestrian signal present"
+                }
+                if level == 1 {
+                    text += ". Double tap to explore intersection detail"
                 }
             }
 
@@ -644,6 +866,10 @@ struct PortlandMapView: UIViewRepresentable {
                     let levelDesc = profile?.level.replacingOccurrences(of: "_", with: " ") ?? "moderate"
                     text += ". \(segment.lanes) lanes, \(levelDesc) traffic"
                 }
+            }
+
+            if let landmark = feature as? PortlandLandmark, !landmark.tag.isEmpty {
+                text = "\(landmark.tag) stands for \(landmark.featureName). " + text
             }
 
             feedbackManager.speak(text)

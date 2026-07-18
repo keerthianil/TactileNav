@@ -28,6 +28,7 @@ final class PortlandFeedbackManager {
     private var speechSynthesizer = AVSpeechSynthesizer()
     private var dingTimer: Timer?
     private var tickTimer: Timer?
+    private var trafficRumbleTimer: Timer?
 
     // MARK: - State
 
@@ -101,12 +102,31 @@ final class PortlandFeedbackManager {
         }
     }
 
-    // MARK: - Road Feedback (Heavy continuous buzz)
+    // MARK: - Road Feedback (continuous buzz, intensity varies by traffic)
 
-    func startRoadFeedback() {
+    func startRoadFeedback(trafficLevel: String? = nil) {
         stopAllFeedback()
         activeFeedbackType = .corridor
         ensureEngineRunning()
+
+        let intensity: Float
+        let sharpness: Float
+        let trafficToneFreq: Double?
+
+        switch trafficLevel {
+        case "very_light":
+            intensity = 0.3; sharpness = 0.05; trafficToneFreq = nil
+        case "light":
+            intensity = 0.5; sharpness = 0.08; trafficToneFreq = nil
+        case "moderate":
+            intensity = 0.7; sharpness = 0.1; trafficToneFreq = 220
+        case "heavy":
+            intensity = 0.9; sharpness = 0.15; trafficToneFreq = 180
+        case "very_heavy":
+            intensity = 1.0; sharpness = 0.2; trafficToneFreq = 140
+        default:
+            intensity = 0.7; sharpness = 0.1; trafficToneFreq = nil
+        }
 
         guard let engine = hapticEngine else { return }
         do {
@@ -114,8 +134,8 @@ final class PortlandFeedbackManager {
                 CHHapticEvent(
                     eventType: .hapticContinuous,
                     parameters: [
-                        CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0),
-                        CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.1)
+                        CHHapticEventParameter(parameterID: .hapticIntensity, value: intensity),
+                        CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
                     ],
                     relativeTime: 0,
                     duration: 30.0
@@ -123,14 +143,17 @@ final class PortlandFeedbackManager {
             ], parameters: [])
             currentPlayer = try engine.makePlayer(with: pattern)
             try currentPlayer?.start(atTime: CHHapticTimeImmediate)
-        } catch {
-            // Haptics unavailable on this device
+        } catch { }
+
+        if let freq = trafficToneFreq {
+            startTrafficRumble(frequency: freq)
         }
     }
 
     func stopRoadFeedback() {
         guard activeFeedbackType == .corridor else { return }
         stopCurrentHaptic()
+        stopTrafficRumble()
         activeFeedbackType = nil
     }
 
@@ -336,6 +359,7 @@ final class PortlandFeedbackManager {
         stopCurrentHaptic()
         stopDingSound()
         stopTickSound()
+        stopTrafficRumble()
         speechSynthesizer.stopSpeaking(at: .immediate)
         activeFeedbackType = nil
     }
@@ -377,6 +401,21 @@ final class PortlandFeedbackManager {
     private func stopTickSound() {
         tickTimer?.invalidate()
         tickTimer = nil
+    }
+
+    private func startTrafficRumble(frequency: Double) {
+        playTone(frequency: frequency, duration: 0.15)
+        trafficRumbleTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.playTone(frequency: frequency, duration: 0.15)
+            }
+        }
+    }
+
+    private func stopTrafficRumble() {
+        trafficRumbleTimer?.invalidate()
+        trafficRumbleTimer = nil
     }
 
     /// Synthesizes a pure tone at the given frequency and duration using AVAudioEngine.
@@ -461,11 +500,10 @@ final class PortlandFeedbackManager {
 
     // MARK: - Feature-Based Feedback
 
-    /// Starts feedback appropriate for the given feature type.
-    func startFeedback(for feature: PortlandMapFeature) {
+    func startFeedback(for feature: PortlandMapFeature, trafficLevel: String? = nil) {
         switch feature.featureType {
         case .corridor:
-            startRoadFeedback()
+            startRoadFeedback(trafficLevel: trafficLevel)
         case .intersection:
             startIntersectionFeedback()
         case .landmark:
