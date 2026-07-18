@@ -24,7 +24,7 @@ public struct CoordinateTransform: Sendable {
     /// The y-coordinate that serves as the vertical stretch origin. Default: 500.0.
     public let centerY: Double
 
-    /// The default transform matching the Nav_Indoor coordinate system.
+    /// The default coordinate transform.
     public static let `default` = CoordinateTransform(
         scaleFactor: 100_000,
         stretchFactorX: 1.0,

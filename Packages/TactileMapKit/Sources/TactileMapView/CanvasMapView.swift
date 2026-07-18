@@ -36,6 +36,7 @@ struct CanvasMapView: UIViewRepresentable {
     let hitDetection: HitDetectionConfig
     let policy: any FeedbackPolicy
     var onBackGesture: (() -> Void)?
+    var onDoubleTap: ((any TactileMapElement) -> Void)?
 
     func makeUIView(context: Context) -> AccessibleCanvasHost {
         let host = AccessibleCanvasHost(frame: .zero)
@@ -50,6 +51,9 @@ struct CanvasMapView: UIViewRepresentable {
             policy: policy
         )
         let hostingController = UIHostingController(rootView: contentView)
+        if #available(iOS 16.4, *) {
+            hostingController.safeAreaRegions = []
+        }
         hostingController.view.backgroundColor = .clear
         hostingController.view.translatesAutoresizingMaskIntoConstraints = false
 
@@ -73,6 +77,13 @@ struct CanvasMapView: UIViewRepresentable {
     func updateUIView(_ host: AccessibleCanvasHost, context: Context) {
         host.onBackGesture = onBackGesture
         host.isBackGestureEnabled = configuration.isVoiceOverBackGestureEnabled
+
+        context.coordinator.hostingController?.rootView = CanvasContentView(
+            document: document,
+            configuration: configuration,
+            hitDetection: hitDetection,
+            policy: policy
+        )
     }
 
     func makeCoordinator() -> CanvasCoordinator {
@@ -99,6 +110,14 @@ struct CanvasMapView: UIViewRepresentable {
         threeFingerPan.maximumNumberOfTouches = 3
         threeFingerPan.delegate = coordinator
         view.addGestureRecognizer(threeFingerPan)
+
+        let doubleTap = UITapGestureRecognizer(
+            target: coordinator,
+            action: #selector(CanvasCoordinator.handleDoubleTap(_:))
+        )
+        doubleTap.numberOfTapsRequired = 2
+        doubleTap.delegate = coordinator
+        view.addGestureRecognizer(doubleTap)
     }
 }
 
@@ -113,6 +132,47 @@ class CanvasCoordinator: NSObject, UIGestureRecognizerDelegate {
     init(parent: CanvasMapView) {
         self.parent = parent
         super.init()
+    }
+
+    @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
+        guard let contentView = hostingController?.view else { return }
+        let point = gesture.location(in: contentView)
+
+        let config = parent.configuration
+        let doc = parent.document
+        let pad = config.canvasPadding
+        let size = contentView.bounds.size
+        let availW = size.width - pad * 2
+        let availH = size.height - pad * 2
+        let scale = min(availW / CGFloat(doc.bounds.width),
+                        availH / CGFloat(doc.bounds.height))
+        let ox = (size.width - CGFloat(doc.bounds.width) * scale) / 2
+        let oy = (size.height - CGFloat(doc.bounds.height) * scale) / 2
+        let t = CanvasMapTransform(scale: scale, ox: ox, oy: oy)
+
+        let detector = CanvasHitDetector(config: parent.hitDetection)
+        let anchorR = PhysicalDimensions.mmToPoints(config.anchorPointDiameterMM) / 2
+
+        let hit = detector.findElement(
+            at: point,
+            elements: doc.features,
+            transform: t,
+            velocity: 0,
+            anchorCenter: { feature, screenPt in
+                let style = config.resolvedStyle(for: feature.elementType, geometry: feature.geometry)
+                guard style.showAnchorDot else { return nil }
+                let side = feature.properties.side ?? "right"
+                let elementSize = PhysicalDimensions.mmToPoints(style.sizeMM)
+                let offset = elementSize / 2 + 4 + anchorR
+                let xOff: CGFloat = (side == "left") ? -offset : offset
+                return CGPoint(x: screenPt.x + xOff, y: screenPt.y)
+            }
+        )
+
+        if let (element, touchType) = hit {
+            parent.policy.onTap(element: element, touchType: touchType)
+            parent.onDoubleTap?(element)
+        }
     }
 
     @objc func handleThreeFingerSwipe(_ gesture: UISwipeGestureRecognizer) {
@@ -187,6 +247,12 @@ struct CanvasContentView: View {
         Color(configuration.landmarkColor.withAlphaComponent(0.7))
     }
 
+    private static let builtInTypes: Set<TactileElementType> = [.corridor, .intersection, .landmark]
+
+    private func isCustomType(_ type: TactileElementType) -> Bool {
+        !Self.builtInTypes.contains(type)
+    }
+
     private var hitDetector: CanvasHitDetector {
         CanvasHitDetector(config: hitDetection)
     }
@@ -200,9 +266,12 @@ struct CanvasContentView: View {
                 .overlay(
                     Canvas { ctx, _ in
                         drawCorridors(ctx, t: t)
+                        drawCustomLines(ctx, t: t)
                         drawJunctionDiscs(ctx, t: t)
+                        drawCustomPolygons(ctx, t: t)
                         drawLandmarks(ctx, t: t)
                         drawIntersections(ctx, t: t)
+                        drawCustomPoints(ctx, t: t)
                         drawAnchorDots(ctx, t: t)
                         if configuration.showTouchIndicator, let pt = touchPoint {
                             drawTouchIndicator(ctx, at: pt, angle: touchAngle)
@@ -320,13 +389,75 @@ struct CanvasContentView: View {
         }
     }
 
+    // MARK: - Drawing: Custom LineString Elements
+
+    private func drawCustomLines(_ ctx: GraphicsContext, t: CanvasMapTransform) {
+        for f in document.features where isCustomType(f.elementType) {
+            guard case .lineString(let pts) = f.geometry, pts.count >= 2 else { continue }
+            let style = configuration.resolvedStyle(for: f.elementType, geometry: f.geometry)
+            let strokeW = PhysicalDimensions.mmToPoints(style.sizeMM)
+            var path = Path()
+            path.move(to: t.apply(pts[0]))
+            for pt in pts.dropFirst() { path.addLine(to: t.apply(pt)) }
+            ctx.stroke(path, with: .color(Color(style.color)),
+                       style: StrokeStyle(lineWidth: strokeW,
+                                          lineCap: .round, lineJoin: .round))
+        }
+    }
+
+    // MARK: - Drawing: Custom Polygon Elements
+
+    private func drawCustomPolygons(_ ctx: GraphicsContext, t: CanvasMapTransform) {
+        for f in document.features where isCustomType(f.elementType) {
+            guard case .polygon(let pts) = f.geometry, pts.count >= 3 else { continue }
+            let style = configuration.resolvedStyle(for: f.elementType, geometry: f.geometry)
+            let color = Color(style.color)
+            var path = Path()
+            path.move(to: t.apply(pts[0]))
+            for pt in pts.dropFirst() { path.addLine(to: t.apply(pt)) }
+            path.closeSubpath()
+            ctx.fill(path, with: .color(color.opacity(0.5)))
+            ctx.stroke(path, with: .color(color),
+                       lineWidth: PhysicalDimensions.mmToPoints(style.sizeMM))
+        }
+    }
+
+    // MARK: - Drawing: Custom Point Elements
+
+    private func drawCustomPoints(_ ctx: GraphicsContext, t: CanvasMapTransform) {
+        for f in document.features where isCustomType(f.elementType) {
+            guard case .point(let c) = f.geometry else { continue }
+            let style = configuration.resolvedStyle(for: f.elementType, geometry: f.geometry)
+            let color = Color(style.color)
+            let center = t.apply(c)
+
+            switch style.pointShape {
+            case .circle:
+                let r = PhysicalDimensions.mmToPoints(style.sizeMM) / 2
+                let rect = circleRect(center: center, radius: r)
+                ctx.fill(Path(ellipseIn: rect), with: .color(color))
+                ctx.stroke(Path(ellipseIn: rect),
+                           with: .color(Color(white: 0.25)),
+                           lineWidth: max(1, r * 0.15))
+            case .roundedRect(let cornerRadius):
+                let w = PhysicalDimensions.mmToPoints(style.sizeMM)
+                let h = PhysicalDimensions.mmToPoints(style.heightMM ?? style.sizeMM)
+                let rect = CGRect(x: center.x - w / 2, y: center.y - h / 2,
+                                  width: w, height: h)
+                let shape = Path(roundedRect: rect, cornerRadius: cornerRadius)
+                ctx.fill(shape, with: .color(color))
+                ctx.stroke(shape, with: .color(color.opacity(0.7)), lineWidth: 2)
+            }
+        }
+    }
+
     // MARK: - Drawing: Anchor Dots
 
     private func drawAnchorDots(_ ctx: GraphicsContext, t: CanvasMapTransform) {
         let r = anchorRadiusPts
-        for f in document.features where f.elementType == .landmark {
+        for f in document.features {
             guard case .point(let c) = f.geometry else { continue }
-            let anchor = anchorCenter(for: f, screenPt: t.apply(c))
+            guard let anchor = anchorCenter(for: f, screenPt: t.apply(c)) else { continue }
             let rect = circleRect(center: anchor, radius: r)
             ctx.fill(Path(ellipseIn: rect), with: .color(anchorColor))
         }
@@ -374,10 +505,13 @@ struct CanvasContentView: View {
                width: radius * 2, height: radius * 2)
     }
 
-    func anchorCenter(for feature: MapElement, screenPt: CGPoint) -> CGPoint {
-        let side   = feature.properties.side ?? "right"
-        let offset = landmarkSidePts / 2 + 4 + anchorRadiusPts
-        let xOff: CGFloat = (side == "left") ? offset : -offset
+    func anchorCenter(for feature: MapElement, screenPt: CGPoint) -> CGPoint? {
+        let style = configuration.resolvedStyle(for: feature.elementType, geometry: feature.geometry)
+        guard style.showAnchorDot else { return nil }
+        let side = feature.properties.side ?? "right"
+        let elementSize = PhysicalDimensions.mmToPoints(style.sizeMM)
+        let offset = elementSize / 2 + 4 + anchorRadiusPts
+        let xOff: CGFloat = (side == "left") ? -offset : offset
         return CGPoint(x: screenPt.x + xOff, y: screenPt.y)
     }
 
@@ -391,7 +525,7 @@ struct CanvasContentView: View {
             transform: t,
             velocity: currentVelocity,
             anchorCenter: { feature, screenPt in
-                anchorCenter(for: feature, screenPt: screenPt)
+                self.anchorCenter(for: feature, screenPt: screenPt)
             }
         )
 

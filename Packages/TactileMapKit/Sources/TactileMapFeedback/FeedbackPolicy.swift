@@ -19,8 +19,7 @@ public enum TouchType: Sendable {
 /// to deliver for each map element interaction.
 ///
 /// Consuming apps implement this protocol to customise feedback.  The
-/// framework ships ``DefaultFeedbackPolicy`` which reproduces the
-/// Nav_Indoor behaviour.
+/// framework ships ``DefaultFeedbackPolicy`` with sensible defaults.
 @MainActor
 public protocol FeedbackPolicy: AnyObject {
 
@@ -42,20 +41,39 @@ public protocol FeedbackPolicy: AnyObject {
 
 // MARK: - DefaultFeedbackPolicy
 
-/// The default feedback policy that reproduces Nav_Indoor behaviour:
+/// The default feedback policy:
 ///
 /// | Element      | Enter                                       | Exit           | Tap                      |
 /// |-------------|---------------------------------------------|----------------|--------------------------|
 /// | Corridor     | continuous haptic                            | stop haptics   | single tap + speak name  |
 /// | Intersection | pulsing haptic + speak name                  | stop haptics   | single tap + speak name  |
 /// | Landmark     | fast pulsing haptic + click + speak name     | stop haptics   | single tap + speak name  |
+///
+/// Subclass and override individual methods to customise feedback for
+/// specific element types while keeping the defaults for the rest:
+///
+/// ```swift
+/// class MyPolicy: DefaultFeedbackPolicy {
+///     override func onEnter(element: any TactileMapElement, touchType: TouchType) {
+///         if element.elementType == .staircase {
+///             hapticEngine.start(pattern: .intersectionPulse)
+///             audioEngine.speak("Stairs: \(element.properties.name)")
+///         } else {
+///             super.onEnter(element: element, touchType: touchType)
+///         }
+///     }
+/// }
+/// ```
 @MainActor
-public final class DefaultFeedbackPolicy: FeedbackPolicy {
+open class DefaultFeedbackPolicy: FeedbackPolicy {
 
     // MARK: - Dependencies
 
-    private let hapticEngine: HapticEngine
-    private let audioEngine: SpatialAudioEngine
+    /// The haptic engine used to play vibration patterns.
+    public let hapticEngine: HapticEngine
+
+    /// The audio engine used for speech and spatial sound.
+    public let audioEngine: SpatialAudioEngine
 
     // MARK: - Initializers
 
@@ -79,7 +97,7 @@ public final class DefaultFeedbackPolicy: FeedbackPolicy {
 
     // MARK: - FeedbackPolicy
 
-    public func onEnter(element: any TactileMapElement, touchType: TouchType) {
+    open func onEnter(element: any TactileMapElement, touchType: TouchType) {
         let name = element.properties.name
 
         switch element.elementType {
@@ -102,22 +120,22 @@ public final class DefaultFeedbackPolicy: FeedbackPolicy {
         }
     }
 
-    public func onContinue(element: any TactileMapElement, touchType: TouchType) {
+    open func onContinue(element: any TactileMapElement, touchType: TouchType) {
         // The default policy does not change feedback while the finger
         // remains on the same element.  Subclass or provide a custom
         // policy to add progressive feedback.
     }
 
-    public func onExit(element: any TactileMapElement) {
+    open func onExit(element: any TactileMapElement) {
         hapticEngine.stopAll()
     }
 
-    public func onTap(element: any TactileMapElement, touchType: TouchType) {
+    open func onTap(element: any TactileMapElement, touchType: TouchType) {
         hapticEngine.playSingleTap()
         audioEngine.speak(element.properties.name)
     }
 
-    public func stopAll() {
+    open func stopAll() {
         hapticEngine.stopAll()
         audioEngine.stopAll()
     }

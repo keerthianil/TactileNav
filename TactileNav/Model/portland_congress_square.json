@@ -1,0 +1,191 @@
+{
+  "type": "FeatureCollection",
+  "bounds": {
+    "width": 1000,
+    "height": 1000
+  },
+  "features": [
+    {
+      "id": "c_1",
+      "type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [300, 400],
+          [300, 750]
+        ]
+      },
+      "properties": {
+        "name": "Exchange Street",
+        "level": 1,
+        "accessible": true
+      }
+    },
+    {
+      "id": "c_2",
+      "type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [650, 400],
+          [650, 750]
+        ]
+      },
+      "properties": {
+        "name": "Market Street",
+        "level": 1,
+        "accessible": true
+      }
+    },
+    {
+      "id": "c_3",
+      "type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [220, 700],
+          [730, 700]
+        ]
+      },
+      "properties": {
+        "name": "Fore Street",
+        "level": 1,
+        "accessible": true
+      }
+    },
+    {
+      "id": "c_4",
+      "type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [220, 568],
+          [730, 568]
+        ]
+      },
+      "properties": {
+        "name": "Middle Street",
+        "level": 1,
+        "accessible": true
+      }
+    },
+    {
+      "id": "c_5",
+      "type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [220, 470],
+          [730, 470]
+        ]
+      },
+      "properties": {
+        "name": "Congress Street",
+        "level": 1,
+        "accessible": true
+      }
+    },
+    {
+      "id": "i_1",
+      "type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [300, 470]
+      },
+      "properties": {
+        "name": "Exchange & Congress",
+        "level": 1
+      }
+    },
+    {
+      "id": "i_2",
+      "type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [300, 568]
+      },
+      "properties": {
+        "name": "Exchange & Middle",
+        "level": 1
+      }
+    },
+    {
+      "id": "i_3",
+      "type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [300, 700]
+      },
+      "properties": {
+        "name": "Exchange & Fore",
+        "level": 1
+      }
+    },
+    {
+      "id": "i_4",
+      "type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [650, 470]
+      },
+      "properties": {
+        "name": "Market & Congress",
+        "level": 1
+      }
+    },
+    {
+      "id": "i_5",
+      "type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [650, 568]
+      },
+      "properties": {
+        "name": "Market & Middle",
+        "level": 1
+      }
+    },
+    {
+      "id": "i_6",
+      "type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [650, 700]
+      },
+      "properties": {
+        "name": "Market & Fore",
+        "level": 1
+      }
+    },
+    {
+      "id": "lm_pma",
+      "type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [299, 644]
+      },
+      "properties": {
+        "name": "Portland Museum of Art",
+        "tag": "PMA",
+        "side": "left",
+        "announcement": "Portland Museum of Art on your left",
+        "level": 1
+      }
+    },
+    {
+      "id": "lm_tommy",
+      "type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [650, 403]
+      },
+      "properties": {
+        "name": "Tommy's Park",
+        "tag": "TP",
+        "side": "left",
+        "announcement": "Tommy's Park on your left",
+        "level": 1
+      }
+    }
+  ]
+}

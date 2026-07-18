@@ -82,6 +82,26 @@ public struct TactileMapViewConfiguration: Sendable {
     /// Padding (in points) around the map content in Canvas mode.
     public var canvasPadding: CGFloat
 
+    // MARK: - Per-type styles
+
+    /// Per-type visual styles for custom (or overridden built-in) element types.
+    ///
+    /// When a type is present here, it takes precedence over the dedicated
+    /// built-in properties (``corridorColor``, ``intersectionColor``, etc.).
+    ///
+    /// Types not present fall back to built-in properties for the three
+    /// standard types, or to a geometry-based default for unknown types.
+    ///
+    /// ```swift
+    /// var config = TactileMapViewConfiguration.default
+    /// config.typeStyles[.staircase] = ElementStyle(
+    ///     color: .systemGreen,
+    ///     sizeMM: 7.0,
+    ///     pointShape: .roundedRect(cornerRadius: 3)
+    /// )
+    /// ```
+    public var typeStyles: [TactileElementType: ElementStyle]
+
     // MARK: - Default
 
     /// Default configuration.
@@ -102,7 +122,8 @@ public struct TactileMapViewConfiguration: Sendable {
         longPressMinDuration: 0.1,
         junctionDiscEnabled: true,
         showTouchIndicator: true,
-        canvasPadding: 8
+        canvasPadding: 8,
+        typeStyles: [:]
     )
 
     // MARK: - Initializer
@@ -127,7 +148,8 @@ public struct TactileMapViewConfiguration: Sendable {
         longPressMinDuration: TimeInterval = 0.1,
         junctionDiscEnabled: Bool = true,
         showTouchIndicator: Bool = true,
-        canvasPadding: CGFloat = 8
+        canvasPadding: CGFloat = 8,
+        typeStyles: [TactileElementType: ElementStyle] = [:]
     ) {
         self.renderingMode = renderingMode
         self.backgroundColor = backgroundColor
@@ -146,5 +168,47 @@ public struct TactileMapViewConfiguration: Sendable {
         self.junctionDiscEnabled = junctionDiscEnabled
         self.showTouchIndicator = showTouchIndicator
         self.canvasPadding = canvasPadding
+        self.typeStyles = typeStyles
+    }
+
+    // MARK: - Style resolution
+
+    /// Resolves the visual style for a given element type and geometry.
+    ///
+    /// Lookup order:
+    /// 1. ``typeStyles`` dictionary (explicit per-type override)
+    /// 2. Built-in properties for `.corridor`, `.intersection`, `.landmark`
+    /// 3. Geometry-based fallback for unregistered custom types
+    public func resolvedStyle(
+        for elementType: TactileElementType,
+        geometry: TactileGeometry
+    ) -> ElementStyle {
+        if let custom = typeStyles[elementType] {
+            return custom
+        }
+
+        switch elementType {
+        case .corridor:
+            return ElementStyle(color: corridorColor, sizeMM: corridorLineWidthMM)
+        case .intersection:
+            return ElementStyle(color: intersectionColor, sizeMM: intersectionDiameterMM)
+        case .landmark:
+            return ElementStyle(
+                color: landmarkColor,
+                sizeMM: landmarkWidthMM,
+                heightMM: landmarkHeightMM,
+                pointShape: .roundedRect(cornerRadius: 4),
+                showAnchorDot: true
+            )
+        default:
+            switch geometry {
+            case .point:
+                return ElementStyle(color: .systemGray, sizeMM: 6.0)
+            case .lineString:
+                return ElementStyle(color: .systemGray, sizeMM: 3.0)
+            case .polygon:
+                return ElementStyle(color: .systemGray, sizeMM: 2.0)
+            }
+        }
     }
 }

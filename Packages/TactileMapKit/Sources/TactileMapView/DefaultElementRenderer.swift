@@ -1,7 +1,8 @@
 import MapKit
 import TactileMapCore
 
-/// Renders map elements on an `MKMapView` matching the Nav_Indoor visual style.
+/// Renders map elements on an `MKMapView` matching the visual style defined
+/// in ``TactileMapViewConfiguration``.
 ///
 /// Uses ``TactileMapViewConfiguration`` to determine colors, sizes, and
 /// line widths.  All physical dimensions (millimeters) are converted to
@@ -33,6 +34,8 @@ public class DefaultElementRenderer: NSObject {
     /// - Landmark annotations: rectangle with white border and name label,
     ///   ``TactileMapViewConfiguration/landmarkColor``,
     ///   ``TactileMapViewConfiguration/landmarkWidthMM`` x ``TactileMapViewConfiguration/landmarkHeightMM``.
+    /// - Custom types: styled according to ``TactileMapViewConfiguration/typeStyles``
+    ///   or geometry-based defaults.
     ///
     /// - Parameters:
     ///   - annotation: The annotation to create a view for.
@@ -48,7 +51,7 @@ public class DefaultElementRenderer: NSObject {
             case .landmark:
                 return makeLandmarkView(for: feature, in: mapView)
             default:
-                return makeDefaultPointView(for: feature, in: mapView)
+                return makeStyledPointView(for: feature, in: mapView)
             }
         }
         return nil
@@ -76,6 +79,14 @@ public class DefaultElementRenderer: NSObject {
             renderer.lineWidth = PhysicalDimensions.mmToPoints(config.corridorLineWidthMM)
             renderer.lineCap = .round
             renderer.lineJoin = .round
+            return renderer
+        }
+
+        if let polygon = overlay as? MKPolygon {
+            let renderer = MKPolygonRenderer(polygon: polygon)
+            renderer.fillColor = UIColor.systemGray.withAlphaComponent(0.3)
+            renderer.strokeColor = .systemGray
+            renderer.lineWidth = 2.0
             return renderer
         }
 
@@ -162,7 +173,6 @@ public class DefaultElementRenderer: NSObject {
             config.landmarkColor.setFill()
             ctx.cgContext.fill(innerRect)
 
-            // Draw the label below the rectangle.
             let name = feature.element.properties.name
             let paragraphStyle = NSMutableParagraphStyle()
             paragraphStyle.alignment = .center
@@ -191,21 +201,81 @@ public class DefaultElementRenderer: NSObject {
         return view
     }
 
-    private func makeDefaultPointView(for feature: FeatureAnnotation, in mapView: MKMapView) -> MKAnnotationView {
-        let reuseId = "DefaultPointAnnotation"
-        let view = mapView.dequeueReusableAnnotationView(withIdentifier: reuseId) ?? MKAnnotationView(annotation: feature, reuseIdentifier: reuseId)
+    /// Creates an annotation view for a custom element type using its
+    /// resolved ``ElementStyle``.
+    private func makeStyledPointView(for feature: FeatureAnnotation, in mapView: MKMapView) -> MKAnnotationView {
+        let typeKey = feature.element.elementType.rawValue
+        let reuseId = "StyledPoint_\(typeKey)"
+        let view = mapView.dequeueReusableAnnotationView(withIdentifier: reuseId)
+            ?? MKAnnotationView(annotation: feature, reuseIdentifier: reuseId)
         view.annotation = feature
 
-        let diameter: CGFloat = PhysicalDimensions.mmToPoints(6.0)
-        let size = CGSize(width: diameter, height: diameter)
+        let style = config.resolvedStyle(
+            for: feature.element.elementType,
+            geometry: feature.element.geometry
+        )
+        let borderWidth: CGFloat = 2.0
 
-        let renderer = UIGraphicsImageRenderer(size: size)
-        view.image = renderer.image { ctx in
-            UIColor.systemGray.setFill()
-            ctx.cgContext.fillEllipse(in: CGRect(origin: .zero, size: size))
+        switch style.pointShape {
+        case .circle:
+            let diameter = PhysicalDimensions.mmToPoints(style.sizeMM)
+            let totalSize = CGSize(
+                width: diameter + borderWidth * 2,
+                height: diameter + borderWidth * 2
+            )
+            let renderer = UIGraphicsImageRenderer(size: totalSize)
+            view.image = renderer.image { ctx in
+                let borderRect = CGRect(origin: .zero, size: totalSize)
+                UIColor.white.setFill()
+                ctx.cgContext.fillEllipse(in: borderRect)
+
+                let innerRect = borderRect.insetBy(dx: borderWidth, dy: borderWidth)
+                style.color.setFill()
+                ctx.cgContext.fillEllipse(in: innerRect)
+            }
+            view.frame.size = totalSize
+
+        case .roundedRect(let cornerRadius):
+            let w = PhysicalDimensions.mmToPoints(style.sizeMM)
+            let h = PhysicalDimensions.mmToPoints(style.heightMM ?? style.sizeMM)
+            let labelHeight: CGFloat = 14.0
+            let totalWidth = w + borderWidth * 2
+            let totalHeight = h + borderWidth * 2 + labelHeight + 2
+            let totalSize = CGSize(width: max(totalWidth, 60), height: totalHeight)
+
+            let renderer = UIGraphicsImageRenderer(size: totalSize)
+            view.image = renderer.image { ctx in
+                let rectX = (totalSize.width - totalWidth) / 2
+                let borderRect = CGRect(x: rectX, y: 0, width: totalWidth, height: h + borderWidth * 2)
+                let path = UIBezierPath(roundedRect: borderRect, cornerRadius: cornerRadius)
+
+                UIColor.white.setFill()
+                path.fill()
+
+                let innerRect = borderRect.insetBy(dx: borderWidth, dy: borderWidth)
+                let innerPath = UIBezierPath(roundedRect: innerRect, cornerRadius: max(0, cornerRadius - borderWidth))
+                style.color.setFill()
+                innerPath.fill()
+
+                let name = feature.element.properties.name
+                let paragraphStyle = NSMutableParagraphStyle()
+                paragraphStyle.alignment = .center
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 10, weight: .semibold),
+                    .foregroundColor: UIColor.black,
+                    .paragraphStyle: paragraphStyle
+                ]
+                let labelRect = CGRect(
+                    x: 0,
+                    y: borderRect.maxY + 2,
+                    width: totalSize.width,
+                    height: labelHeight
+                )
+                (name as NSString).draw(in: labelRect, withAttributes: attributes)
+            }
+            view.frame.size = totalSize
         }
 
-        view.frame.size = size
         view.centerOffset = CGPoint(x: 0, y: 0)
         view.canShowCallout = false
         view.isAccessibilityElement = true

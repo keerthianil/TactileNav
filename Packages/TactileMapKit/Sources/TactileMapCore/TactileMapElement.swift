@@ -52,9 +52,10 @@ public struct MapElement: TactileMapElement, Codable, Hashable, Sendable {
 
     // MARK: - Custom Decodable
 
-    /// Decodes from either the Nav_Indoor GeoJSON-like format or the new TactileMapDocument format.
+    /// Decodes from either the GeoJSON-like FeatureCollection format or the
+    /// native TactileMapDocument format.
     ///
-    /// Nav_Indoor format:
+    /// GeoJSON-like format:
     /// ```json
     /// {
     ///   "id": "corridor-1",
@@ -80,12 +81,13 @@ public struct MapElement: TactileMapElement, Codable, Hashable, Sendable {
         self.geometry = try container.decode(TactileGeometry.self, forKey: .geometry)
         self.properties = try container.decode(TactileProperties.self, forKey: .properties)
 
-        // Try new-format "element_type" first, then fall back to deriving from properties/geometry
+        // Try "element_type" first, then "type", then fall back to inference.
         if let explicitType = try container.decodeIfPresent(TactileElementType.self, forKey: .elementType) {
             self.elementType = explicitType
+        } else if let typeString = try container.decodeIfPresent(String.self, forKey: .type),
+                  typeString != "Feature" {
+            self.elementType = TactileElementType(rawValue: typeString)
         } else {
-            // In the Nav_Indoor GeoJSON format, element type is inferred from the
-            // properties category or geometry type.
             self.elementType = MapElement.inferElementType(
                 category: properties.category,
                 geometry: geometry
@@ -106,7 +108,7 @@ public struct MapElement: TactileMapElement, Codable, Hashable, Sendable {
     // MARK: - Type inference for legacy format
 
     /// Infers the ``TactileElementType`` from properties and geometry when not
-    /// explicitly provided (Nav_Indoor backward compatibility).
+    /// explicitly provided (FeatureCollection backward compatibility).
     private static func inferElementType(
         category: String?,
         geometry: TactileGeometry

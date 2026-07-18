@@ -16,6 +16,8 @@ public struct PhysicalDimensions {
     public static let lineWidthMM: CGFloat = 4.0
     public static let circleRadiusMM: CGFloat = 4.0
 
+    private static var cachedPPI: CGFloat?
+
     // Device PPI (Pixels Per Inch) database - UPDATED WITH ALL DEVICES
     private static let devicePPI: [String: CGFloat] = [
         // iPhone 16 series
@@ -125,66 +127,12 @@ public struct PhysicalDimensions {
         let pixels = inches * ppi
         let points = pixels / scale
 
-        #if DEBUG
-        print("Converting \(mm)mm to \(points) points (PPI: \(ppi), scale: \(scale))")
-        #endif
-
         return points
     }
 
-    // Convert mm to geographic radius for MKCircle based on current map view
-    public static func mmToGeographicRadius(_ mm: CGFloat, mapView: MKMapView) -> CLLocationDistance {
-        let region = mapView.region
-        let mapWidthInMeters = region.span.longitudeDelta * 111000 * cos(region.center.latitude * .pi / 180)
-        let mapViewWidthInPoints = mapView.frame.width
-
-        let metersPerPoint = mapWidthInMeters / Double(mapViewWidthInPoints)
-        let targetPoints = mmToPoints(mm)
-        let radiusInMeters = CLLocationDistance(targetPoints) * metersPerPoint
-
-        #if DEBUG
-        print(" Map conversion: \(mm)mm -> \(targetPoints)pts -> \(radiusInMeters)m")
-        #endif
-
-        return radiusInMeters
-    }
-
-    public static func mmToMapMetersSimple(_ mm: CGFloat, zoomLevel: Double = 17.0) -> CLLocationDistance {
-        let pointsPerMeter = 3.33
-        let targetSizeInPoints = mmToPoints(mm)
-        return CLLocationDistance(targetSizeInPoints / pointsPerMeter)
-    }
-
-    public static func mmToLineWidth(_ mm: CGFloat) -> CGFloat {
-        let points = mmToPoints(mm)
-        return max(points, 1.0)
-    }
-
-    public static func tactileElementSize() -> CGFloat {
-        return mmToPoints(4.0)
-    }
-
-    private static func getScreenSizeInches() -> (width: Double, height: Double) {
-        #if canImport(UIKit)
-        let bounds = UIScreen.main.bounds
-        let scale = UIScreen.main.scale
-        #else
-        let bounds = CGRect(x: 0, y: 0, width: 375, height: 812)
-        let scale: CGFloat = 2.0
-        #endif
-        let ppi = getCurrentDevicePPI()
-
-        let widthPixels = bounds.width * scale
-        let heightPixels = bounds.height * scale
-
-        let widthInches = Double(widthPixels) / Double(ppi)
-        let heightInches = Double(heightPixels) / Double(ppi)
-
-        return (widthInches, heightInches)
-    }
-
     public static func getCurrentDevicePPI() -> CGFloat {
-        // Get the raw identifier
+        if let cached = cachedPPI { return cached }
+
         var systemInfo = utsname()
         uname(&systemInfo)
         let machineMirror = Mirror(reflecting: systemInfo.machine)
@@ -193,83 +141,49 @@ public struct PhysicalDimensions {
             return identifier + String(UnicodeScalar(UInt8(value)))
         }
 
-        print("Raw Identifier: \(identifier)")
+        let ppi: CGFloat
 
-        // Check if running in simulator
         if identifier == "arm64" || identifier == "x86_64" || identifier.contains("Simulator") {
-            // Get the simulated device from environment
-            if let simulatedDevice = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] {
-                print("Simulated Device Identifier: \(simulatedDevice)")
+            if let simulatedDevice = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"],
+               let simPPI = identifierPPI[simulatedDevice] {
+                ppi = simPPI
+            } else {
+                #if canImport(UIKit)
+                let screenHeight = UIScreen.main.nativeBounds.height
+                let screenWidth = UIScreen.main.nativeBounds.width
 
-                // Try to get PPI from identifier mapping
-                if let ppi = identifierPPI[simulatedDevice] {
-                    print("Found PPI for simulated \(simulatedDevice): \(ppi)")
-                    return ppi
+                if screenHeight == 2796 && screenWidth == 1290 {
+                    ppi = 460
+                } else if screenHeight == 2556 && screenWidth == 1179 {
+                    ppi = 460
+                } else if screenHeight == 2778 && screenWidth == 1284 {
+                    ppi = 458
+                } else if screenHeight == 2532 && screenWidth == 1170 {
+                    ppi = 460
+                } else {
+                    ppi = 460
                 }
+                #else
+                ppi = 460
+                #endif
             }
-
-            // Fallback: Try to determine from screen size
-            #if canImport(UIKit)
-            let screenHeight = UIScreen.main.nativeBounds.height
-            let screenWidth = UIScreen.main.nativeBounds.width
-            print("Simulator Screen: \(screenWidth) x \(screenHeight)")
-
-            // iPhone 16/15/14 Pro Max: 1290 x 2796
-            if screenHeight == 2796 && screenWidth == 1290 {
-                return 460
-            }
-
-            // iPhone 16/15/14 Pro: 1179 x 2556
-            if screenHeight == 2556 && screenWidth == 1179 {
-                return 460
-            }
-
-            // iPhone 16/15: 1179 x 2556
-            if screenHeight == 2556 && screenWidth == 1179 {
-                return 476
-            }
-
-            // iPhone 13 Pro Max: 1284 x 2778
-            if screenHeight == 2778 && screenWidth == 1284 {
-                return 458
-            }
-
-            // iPhone 13/12 Pro: 1170 x 2532
-            if screenHeight == 2532 && screenWidth == 1170 {
-                return 460
-            }
-            #endif
-
-            // Default for modern iPhones in simulator
-            return 460
-        }
-
-        // Physical device - try identifier mapping first
-        if let ppi = identifierPPI[identifier] {
-            print("Found PPI for \(identifier): \(ppi)")
-            return ppi
-        }
-
-        // Then try model name
-        let deviceModel = getDeviceModel()
-        if let ppi = devicePPI[deviceModel] {
-            print("Found PPI for model \(deviceModel): \(ppi)")
-            return ppi
-        }
-
-        // Fallback based on device type
-        #if canImport(UIKit)
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            print("Using default iPad PPI: 264")
-            return 264.0
+        } else if let idPPI = identifierPPI[identifier] {
+            ppi = idPPI
         } else {
-            print("Using default iPhone PPI: 460")
-            return 460.0
+            let deviceModel = getDeviceModel()
+            if let modelPPI = devicePPI[deviceModel] {
+                ppi = modelPPI
+            } else {
+                #if canImport(UIKit)
+                ppi = UIDevice.current.userInterfaceIdiom == .pad ? 264.0 : 460.0
+                #else
+                ppi = 460.0
+                #endif
+            }
         }
-        #else
-        print("Using default iPhone PPI: 460")
-        return 460.0
-        #endif
+
+        cachedPPI = ppi
+        return ppi
     }
 
     public static func getDeviceModel() -> String {

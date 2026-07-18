@@ -24,8 +24,7 @@ public enum DepartureDirection: String, Codable, Sendable, Hashable {
 /// an intersection. For example, "80 foot hallway" when the finger moves
 /// right from a corner.
 ///
-/// Extracted from Nav_Indoor's `DepartureZone`. The geometry is generic —
-/// configure zones per-map by specifying which intersections have which
+/// Configure zones per-map by specifying which intersections have which
 /// departure directions.
 ///
 /// ```swift

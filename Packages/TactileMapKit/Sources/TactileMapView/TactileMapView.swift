@@ -36,6 +36,10 @@ public struct TactileMapView: View {
     /// Optional closure called when the user performs a back gesture.
     public var onBackGesture: (() -> Void)?
 
+    /// Optional closure called when the user double-taps a map element.
+    /// Receives the tapped element, enabling intersection zoom or other actions.
+    public var onDoubleTap: ((any TactileMapElement) -> Void)?
+
     // MARK: - Initializer
 
     /// Creates a tactile map view.
@@ -47,13 +51,15 @@ public struct TactileMapView: View {
     ///   - hitDetection: Hit detection configuration.
     ///   - coordinateTransform: Coordinate transform (MapKit mode only).
     ///   - onBackGesture: Closure called when the user performs a back gesture.
+    ///   - onDoubleTap: Closure called when the user double-taps a map element.
     public init(
         document: TactileMapDocument,
         configuration: TactileMapViewConfiguration = .default,
         feedbackPolicy: any FeedbackPolicy,
         hitDetection: HitDetectionConfig = .default,
         coordinateTransform: CoordinateTransform = .default,
-        onBackGesture: (() -> Void)? = nil
+        onBackGesture: (() -> Void)? = nil,
+        onDoubleTap: ((any TactileMapElement) -> Void)? = nil
     ) {
         self.document = document
         self.configuration = configuration
@@ -61,6 +67,7 @@ public struct TactileMapView: View {
         self.hitDetection = hitDetection
         self.coordinateTransform = coordinateTransform
         self.onBackGesture = onBackGesture
+        self.onDoubleTap = onDoubleTap
     }
 
     // MARK: - Body
@@ -73,7 +80,8 @@ public struct TactileMapView: View {
                 configuration: configuration,
                 hitDetection: hitDetection,
                 policy: feedbackPolicy,
-                onBackGesture: onBackGesture
+                onBackGesture: onBackGesture,
+                onDoubleTap: onDoubleTap
             )
 
         case .mapKit:
@@ -83,7 +91,8 @@ public struct TactileMapView: View {
                 feedbackPolicy: feedbackPolicy,
                 hitDetection: hitDetection,
                 coordinateTransform: coordinateTransform,
-                onBackGesture: onBackGesture
+                onBackGesture: onBackGesture,
+                onDoubleTap: onDoubleTap
             )
         }
     }
@@ -107,6 +116,7 @@ struct MapKitMapView: UIViewRepresentable {
     let hitDetection: HitDetectionConfig
     let coordinateTransform: CoordinateTransform
     var onBackGesture: (() -> Void)?
+    var onDoubleTap: ((any TactileMapElement) -> Void)?
 
     // MARK: - UIViewRepresentable
 
@@ -164,6 +174,26 @@ struct MapKitMapView: UIViewRepresentable {
 
     func updateUIView(_ mapView: AccessibleMapView, context: Context) {
         mapView.onBackGesture = onBackGesture
+
+        let coordinator = context.coordinator
+
+        let oldIDs = Set(coordinator.elements.map(\.id))
+        let newIDs = Set(document.features.map(\.id))
+        guard oldIDs != newIDs else { return }
+
+        mapView.removeOverlays(mapView.overlays)
+        mapView.removeAnnotations(mapView.annotations)
+
+        let blankOverlay = BlankTileOverlay(urlTemplate: nil)
+        mapView.addOverlay(blankOverlay, level: .aboveLabels)
+
+        let mapRect = coordinateTransform.mapRect(
+            for: document,
+            edgePadding: configuration.edgePadding
+        )
+        mapView.setVisibleMapRect(mapRect, animated: false)
+
+        addFeatures(to: mapView, coordinator: coordinator)
     }
 
     // MARK: - Feature population
@@ -171,7 +201,7 @@ struct MapKitMapView: UIViewRepresentable {
     private func addFeatures(to mapView: AccessibleMapView, coordinator: MapCoordinator) {
         var elements: [MapElement] = []
         var corridorCoordinates: [(elementId: String, coords: [CLLocationCoordinate2D])] = []
-        var landmarksNeedingAnchors: [(element: MapElement, coordinate: CLLocationCoordinate2D)] = []
+        var elementsNeedingAnchors: [(element: MapElement, coordinate: CLLocationCoordinate2D)] = []
 
         for feature in document.features {
             elements.append(feature)
@@ -188,26 +218,31 @@ struct MapKitMapView: UIViewRepresentable {
                 let annotation = FeatureAnnotation(element: feature, coordinate: clCoord)
                 mapView.addAnnotation(annotation)
 
-                if feature.elementType == .landmark {
-                    landmarksNeedingAnchors.append((element: feature, coordinate: clCoord))
+                let style = configuration.resolvedStyle(
+                    for: feature.elementType, geometry: feature.geometry
+                )
+                if style.showAnchorDot {
+                    elementsNeedingAnchors.append((element: feature, coordinate: clCoord))
                 }
 
-            case .polygon:
-                break
+            case .polygon(let coords):
+                let clCoords = coordinateTransform.toCLCoordinates(coords)
+                let polygon = MKPolygon(coordinates: clCoords, count: clCoords.count)
+                mapView.addOverlay(polygon, level: .aboveLabels)
             }
         }
 
-        // Create anchor points for landmarks on the nearest corridor.
+        // Create anchor points on the nearest corridor for elements that need them.
         var anchors: [AnchorAnnotation] = []
-        for landmark in landmarksNeedingAnchors {
+        for item in elementsNeedingAnchors {
             if let anchorCoord = findNearestPointOnCorridor(
-                from: landmark.coordinate,
+                from: item.coordinate,
                 corridors: corridorCoordinates
             ) {
                 let anchor = AnchorAnnotation(
                     coordinate: anchorCoord,
-                    elementId: landmark.element.id,
-                    properties: landmark.element.properties
+                    elementId: item.element.id,
+                    properties: item.element.properties
                 )
                 anchors.append(anchor)
                 mapView.addAnnotation(anchor)

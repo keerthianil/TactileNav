@@ -22,7 +22,7 @@ public struct HitTestResult {
 
 /// Performs hit detection against map elements using screen-space distances.
 ///
-/// Priority order: anchor points > landmarks > intersections > corridors.
+/// Priority order: anchor points > landmarks > intersections > other points > lines.
 /// Corridor hit radius is velocity-adaptive, growing as the user's finger
 /// moves faster to accommodate imprecise swipe gestures.
 public final class HitDetector {
@@ -49,7 +49,7 @@ public final class HitDetector {
 
     /// Find the highest-priority element at a touch point.
     ///
-    /// Priority: anchor points > landmarks > intersections > corridors > nothing.
+    /// Priority: anchor points > landmarks > intersections > other points > lines > nothing.
     ///
     /// - Parameters:
     ///   - point: The touch location in the map view's coordinate space.
@@ -71,16 +71,16 @@ public final class HitDetector {
             let anchorScreenPoint = mapView.convert(anchor.coordinate, toPointTo: mapView)
             let dist = hypot(point.x - anchorScreenPoint.x, point.y - anchorScreenPoint.y)
             if dist < config.anchorHitRadiusPts {
-                // Find the element that this anchor belongs to.
                 if let matchingElement = elements.first(where: { $0.id == anchor.elementId }) {
                     return HitTestResult(element: matchingElement, touchType: .anchor, distance: dist)
                 }
             }
         }
 
-        // 2. Check point-type elements: landmarks first, then intersections.
+        // 2. Check point-type elements: landmarks > intersections > other points.
         var bestLandmark: HitTestResult?
         var bestIntersection: HitTestResult?
+        var bestOtherPoint: HitTestResult?
 
         for element in elements {
             switch element.geometry {
@@ -99,6 +99,10 @@ public final class HitDetector {
                         if bestIntersection == nil || dist < bestIntersection!.distance {
                             bestIntersection = result
                         }
+                    } else {
+                        if bestOtherPoint == nil || dist < bestOtherPoint!.distance {
+                            bestOtherPoint = result
+                        }
                     }
                 }
 
@@ -107,31 +111,31 @@ public final class HitDetector {
             }
         }
 
-        // Landmarks take priority over intersections.
         if let landmark = bestLandmark {
             return landmark
         }
         if let intersection = bestIntersection {
             return intersection
         }
+        if let otherPoint = bestOtherPoint {
+            return otherPoint
+        }
 
-        // 3. Check corridors (lineString geometry) with velocity-adaptive radius.
+        // 3. Check line elements (any lineString geometry) with velocity-adaptive radius.
         let effectiveRadius = config.corridorBaseRadiusPts + min(velocity / config.velocityDivisor, config.velocityBonusMax)
-        var bestCorridor: HitTestResult?
+        var bestLine: HitTestResult?
 
         for element in elements {
             switch element.geometry {
             case .lineString(let coords):
-                guard element.elementType == .corridor else { continue }
                 let clCoords = coordinateTransform.toCLCoordinates(coords)
                 let screenPoints = clCoords.map { mapView.convert($0, toPointTo: mapView) }
 
-                // Check perpendicular distance to each line segment.
                 for i in 0..<(screenPoints.count - 1) {
                     let dist = distanceFromPoint(point, toLineFrom: screenPoints[i], to: screenPoints[i + 1])
                     if dist < effectiveRadius {
-                        if bestCorridor == nil || dist < bestCorridor!.distance {
-                            bestCorridor = HitTestResult(element: element, touchType: .direct, distance: dist)
+                        if bestLine == nil || dist < bestLine!.distance {
+                            bestLine = HitTestResult(element: element, touchType: .direct, distance: dist)
                         }
                     }
                 }
@@ -141,7 +145,7 @@ public final class HitDetector {
             }
         }
 
-        return bestCorridor
+        return bestLine
     }
 
     /// Check if a point is near a specific element.
@@ -203,13 +207,10 @@ public final class HitDetector {
         let dy = end.y - start.y
         let lengthSquared = dx * dx + dy * dy
 
-        // Degenerate segment (start == end).
         if lengthSquared == 0 {
             return hypot(point.x - start.x, point.y - start.y)
         }
 
-        // Parameter t represents the projection of the point onto the line.
-        // Clamped to [0, 1] to stay within the segment.
         let t = max(0, min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared))
 
         let projX = start.x + t * dx

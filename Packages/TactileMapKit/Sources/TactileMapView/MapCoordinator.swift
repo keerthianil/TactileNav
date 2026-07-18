@@ -118,6 +118,7 @@ public class MapCoordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDel
 
         if let result = result {
             parent.feedbackPolicy.onTap(element: result.element, touchType: result.touchType)
+            parent.onDoubleTap?(result.element)
         }
     }
 

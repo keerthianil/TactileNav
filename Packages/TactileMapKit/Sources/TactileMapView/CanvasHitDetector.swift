@@ -8,7 +8,7 @@ import TactileMapFeedback
 /// in screen coordinates using a ``CanvasMapTransform``, without requiring
 /// an MKMapView for coordinate conversion.
 ///
-/// Priority order: anchor points > landmarks > intersections > corridors.
+/// Priority order: anchor points > landmarks > intersections > other points > lines.
 /// Corridor hit radius is velocity-adaptive, growing as the user's finger
 /// moves faster to accommodate imprecise swipe gestures.
 struct CanvasHitDetector {
@@ -19,13 +19,16 @@ struct CanvasHitDetector {
 
     /// Find the highest-priority element at a touch point.
     ///
-    /// Priority: anchor points > landmarks > intersections > corridors.
+    /// Priority: anchor points > landmarks > intersections > custom points > lines.
+    ///
+    /// The `anchorCenter` closure returns `nil` for elements that do not
+    /// display an anchor dot, enabling style-driven anchor detection.
     func findElement(
         at point: CGPoint,
         elements: [MapElement],
         transform t: CanvasMapTransform,
         velocity: CGFloat,
-        anchorCenter: (_ feature: MapElement, _ screenPt: CGPoint) -> CGPoint
+        anchorCenter: (_ feature: MapElement, _ screenPt: CGPoint) -> CGPoint?
     ) -> (element: MapElement, touchType: TouchType)? {
 
         let anchorR   = config.anchorHitRadiusPts
@@ -33,18 +36,19 @@ struct CanvasHitDetector {
         let corridorR = config.corridorBaseRadiusPts +
                         min(velocity / config.velocityDivisor, config.velocityBonusMax)
 
-        // 1. Anchor dots (highest priority).
-        for f in elements where f.elementType == .landmark {
+        // 1. Anchor dots (highest priority) — any element with an anchor.
+        for f in elements {
             guard case .point(let c) = f.geometry else { continue }
-            let anchor = anchorCenter(f, t.apply(c))
+            guard let anchor = anchorCenter(f, t.apply(c)) else { continue }
             if dist(point, anchor) <= anchorR {
                 return (f, .anchor)
             }
         }
 
-        // 2. Point elements — landmarks first, then intersections.
+        // 2. Point elements — landmarks > intersections > custom points.
         var bestLandmark:     (MapElement, CGFloat)?
         var bestIntersection: (MapElement, CGFloat)?
+        var bestOtherPoint:   (MapElement, CGFloat)?
 
         for f in elements {
             guard case .point(let c) = f.geometry else { continue }
@@ -60,28 +64,33 @@ struct CanvasHitDetector {
                 if bestIntersection == nil || d < bestIntersection!.1 {
                     bestIntersection = (f, d)
                 }
+            } else {
+                if bestOtherPoint == nil || d < bestOtherPoint!.1 {
+                    bestOtherPoint = (f, d)
+                }
             }
         }
 
-        if let (lm, _) = bestLandmark     { return (lm, .direct) }
-        if let (ix, _) = bestIntersection  { return (ix, .direct) }
+        if let (lm, _) = bestLandmark      { return (lm, .direct) }
+        if let (ix, _) = bestIntersection   { return (ix, .direct) }
+        if let (op, _) = bestOtherPoint     { return (op, .direct) }
 
-        // 3. Corridors (lineString) with velocity-adaptive radius.
-        var bestCorridor: (MapElement, CGFloat)?
+        // 3. Line elements (corridors + custom) with velocity-adaptive radius.
+        var bestLine: (MapElement, CGFloat)?
 
-        for f in elements where f.elementType == .corridor {
+        for f in elements {
             guard case .lineString(let pts) = f.geometry, pts.count >= 2 else { continue }
             for i in 0..<(pts.count - 1) {
                 let d = distToSegment(point, t.apply(pts[i]), t.apply(pts[i + 1]))
                 if d <= corridorR {
-                    if bestCorridor == nil || d < bestCorridor!.1 {
-                        bestCorridor = (f, d)
+                    if bestLine == nil || d < bestLine!.1 {
+                        bestLine = (f, d)
                     }
                 }
             }
         }
 
-        if let (cor, _) = bestCorridor { return (cor, .direct) }
+        if let (line, _) = bestLine { return (line, .direct) }
 
         return nil
     }

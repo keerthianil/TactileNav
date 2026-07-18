@@ -4,7 +4,7 @@ import CoreHaptics
 /// from engine playback.
 ///
 /// Create patterns from scratch or use one of the built-in presets that
-/// reproduce the Nav_Indoor behaviour:
+/// reproduce common tactile map feedback patterns:
 ///
 /// ```swift
 /// engine.start(pattern: .corridorContinuous)
@@ -63,8 +63,7 @@ public struct HapticPattern: Sendable {
 
     /// Steady continuous vibration for corridors.
     ///
-    /// Matches Nav_Indoor's `startContinuousVibration()`:
-    /// intensity 1.0, sharpness 0.5, 100-second continuous event.
+    /// Intensity 1.0, sharpness 0.5, 100-second continuous event.
     public static let corridorContinuous = HapticPattern(
         intensity: 1.0,
         sharpness: 0.5,
@@ -73,8 +72,7 @@ public struct HapticPattern: Sendable {
 
     /// Standard pulsing vibration for intersections.
     ///
-    /// Matches Nav_Indoor's `startPulsingVibration()`:
-    /// intensity 1.0, sharpness 0.5, 0.15 s on / 0.10 s off, 20 pulses per loop.
+    /// Intensity 1.0, sharpness 0.5, 0.15 s on / 0.10 s off, 20 pulses per loop.
     public static let intersectionPulse = HapticPattern(
         intensity: 1.0,
         sharpness: 0.5,
@@ -83,8 +81,7 @@ public struct HapticPattern: Sendable {
 
     /// Fast pulsing vibration for landmarks.
     ///
-    /// Matches Nav_Indoor's `startFastPulsingVibration()`:
-    /// intensity 1.0, sharpness 0.7, 0.08 s on / 0.04 s off, 80 pulses per loop.
+    /// Intensity 1.0, sharpness 0.7, 0.08 s on / 0.04 s off, 80 pulses per loop.
     public static let landmarkFastPulse = HapticPattern(
         intensity: 1.0,
         sharpness: 0.7,
@@ -93,11 +90,48 @@ public struct HapticPattern: Sendable {
 
     /// A single sharp transient tap.
     ///
-    /// Matches Nav_Indoor's `playSingleTap()`:
-    /// intensity 1.0, sharpness 1.0, transient event.
+    /// Intensity 1.0, sharpness 1.0, transient event.
     public static let singleTap = HapticPattern(
         intensity: 1.0,
         sharpness: 1.0,
         mode: .transient
+    )
+
+    // MARK: - Outdoor element presets
+
+    /// Sharp transient tick for crosswalk indicators.
+    ///
+    /// Intensity 1.0, sharpness 1.0, rapid 0.05 s ticks at 0.17 s intervals.
+    public static let crosswalkTick = HapticPattern(
+        intensity: 1.0,
+        sharpness: 1.0,
+        mode: .pulsing(onDuration: 0.05, offDuration: 0.12, count: 50)
+    )
+
+    /// Rhythmic pulse for route/path overlays.
+    ///
+    /// Intensity 1.0, sharpness 0.85, distinct from steady road vibrations.
+    public static let routePulse = HapticPattern(
+        intensity: 1.0,
+        sharpness: 0.85,
+        mode: .pulsing(onDuration: 0.12, offDuration: 0.08, count: 50)
+    )
+
+    /// Steady continuous vibration for streets and sidewalks.
+    ///
+    /// Intensity 0.78, sharpness 0.78, softer than road/corridor vibration.
+    public static let streetContinuous = HapticPattern(
+        intensity: 0.78,
+        sharpness: 0.78,
+        mode: .continuous(duration: 100.0)
+    )
+
+    /// Heavy continuous buzz for major roads.
+    ///
+    /// Intensity 1.0, sharpness 0.1 (deep rumble), 100-second duration.
+    public static let heavyBuzzContinuous = HapticPattern(
+        intensity: 1.0,
+        sharpness: 0.1,
+        mode: .continuous(duration: 100.0)
     )
 }

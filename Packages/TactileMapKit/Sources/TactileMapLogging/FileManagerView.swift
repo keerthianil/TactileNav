@@ -4,9 +4,6 @@ import SwiftUI
 
 /// A SwiftUI view that lists all CSV session log files and provides actions
 /// to share, delete, or bulk-delete them.
-///
-/// Extracted from Nav_Indoor's `FilesListView` but made reusable by
-/// accepting any ``CSVTouchLogger`` instance.
 public struct FileManagerView: View {
 
     @State private var files: [URL] = []

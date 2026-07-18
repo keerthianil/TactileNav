@@ -77,7 +77,7 @@ public struct TactileMapMetadata: Codable, Sendable, Hashable {
 ///
 /// Supports two JSON formats:
 ///
-/// **Nav_Indoor (GeoJSON-like):**
+/// **GeoJSON-like FeatureCollection:**
 /// ```json
 /// {
 ///   "type": "FeatureCollection",
@@ -99,7 +99,7 @@ public struct TactileMapMetadata: Codable, Sendable, Hashable {
 @available(iOS 13.0, macOS 10.15, tvOS 13.0, watchOS 6.0, *)
 public struct TactileMapDocument: Codable, Sendable {
 
-    /// Document format version (nil for legacy Nav_Indoor files).
+    /// Document format version (nil for legacy FeatureCollection files).
     public let version: String?
 
     /// Coordinate-space bounds of the map.
@@ -140,8 +140,7 @@ public struct TactileMapDocument: Codable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
-        // Read the "type" discriminator but don't store it — we accept both formats.
-        let documentType = try container.decodeIfPresent(String.self, forKey: .type)
+        _ = try container.decodeIfPresent(String.self, forKey: .type)
 
         self.version = try container.decodeIfPresent(String.self, forKey: .version)
         self.metadata = try container.decodeIfPresent(TactileMapMetadata.self, forKey: .metadata)
@@ -157,20 +156,7 @@ public struct TactileMapDocument: Codable, Sendable {
             return
         }
 
-        // Features: parse the array of MapElement objects.
-        // Both FeatureCollection and TactileMapDocument use "features" as the key.
         self.features = try container.decode([MapElement].self, forKey: .features)
-
-        // Log format for debugging
-        #if DEBUG
-        if documentType == "FeatureCollection" {
-            print("[TactileMapDocument] Loaded Nav_Indoor FeatureCollection with \(features.count) features")
-        } else if documentType == "TactileMapDocument" {
-            print("[TactileMapDocument] Loaded TactileMapDocument v\(version ?? "unknown") with \(features.count) features")
-        } else {
-            print("[TactileMapDocument] Loaded document (type: \(documentType ?? "nil")) with \(features.count) features")
-        }
-        #endif
     }
 
     // MARK: - Custom Encodable

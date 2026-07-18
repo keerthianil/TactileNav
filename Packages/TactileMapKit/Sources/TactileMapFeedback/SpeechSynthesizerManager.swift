@@ -3,9 +3,6 @@ import AVFoundation
 /// Writes TTS output to an `AVAudioPCMBuffer` and schedules it on a
 /// spatial `AVAudioPlayerNode`, enabling HRTF-spatialized speech.
 ///
-/// Extracted from Nav_Indoor's `SpeechSynthesizerManager`.  The
-/// study-specific `lastPlayedCircle` property has been removed.
-///
 /// ## Thread safety
 /// Buffer ownership is managed on a dedicated serial queue to prevent
 /// deallocation while the buffer is still being played.

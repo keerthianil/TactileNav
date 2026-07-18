@@ -6,7 +6,6 @@ import UIKit
 /// A ``TouchLogger`` that writes events to a CSV file in the app's Documents
 /// directory.
 ///
-/// Behaviour extracted from Nav_Indoor's `DataService` and `DataManager`:
 /// - Touch-down and touch-up events are always logged.
 /// - Touch-move events are throttled to ``samplingInterval`` (default 100 ms).
 /// - Each session produces one `.csv` file whose name is controlled by
@@ -132,8 +131,7 @@ public final class CSVTouchLogger: TouchLogger {
         } else {
             allKeys = customKeys + extraKeys
             // NOTE: extra keys won't have a header column unless the caller
-            // included them in the session metadata.  This matches the
-            // original Nav_Indoor behaviour.
+            // included them in the session metadata.
         }
 
         let timestampString = Self.timestampFormatter.string(from: event.timestamp)

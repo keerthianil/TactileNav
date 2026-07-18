@@ -7,8 +7,6 @@ import TactileMapCore
 /// Anchor points provide a tangible, on-corridor touch target that the
 /// user can find by tracing along a corridor.  Each anchor is associated
 /// with the ``elementId`` of the original element it represents.
-///
-/// Extracted from Nav_Indoor's `LandmarkAnchorAnnotation`.
 public class AnchorAnnotation: NSObject, MKAnnotation {
 
     /// The geographic coordinate of this anchor point on the corridor.

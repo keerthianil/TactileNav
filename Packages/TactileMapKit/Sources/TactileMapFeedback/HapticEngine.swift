@@ -37,10 +37,8 @@ public protocol HapticEngine: AnyObject {
 
 // MARK: - CoreHaptics implementation
 
-/// Default `HapticEngine` backed by `CHHapticEngine`.
-///
-/// Extracted from Nav_Indoor's `HapticService`, parameterised by
-/// ``HapticPattern`` instead of hard-coded constants.
+/// Default `HapticEngine` backed by `CHHapticEngine`, parameterised by
+/// ``HapticPattern``.
 @MainActor
 public final class CoreHapticsEngine: HapticEngine {
 

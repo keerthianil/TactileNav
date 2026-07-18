@@ -27,7 +27,7 @@ public struct HitDetectionConfig: Sendable {
 
     // MARK: - Default
 
-    /// Default hit detection configuration matching Nav_Indoor behavior.
+    /// Default hit detection configuration.
     public static let `default` = HitDetectionConfig(
         anchorHitRadiusPts: 20,
         pointHitRadiusPts: 25,

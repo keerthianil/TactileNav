@@ -1,0 +1,31 @@
+{
+  "aps_locations": [
+    {
+      "id": "aps_1",
+      "location": "Exchange & Middle",
+      "intersectionId": "i_2",
+      "signalType": "audible_tone",
+      "hasVibrotactile": true,
+      "hasPushButton": true,
+      "notes": "Full APS installation with locator tone and vibrotactile arrow"
+    },
+    {
+      "id": "aps_2",
+      "location": "Market & Middle",
+      "intersectionId": "i_5",
+      "signalType": "audible_tone",
+      "hasVibrotactile": true,
+      "hasPushButton": true,
+      "notes": "Full APS installation on Middle Street crossing"
+    },
+    {
+      "id": "aps_3",
+      "location": "Exchange & Fore",
+      "intersectionId": "i_3",
+      "signalType": "speech_message",
+      "hasVibrotactile": false,
+      "hasPushButton": true,
+      "notes": "Speech message APS with push button activation"
+    }
+  ]
+}

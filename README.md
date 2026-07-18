@@ -1,75 +1,94 @@
 # TactileNav
 
-An iOS accessibility app that turns the **Roux Institute** neighborhood (Portland, Maine) into a
-touch-explorable map for blind and low-vision users. The app has **one map screen**, "Roux Institute Map."
+An iOS accessibility app for blind and low-vision users, built at UNAR Labs / Northeastern University.
+Features touch-explorable tactile maps with haptic feedback, spatial audio, and full VoiceOver support.
 
-## The map
+## Features
 
-A real map (MKMapView) on a white background at true street positions. You explore by dragging a purple
-**"you are here" dot**: streets **buzz**, intersections **pulse**, and places **speak** their name and side
-("Howie's Pub, on your right"). It's built on the vendored **TactileMapKit** package (haptics / spatial audio /
-logging) and the bundled map data `TactileNav/Model/roux_portland.json`.
+### Portland Old Port Map
+Tactile map of Portland, Maine's Old Port district covering the grid of Exchange Street, Market Street,
+Congress Street, Middle Street, and Fore Street. Five streets, six intersections, two landmarks.
 
-### How you interact
+- **Two zoom levels**: Level 1 shows the full area. Double-tap an intersection to zoom into Level 2,
+  which shows road legs at 12mm width, sidewalks, and crosswalks.
+- **Drag to explore**: Touch and drag across the map. A yellow touch indicator follows your finger.
+  Each feature type has a distinct haptic pattern (roads buzz, intersections pulse, crosswalks tick).
+- **Traffic data**: Time-of-day selector (AM, Mid, PM, Eve, Night) changes the traffic density
+  announced when touching a road. Includes lane count and traffic level.
+- **APS signals**: Three intersections have simulated Accessible Pedestrian Signals. Announced
+  when touching those intersections.
+- **Back navigation**: Double-tap anywhere in Level 2, use the back button, three-finger swipe right,
+  or VoiceOver escape gesture to return to Level 1.
 
-- **One finger** — drag to explore: the dot follows along the lanes, streets buzz, places speak.
-- **Two fingers** — drag to move the map around.
-- **Zoom** — the **+ / −** buttons (rotate is off so a rotor twist can't spin the map).
-- **• • • Options** — step to the **Next point of interest** / **Next intersection** (the dot jumps there and
-  announces it — the VoiceOver-friendly way to move), **Free explore (back to my dot)**, or **Fit whole area**.
-- **VoiceOver** — the map is a **Direct Touch** area: enable Direct Touch once in the rotor, then one finger
-  explores and two fingers pan. **Back** is the nav-bar button (the left-edge swipe-back is disabled).
-- Every session writes a **CSV touch log** (open **Data Files** to share / delete).
+### Street Crossing Simulation
+Spatial audio simulation of vehicles passing at a street crossing. Uses AVAudioEngine with
+AVAudioEnvironmentNode and HRTF-HQ rendering. The listener stands at the curb while a vehicle
+sound source moves left to right.
 
-## Folder structure
+- Vehicle types: Car (200-1200 Hz), Bus (100-350 Hz), Truck (80-500 Hz), EV (2000-4000 Hz)
+- Speed slider: 15-50 mph
+- Doppler effect applied automatically by AVAudioEnvironmentNode
+- Use headphones for the best spatial audio experience
+
+### Roux Institute Map
+Touch-explorable map of the Roux Institute neighborhood (Portland, ME) with real OSM street data.
+Drag to explore with haptic feedback. Built on the TactileMapKit package.
+
+### Tools
+- **Feedback Customization Tester** - Per-element haptic tuning tool
+- **Data Files** - List, share, and delete CSV touch logs
+
+## Haptic Patterns
+
+| Feature    | Pattern                  | Intensity | Sharpness |
+|------------|--------------------------|-----------|-----------|
+| Road       | Continuous buzz          | 1.0       | 0.1       |
+| Intersection | Pulse (0.25s interval) | 1.0       | 0.5       |
+| Landmark   | Fast pulse (0.12s)       | 1.0       | 0.7       |
+| Sidewalk   | Continuous (softer)      | 0.78      | 0.78      |
+| Crosswalk  | Transient ticks (0.17s)  | 1.0       | 1.0       |
+
+## Dependency - TactileMapKit
+
+Built on **TactileMapKit**, vendored at `Packages/TactileMapKit/` from the ProjectMultiNav repository.
+
+| Module             | Used For |
+|--------------------|----------|
+| TactileMapCore     | PhysicalDimensions, TactileMapDocument, MapElement |
+| TactileMapFeedback | HapticPattern presets, CoreHapticsEngine, FeedbackPolicy |
+| TactileMapView     | SwiftUI map view (Roux map and Feedback Tester) |
+| TactileMapLogging  | CSVTouchLogger for touch-event CSV logs |
+
+## File Structure
 
 ```
 TactileNav/
-├── TactileNavApp.swift                  ← @main, shows ContentView
-├── ContentView.swift                    ← home list: Roux Institute Map + Tools
-├── Model/
-│   ├── roux_portland.json               ← OSM-derived map data (Roux area; coords in meters)
-│   ├── RTMDocumentAdapter.swift          ← JSON → real latitude/longitude models
-│   ├── RTMDiscoveredStreet/Intersection/POI.swift  ← simple data models
-│   ├── RTMPOICategory.swift              ← place categories + pin icons
-│   └── HapticFeedbackSelection.swift     ← haptic picker config (Feedback Tester)
-├── View/
-│   ├── RTMRouxMapView.swift              ← the map screen + zoom / Options buttons
-│   ├── RTMLiveMapView.swift              ← MKMapView wrapper (Direct Touch, dot drag, follow)
-│   ├── RTMMapAnnotations.swift           ← purple dot / place pins / intersection dots
-│   ├── RTMMapOverlays.swift              ← white background + street styling
-│   ├── FeedbackCustomizationTesterView.swift  ← per-element haptic tuning tool
-│   └── FilesListView.swift               ← list / share / delete CSV logs
-├── Services/
-│   └── RTMMapFeedbackController.swift     ← decides feedback under the dot; haptics + speech + CSV log
-├── Resources/                            ← landmark sound effects (mp3)
-└── Assets.xcassets/
+  TactileNavApp.swift
+  ContentView.swift
+  Model/
+    PortlandMapData.swift                - Feature models and haptic patterns
+    PortlandMapLoader.swift              - JSON loader with coordinate transforms
+    portland_congress_square.json         - Level 1 map (5 streets, 6 intersections, 2 landmarks)
+    intersection_i_{1-6}_detail.json     - Level 2 details per intersection
+    portland_aps_data.json               - Simulated APS locations
+    portland_traffic_data.json           - Simulated traffic profiles
+    roux_portland.json                   - OSM data (Roux Institute area)
+    RTMDocumentAdapter.swift             - JSON to lat/lon models for Roux map
+    RTMDiscovered*.swift                 - Roux map data models
+  View/
+    PortlandMapScreen.swift              - Level 1 map + time-of-day picker
+    PortlandMapView.swift                - UIViewRepresentable with touch indicator and hit testing
+    PortlandIntersectionDetailView.swift - Level 2 detail with back button
+    SpatialAudioSimulationView.swift     - Street crossing audio sandbox
+    RTMRouxMapView.swift                 - Roux Institute map screen
+    RTMLiveMapView.swift                 - MKMapView wrapper for Roux map
+    RTMMapAnnotations.swift              - Roux map annotations
+    RTMMapOverlays.swift                 - Roux map overlays
+    FeedbackCustomizationTesterView.swift
+    FilesListView.swift
+  Services/
+    PortlandFeedbackManager.swift        - CHHapticEngine + audio feedback hub
+    RTMMapFeedbackController.swift       - Roux map feedback controller
+Packages/
+  TactileMapKit/                         - Vendored from ProjectMultiNav
 ```
-
-## Dependency — TactileMapKit
-
-The rendering/feedback foundation is the **TactileMapKit** Swift package, **vendored** at
-`Packages/TactileMapKit/` and referenced locally (the app builds with no external repo access). Four modules:
-
-| Module | What the app uses |
-|---|---|
-| `TactileMapCore` | `TactileMapDocument.load`, `MapElement`, `TactileElementType`, `TactileProperties` |
-| `TactileMapFeedback` | `FeedbackPolicy`, `CoreHapticsEngine`, `AVSpatialAudioEngine`, `HapticPattern` presets |
-| `TactileMapView` | The package's MapKit SwiftUI view — used only by the Feedback Customization Tester |
-| `TactileMapLogging` | `CSVTouchLogger` for the touch-event log |
-
-Import the sub-modules individually (`import TactileMapCore`, …), not an umbrella `TactileMapKit`.
-
-## OSM data pipeline
-
-Map data comes from OpenStreetMap. `tools/osm_to_tactile.py` is an **offline** converter (not part of the app
-build) that turns a manual OSM XML export into a `TactileMapDocument` JSON:
-
-```
-python3 tools/osm_to_tactile.py input.osm TactileNav/Model/roux_portland.json --pedestrian
-```
-
-It keeps walkable streets (corridors), real intersections, and traffic signals / crossings / named anchors
-(landmarks); `--pedestrian` drops motorways so the interstate interchange is excluded. Long geometry is
-simplified (Douglas–Peucker) but tagged nodes are never dropped. `roux_portland.json` was generated this way
-from a Roux Institute (Portland, ME) export; coordinates are in meters.

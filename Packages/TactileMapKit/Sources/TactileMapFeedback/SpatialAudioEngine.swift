@@ -10,6 +10,9 @@ public protocol SpatialAudioEngine: AnyObject {
     /// Speak the given text using the default system voice (non-spatial).
     func speak(_ text: String)
 
+    /// Speak the given text with custom speech settings.
+    func speak(_ text: String, configuration: SpeechConfiguration)
+
     /// Speak the given text spatialized at a 3-D position using HRTF.
     func speakSpatially(_ text: String, at position: AVAudio3DPoint)
 
@@ -36,12 +39,9 @@ public protocol SpatialAudioEngine: AnyObject {
 /// Default `SpatialAudioEngine` built on `AVAudioEngine`,
 /// `AVAudioEnvironmentNode`, and `AVSpeechSynthesizer`.
 ///
-/// Extracted from Nav_Indoor's `AudioService`.  Uses mono 22050 Hz for
-/// HRTF spatialization, inverse distance attenuation with a large
-/// reference distance, small-room reverb, and a boosted output volume
-/// to keep spatial audio perceptible.
-///
-/// Public init -- NOT a singleton.
+/// Uses mono 22050 Hz for HRTF spatialization, inverse distance
+/// attenuation with a large reference distance, small-room reverb,
+/// and a boosted output volume to keep spatial audio perceptible.
 @MainActor
 public final class AVSpatialAudioEngine: NSObject, SpatialAudioEngine {
 
@@ -64,6 +64,11 @@ public final class AVSpatialAudioEngine: NSObject, SpatialAudioEngine {
     // MARK: - Registered sound buffers
 
     private var registeredBuffers: [String: AVAudioPCMBuffer] = [:]
+
+    // MARK: - Speech cache
+
+    /// Prevents duplicate announcements within a short time window.
+    public let speechCache = SpeechCache()
 
     // MARK: - Mono format shared across the engine
 
@@ -97,15 +102,10 @@ public final class AVSpatialAudioEngine: NSObject, SpatialAudioEngine {
     private func configureAudioSession() {
         do {
             let session = AVAudioSession.sharedInstance()
-            // Playback only — this app never records. Using .playAndRecord
-            // activates the mic input path which, with .defaultToSpeaker,
-            // causes an audible idle/feedback buzz (very noticeable when
-            // VoiceOver activates audio). .playback avoids that entirely while
-            // .mixWithOthers keeps VoiceOver speech coexisting cleanly.
             try session.setCategory(
-                .playback,
+                .playAndRecord,
                 mode: .spokenAudio,
-                options: [.mixWithOthers, .allowBluetoothA2DP]
+                options: [.defaultToSpeaker, .allowBluetoothA2DP, .mixWithOthers]
             )
             try session.setActive(true)
         } catch {
@@ -256,6 +256,24 @@ public final class AVSpatialAudioEngine: NSObject, SpatialAudioEngine {
         speechSynthesizer.speak(utterance)
     }
 
+    public func speak(_ text: String, configuration: SpeechConfiguration) {
+        if speechSynthesizer.isSpeaking {
+            speechSynthesizer.stopSpeaking(at: .immediate)
+        }
+
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setActive(true)
+        } catch {
+            // Proceeding despite audio session activation failure.
+        }
+
+        let utterance = AVSpeechUtterance(string: text)
+        configuration.apply(to: utterance)
+
+        speechSynthesizer.speak(utterance)
+    }
+
     public func speakSpatially(_ text: String, at position: AVAudio3DPoint) {
         if speechSynthesizer.isSpeaking {
             speechSynthesizer.stopSpeaking(at: .immediate)
@@ -343,14 +361,10 @@ extension AVSpatialAudioEngine: AVSpeechSynthesizerDelegate {
     nonisolated public func speechSynthesizer(
         _ synthesizer: AVSpeechSynthesizer,
         didStart utterance: AVSpeechUtterance
-    ) {
-        // No-op -- available for subclass or debug override.
-    }
+    ) {}
 
     nonisolated public func speechSynthesizer(
         _ synthesizer: AVSpeechSynthesizer,
         didFinish utterance: AVSpeechUtterance
-    ) {
-        // No-op -- available for subclass or debug override.
-    }
+    ) {}
 }
