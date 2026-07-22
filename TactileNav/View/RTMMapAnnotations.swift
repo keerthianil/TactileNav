@@ -44,7 +44,7 @@ final class RTMIntersectionAnnotation: NSObject, MKAnnotation {
     }
 }
 
-// (No location dot.) This map follows the Nav-Indoor / Indoor_Route design where the
+// (No location dot.) This map follows a drag-to-explore design where the
 // user's FINGER is the cursor: wherever the finger is, that point triggers feedback.
 // While exploring, a transient ring + arrow (RTMTouchIndicatorView) is drawn right
 // under the fingertip — see the bottom of this file.

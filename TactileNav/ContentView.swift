@@ -10,9 +10,9 @@ struct ContentView: View {
                     } label: {
                         Label {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Portland Old Port")
+                                Text("Congress Square")
                                     .font(.headline)
-                                Text("Tactile map of the Old Port area with traffic and APS data")
+                                Text("Tactile map of downtown Portland with time-of-day traffic and APS crossings")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -28,9 +28,9 @@ struct ContentView: View {
                     } label: {
                         Label {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Spatial Audio Simulation")
+                                Text("Street Crossing Audio")
                                     .font(.headline)
-                                Text("Vehicle pass-by with spatial audio and Doppler effect")
+                                Text("Vehicle pass-by with real Doppler: straight vs. turning, car vs. EV")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }

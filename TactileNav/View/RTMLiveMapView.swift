@@ -123,7 +123,7 @@ struct RTMLiveMapView: UIViewRepresentable {
         goBack.delegate = coordinator
         mapView.addGestureRecognizer(goBack)
 
-        // FINGER IS THE CURSOR (Nav-Indoor / Indoor_Route model): a long-press
+        // FINGER IS THE CURSOR (drag-to-explore model): a long-press
         // recognizer with zero delay fires the instant a finger touches the map and
         // keeps firing as it moves, so the point under the finger is the trigger.
         // The map itself does NOT move while exploring.

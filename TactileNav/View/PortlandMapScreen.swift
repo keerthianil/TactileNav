@@ -1,11 +1,21 @@
+//
+//  PortlandMapScreen.swift
+//  TactileNav
+//
+//  Level-1 screen: the Congress Square tactile map plus a time-of-day traffic selector
+//  (peak / normal / light). Double-tapping an intersection presents the Level-2 crossing
+//  simulation. All feedback stops on disappear.
+//
+
 import SwiftUI
 
 struct PortlandMapScreen: View {
 
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedTimeOfDay: TrafficTimeOfDay = .midday
+    @State private var trafficState: TrafficState = .normal
+    @State private var corridors: [PortlandCorridor] = []
     @State private var features: [PortlandMapFeature] = []
-    @State private var apsLocations: [PortlandAPSLocation] = []
+    @State private var apsLocations: [PortlandAPS] = []
     @State private var trafficSegments: [PortlandTrafficSegment] = []
     @State private var trafficIntersections: [PortlandTrafficIntersection] = []
     @State private var selectedIntersection: PortlandIntersection?
@@ -15,86 +25,68 @@ struct PortlandMapScreen: View {
         VStack(spacing: 0) {
             PortlandMapView(
                 features: features,
-                isInteractionEnabled: true,
-                onDoubleTapIntersection: { intersection in
-                    selectedIntersection = intersection
-                },
-                onBackGesture: {
-                    dismiss()
-                },
+                onDoubleTapIntersection: { selectedIntersection = $0 },
+                onBackGesture: { dismiss() },
                 trafficSegments: trafficSegments,
                 trafficIntersections: trafficIntersections,
                 apsLocations: apsLocations,
-                selectedTimeOfDay: selectedTimeOfDay,
+                trafficState: trafficState,
                 level: 1
             )
             .ignoresSafeArea(edges: .top)
 
-            trafficTimeSelector
+            trafficSelector
         }
-        .navigationTitle("Portland Old Port")
+        .navigationTitle("Congress Square")
         .navigationBarTitleDisplayMode(.inline)
         .fullScreenCover(item: $selectedIntersection) { intersection in
             PortlandIntersectionDetailView(
                 intersection: intersection,
+                allCorridors: corridors,
                 trafficSegments: trafficSegments,
-                trafficIntersections: trafficIntersections,
                 apsLocations: apsLocations,
-                selectedTimeOfDay: selectedTimeOfDay
+                trafficState: trafficState
             )
         }
         .onAppear {
             guard !hasAppeared else { return }
             hasAppeared = true
             loadData()
-            announceOnAppear()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                PortlandFeedbackManager.shared.speak(
+                    "Congress Square, downtown Portland. Drag to explore streets and intersections. Double tap an intersection for its crossing detail.")
+            }
         }
-        .onDisappear {
-            PortlandFeedbackManager.shared.stopAllFeedback()
-        }
+        .onDisappear { PortlandFeedbackManager.shared.stopAllFeedback() }
     }
 
-    private var trafficTimeSelector: some View {
+    private var trafficSelector: some View {
         VStack(spacing: 8) {
-            Text("Traffic Time of Day")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundColor(.secondary)
-                .accessibilityHidden(true)
-
-            Picker("Traffic time of day", selection: $selectedTimeOfDay) {
-                ForEach(TrafficTimeOfDay.allCases) { period in
-                    Text(period.shortLabel).tag(period)
-                }
+            Picker("Traffic time of day", selection: $trafficState) {
+                ForEach(TrafficState.allCases) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
             .padding(.horizontal)
             .accessibilityLabel("Traffic time of day")
-            .accessibilityHint("Changes the traffic density shown on roads and announced when exploring")
+            .accessibilityHint("Changes traffic density: felt as vibration strength and heard as road rumble while exploring")
 
-            Text(selectedTimeOfDay.description)
+            Text(trafficState.description)
                 .font(.caption2)
                 .foregroundColor(.secondary)
-                .accessibilityLabel(selectedTimeOfDay.label + ". " + selectedTimeOfDay.description)
+                .multilineTextAlignment(.center)
+                .accessibilityLabel("\(trafficState.label). \(trafficState.description)")
         }
         .padding(.vertical, 8)
         .background(Color(.systemBackground))
     }
 
     private func loadData() {
-        features = PortlandMapLoader.loadLevel1Features()
-        apsLocations = PortlandMapLoader.loadAPSData()
-
-        let trafficData = PortlandMapLoader.loadTrafficData()
-        trafficSegments = trafficData.segments
-        trafficIntersections = trafficData.intersections
-    }
-
-    private func announceOnAppear() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            PortlandFeedbackManager.shared.speak(
-                "Portland Old Port map. Drag to explore streets and intersections. Double tap an intersection for detail."
-            )
-        }
+        let map = PortlandMapLoader.loadLevel1()
+        corridors = map.corridors
+        features = map.all
+        apsLocations = PortlandMapLoader.loadAPS()
+        let traffic = PortlandMapLoader.loadTraffic()
+        trafficSegments = traffic.segments
+        trafficIntersections = traffic.intersections
     }
 }

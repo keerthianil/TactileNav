@@ -1,0 +1,1850 @@
+{
+  "version": "1.0",
+  "type": "TactileMapDocument",
+  "metadata": {
+    "name": "Congress Square - Portland, ME",
+    "scale": "1 unit = 1 meter",
+    "coordinate_unit": "meters",
+    "source": "OpenStreetMap (ODbL)",
+    "coordinate_origin": "SW corner; y grows south",
+    "center_lat": 43.654274,
+    "origin_lat": 43.650248,
+    "origin_lon": -70.272557
+  },
+  "bounds": {
+    "width": 1323.2,
+    "height": 896.27
+  },
+  "features": [
+    {
+      "id": "c-11406439",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            862.67,
+            329.59
+          ],
+          [
+            868.11,
+            336.25
+          ],
+          [
+            903.08,
+            375.09
+          ],
+          [
+            906.74,
+            380.57
+          ],
+          [
+            962.61,
+            458.74
+          ],
+          [
+            969.9,
+            468.72
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Oak Street",
+        "category": "residential",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "2",
+          "oneway": "yes",
+          "crossing_distance_m": "6.6",
+          "osm_highway": "residential"
+        }
+      }
+    },
+    {
+      "id": "c-11406598",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            922.6,
+            258.89
+          ],
+          [
+            916.58,
+            251.45
+          ],
+          [
+            859.36,
+            181.11
+          ],
+          [
+            852.48,
+            172.37
+          ],
+          [
+            847.18,
+            165.56
+          ],
+          [
+            845.85,
+            163.72
+          ],
+          [
+            802.59,
+            111.24
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Casco Street",
+        "category": "residential",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "2",
+          "oneway": "no",
+          "crossing_distance_m": "6.6",
+          "osm_highway": "residential"
+        }
+      }
+    },
+    {
+      "id": "c-11411173",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            621.72,
+            537.61
+          ],
+          [
+            627.41,
+            545.42
+          ],
+          [
+            630.37,
+            549.81
+          ],
+          [
+            657.91,
+            571.66
+          ],
+          [
+            697.65,
+            602.95
+          ],
+          [
+            760.18,
+            652.19
+          ],
+          [
+            761.67,
+            653.36
+          ],
+          [
+            767.34,
+            657.82
+          ],
+          [
+            773.76,
+            662.34
+          ],
+          [
+            816.76,
+            692.66
+          ],
+          [
+            872.22,
+            731.81
+          ],
+          [
+            912.78,
+            761.03
+          ],
+          [
+            947.85,
+            786.43
+          ],
+          [
+            950.48,
+            788.23
+          ],
+          [
+            955.66,
+            791.79
+          ],
+          [
+            964.69,
+            798.36
+          ],
+          [
+            985.12,
+            813.26
+          ],
+          [
+            1019.91,
+            838.5
+          ],
+          [
+            1024.36,
+            841.7
+          ],
+          [
+            1057.26,
+            865.36
+          ],
+          [
+            1090.56,
+            889.94
+          ],
+          [
+            1092.1,
+            891.06
+          ],
+          [
+            1099.21,
+            896.27
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Park Street",
+        "category": "residential",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "2",
+          "oneway": "yes",
+          "crossing_distance_m": "6.6",
+          "osm_highway": "residential"
+        }
+      }
+    },
+    {
+      "id": "c-11411578",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            980.73,
+            198.54
+          ],
+          [
+            986.58,
+            205.8
+          ],
+          [
+            1022.67,
+            249.57
+          ],
+          [
+            1044.39,
+            275.48
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Brown Street",
+        "category": "residential",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "2",
+          "oneway": "yes",
+          "crossing_distance_m": "6.6",
+          "osm_highway": "residential"
+        }
+      }
+    },
+    {
+      "id": "c-11412159",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            769.53,
+            467.87
+          ],
+          [
+            778.71,
+            467.1
+          ],
+          [
+            792.02,
+            465.58
+          ],
+          [
+            798.58,
+            462.72
+          ],
+          [
+            808.08,
+            455.38
+          ],
+          [
+            874.24,
+            405.07
+          ],
+          [
+            886.43,
+            395.58
+          ],
+          [
+            901.88,
+            384.15
+          ],
+          [
+            906.74,
+            380.57
+          ],
+          [
+            910.01,
+            378.02
+          ],
+          [
+            938.65,
+            355.7
+          ],
+          [
+            1044.39,
+            275.48
+          ],
+          [
+            1081.58,
+            247.63
+          ],
+          [
+            1095.48,
+            238.58
+          ],
+          [
+            1097.88,
+            237.03
+          ],
+          [
+            1107.9,
+            230.51
+          ],
+          [
+            1113.12,
+            226.35
+          ],
+          [
+            1169.08,
+            181.63
+          ],
+          [
+            1171.01,
+            180.08
+          ],
+          [
+            1172.81,
+            178.7
+          ],
+          [
+            1190.19,
+            165.43
+          ],
+          [
+            1224.94,
+            136.27
+          ],
+          [
+            1236.92,
+            129.19
+          ],
+          [
+            1241.94,
+            126.09
+          ],
+          [
+            1260.03,
+            113.78
+          ],
+          [
+            1282.11,
+            99.24
+          ],
+          [
+            1293.22,
+            96.56
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Free Street",
+        "category": "residential",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "2",
+          "oneway": "yes",
+          "crossing_distance_m": "6.6",
+          "osm_highway": "residential"
+        }
+      }
+    },
+    {
+      "id": "c-30195075",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            1107.9,
+            230.51
+          ],
+          [
+            1104.28,
+            224.91
+          ],
+          [
+            1101.37,
+            220.39
+          ],
+          [
+            1078.01,
+            193.79
+          ],
+          [
+            1069.27,
+            183.68
+          ],
+          [
+            1044.49,
+            153.84
+          ],
+          [
+            1042.6,
+            151.45
+          ],
+          [
+            1035.56,
+            142.96
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Center Street",
+        "category": "unclassified",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "2",
+          "oneway": "yes",
+          "crossing_distance_m": "6.6",
+          "osm_highway": "unclassified"
+        }
+      }
+    },
+    {
+      "id": "c-30195084",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            982.73,
+            196.49
+          ],
+          [
+            976.5,
+            190.49
+          ],
+          [
+            954.58,
+            170.62
+          ],
+          [
+            946.08,
+            161.02
+          ],
+          [
+            940.97,
+            155.26
+          ],
+          [
+            860.02,
+            65.69
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Brown Street",
+        "category": "residential",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "2",
+          "oneway": "yes",
+          "crossing_distance_m": "6.6",
+          "osm_highway": "residential"
+        }
+      }
+    },
+    {
+      "id": "c-30195121",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            862.67,
+            329.59
+          ],
+          [
+            858.35,
+            323.97
+          ],
+          [
+            852.05,
+            316.45
+          ],
+          [
+            833.13,
+            297.86
+          ],
+          [
+            818.55,
+            284.17
+          ],
+          [
+            780.53,
+            246.74
+          ],
+          [
+            729.07,
+            195.89
+          ],
+          [
+            723.51,
+            190.88
+          ],
+          [
+            721.81,
+            189.52
+          ],
+          [
+            714.71,
+            183.82
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Oak Street",
+        "category": "residential",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "2",
+          "oneway": "yes",
+          "crossing_distance_m": "6.6",
+          "osm_highway": "residential"
+        }
+      }
+    },
+    {
+      "id": "c-176587158",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            937.48,
+            0.0
+          ],
+          [
+            942.7,
+            5.82
+          ],
+          [
+            1005.66,
+            74.83
+          ],
+          [
+            1020.91,
+            90.9
+          ],
+          [
+            1046.07,
+            117.36
+          ],
+          [
+            1047.55,
+            118.87
+          ],
+          [
+            1052.1,
+            124.5
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Preble Street",
+        "category": "secondary",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "3",
+          "oneway": "yes",
+          "crossing_distance_m": "9.9",
+          "osm_highway": "secondary"
+        }
+      }
+    },
+    {
+      "id": "c-278159122",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            1323.2,
+            150.17
+          ],
+          [
+            1273.94,
+            198.78
+          ],
+          [
+            1268.41,
+            203.4
+          ],
+          [
+            1263.25,
+            207.71
+          ],
+          [
+            1249.53,
+            219.93
+          ],
+          [
+            1235.16,
+            231.92
+          ],
+          [
+            1220.22,
+            244.53
+          ],
+          [
+            1204.14,
+            257.82
+          ],
+          [
+            1172.12,
+            284.68
+          ],
+          [
+            1170.15,
+            286.35
+          ],
+          [
+            1161.26,
+            293.8
+          ],
+          [
+            1150.29,
+            303.54
+          ],
+          [
+            1148.74,
+            304.91
+          ],
+          [
+            1012.42,
+            427.13
+          ],
+          [
+            1008.56,
+            430.91
+          ],
+          [
+            1001.02,
+            438.47
+          ],
+          [
+            1000.24,
+            439.17
+          ],
+          [
+            976.38,
+            462.23
+          ],
+          [
+            969.9,
+            468.72
+          ],
+          [
+            911.54,
+            525.44
+          ],
+          [
+            896.05,
+            540.48
+          ],
+          [
+            872.66,
+            563.33
+          ],
+          [
+            870.11,
+            565.83
+          ],
+          [
+            864.17,
+            571.64
+          ],
+          [
+            856.15,
+            578.75
+          ],
+          [
+            852.59,
+            581.57
+          ],
+          [
+            845.68,
+            586.71
+          ],
+          [
+            834.58,
+            595.19
+          ],
+          [
+            820.54,
+            606.64
+          ],
+          [
+            804.19,
+            621.38
+          ],
+          [
+            795.26,
+            630.15
+          ],
+          [
+            786.41,
+            639.5
+          ],
+          [
+            775.08,
+            650.36
+          ],
+          [
+            772.09,
+            653.25
+          ],
+          [
+            767.34,
+            657.82
+          ],
+          [
+            761.07,
+            664.89
+          ],
+          [
+            741.07,
+            686.59
+          ],
+          [
+            714.94,
+            713.19
+          ],
+          [
+            707.4,
+            720.87
+          ],
+          [
+            689.63,
+            742.26
+          ],
+          [
+            687.43,
+            744.9
+          ],
+          [
+            678.73,
+            755.27
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Spring Street",
+        "category": "tertiary",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "2",
+          "oneway": "no",
+          "crossing_distance_m": "6.6",
+          "osm_highway": "tertiary"
+        }
+      }
+    },
+    {
+      "id": "c-461497688",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            755.93,
+            482.24
+          ],
+          [
+            744.8,
+            468.97
+          ],
+          [
+            676.92,
+            403.69
+          ],
+          [
+            661.22,
+            389.05
+          ],
+          [
+            574.55,
+            308.23
+          ],
+          [
+            572.23,
+            305.72
+          ],
+          [
+            566.04,
+            297.74
+          ],
+          [
+            561.13,
+            291.6
+          ],
+          [
+            554.85,
+            280.05
+          ],
+          [
+            540.57,
+            248.86
+          ],
+          [
+            529.73,
+            225.17
+          ],
+          [
+            525.29,
+            215.32
+          ],
+          [
+            511.67,
+            185.07
+          ],
+          [
+            498.06,
+            154.83
+          ],
+          [
+            473.2,
+            98.66
+          ],
+          [
+            470.75,
+            92.61
+          ],
+          [
+            469.39,
+            89.76
+          ],
+          [
+            464.82,
+            78.9
+          ],
+          [
+            464.15,
+            77.37
+          ]
+        ]
+      },
+      "properties": {
+        "name": "High Street",
+        "category": "primary",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "4",
+          "oneway": "yes",
+          "crossing_distance_m": "13.2",
+          "osm_highway": "primary"
+        }
+      }
+    },
+    {
+      "id": "c-461497708",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            1031.66,
+            696.61
+          ],
+          [
+            1026.1,
+            692.48
+          ],
+          [
+            941.38,
+            629.7
+          ],
+          [
+            930.16,
+            621.76
+          ],
+          [
+            921.63,
+            615.1
+          ],
+          [
+            915.92,
+            610.56
+          ],
+          [
+            875.6,
+            581.51
+          ],
+          [
+            873.08,
+            579.39
+          ],
+          [
+            864.17,
+            571.64
+          ],
+          [
+            855.56,
+            565.18
+          ],
+          [
+            795.18,
+            519.8
+          ],
+          [
+            782.75,
+            510.46
+          ],
+          [
+            773.73,
+            503.11
+          ],
+          [
+            766.81,
+            497.99
+          ],
+          [
+            762.98,
+            493.72
+          ],
+          [
+            761.36,
+            491.0
+          ],
+          [
+            755.93,
+            482.24
+          ]
+        ]
+      },
+      "properties": {
+        "name": "High Street",
+        "category": "primary",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "4",
+          "oneway": "yes",
+          "crossing_distance_m": "13.2",
+          "osm_highway": "primary"
+        }
+      }
+    },
+    {
+      "id": "c-511333565",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            815.34,
+            402.34
+          ],
+          [
+            824.48,
+            388.28
+          ],
+          [
+            826.13,
+            385.77
+          ],
+          [
+            857.41,
+            338.48
+          ],
+          [
+            862.67,
+            329.59
+          ],
+          [
+            867.57,
+            323.54
+          ],
+          [
+            870.1,
+            320.45
+          ],
+          [
+            886.17,
+            300.37
+          ],
+          [
+            915.84,
+            266.6
+          ],
+          [
+            922.6,
+            258.89
+          ],
+          [
+            929.62,
+            251.43
+          ],
+          [
+            975.04,
+            204.24
+          ],
+          [
+            980.73,
+            198.54
+          ],
+          [
+            982.73,
+            196.49
+          ],
+          [
+            985.96,
+            193.12
+          ],
+          [
+            987.84,
+            191.16
+          ],
+          [
+            1035.56,
+            142.96
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Congress Street",
+        "category": "secondary",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "3",
+          "oneway": "no",
+          "crossing_distance_m": "9.9",
+          "osm_highway": "secondary"
+        }
+      }
+    },
+    {
+      "id": "c-511350575",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            0.0,
+            475.53
+          ],
+          [
+            29.0,
+            493.34
+          ],
+          [
+            70.96,
+            517.16
+          ],
+          [
+            93.69,
+            528.81
+          ],
+          [
+            103.74,
+            533.97
+          ],
+          [
+            109.25,
+            536.83
+          ],
+          [
+            113.81,
+            539.4
+          ],
+          [
+            119.4,
+            542.2
+          ],
+          [
+            136.45,
+            549.54
+          ],
+          [
+            184.01,
+            565.56
+          ],
+          [
+            190.03,
+            567.5
+          ],
+          [
+            197.77,
+            570.0
+          ],
+          [
+            220.06,
+            576.72
+          ],
+          [
+            228.4,
+            578.85
+          ],
+          [
+            236.75,
+            580.66
+          ],
+          [
+            242.84,
+            581.97
+          ],
+          [
+            266.18,
+            585.88
+          ],
+          [
+            279.18,
+            587.36
+          ],
+          [
+            290.97,
+            588.34
+          ],
+          [
+            294.11,
+            588.38
+          ],
+          [
+            301.12,
+            588.76
+          ],
+          [
+            308.23,
+            589.18
+          ],
+          [
+            314.33,
+            589.13
+          ],
+          [
+            318.09,
+            589.09
+          ],
+          [
+            319.91,
+            589.07
+          ],
+          [
+            348.99,
+            586.62
+          ],
+          [
+            353.14,
+            586.11
+          ],
+          [
+            364.94,
+            584.67
+          ],
+          [
+            387.18,
+            582.27
+          ],
+          [
+            408.75,
+            579.83
+          ],
+          [
+            434.42,
+            576.94
+          ],
+          [
+            437.45,
+            576.68
+          ],
+          [
+            446.48,
+            575.81
+          ],
+          [
+            459.59,
+            574.46
+          ],
+          [
+            462.72,
+            574.13
+          ],
+          [
+            489.9,
+            571.13
+          ],
+          [
+            526.25,
+            567.4
+          ],
+          [
+            528.41,
+            567.03
+          ],
+          [
+            546.74,
+            563.91
+          ],
+          [
+            557.72,
+            561.15
+          ],
+          [
+            567.7,
+            557.86
+          ],
+          [
+            600.73,
+            545.61
+          ],
+          [
+            607.36,
+            543.15
+          ],
+          [
+            621.72,
+            537.61
+          ],
+          [
+            636.19,
+            533.07
+          ],
+          [
+            727.17,
+            498.95
+          ],
+          [
+            740.04,
+            492.3
+          ],
+          [
+            744.53,
+            489.99
+          ],
+          [
+            755.93,
+            482.24
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Congress Street",
+        "category": "primary",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "4",
+          "oneway": "no",
+          "crossing_distance_m": "13.2",
+          "osm_highway": "primary"
+        }
+      }
+    },
+    {
+      "id": "c-730422616",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            1085.76,
+            87.01
+          ],
+          [
+            1059.35,
+            116.28
+          ],
+          [
+            1054.96,
+            121.37
+          ],
+          [
+            1052.1,
+            124.5
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Congress Street",
+        "category": "secondary",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "3",
+          "oneway": "no",
+          "crossing_distance_m": "9.9",
+          "osm_highway": "secondary"
+        }
+      }
+    },
+    {
+      "id": "c-939384528",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            755.93,
+            482.24
+          ],
+          [
+            766.91,
+            470.91
+          ],
+          [
+            768.1,
+            469.63
+          ],
+          [
+            769.53,
+            467.87
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Congress Street",
+        "category": "secondary",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "3",
+          "oneway": "no",
+          "crossing_distance_m": "9.9",
+          "osm_highway": "secondary"
+        }
+      }
+    },
+    {
+      "id": "c-1020622022",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            1035.56,
+            142.96
+          ],
+          [
+            1044.64,
+            132.55
+          ],
+          [
+            1047.41,
+            130.06
+          ],
+          [
+            1052.1,
+            124.5
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Congress Street",
+        "category": "secondary",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "3",
+          "oneway": "no",
+          "crossing_distance_m": "9.9",
+          "osm_highway": "secondary"
+        }
+      }
+    },
+    {
+      "id": "c-1125237009",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            769.53,
+            467.87
+          ],
+          [
+            810.37,
+            409.39
+          ],
+          [
+            811.98,
+            407.11
+          ],
+          [
+            815.34,
+            402.34
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Congress Street",
+        "category": "secondary",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "3",
+          "oneway": "no",
+          "crossing_distance_m": "9.9",
+          "osm_highway": "secondary"
+        }
+      }
+    },
+    {
+      "id": "c-1456491324",
+      "element_type": "corridor",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            1161.26,
+            293.8
+          ],
+          [
+            1151.78,
+            283.74
+          ],
+          [
+            1150.18,
+            282.05
+          ],
+          [
+            1143.06,
+            274.5
+          ],
+          [
+            1111.99,
+            237.53
+          ],
+          [
+            1111.12,
+            236.04
+          ],
+          [
+            1107.9,
+            230.51
+          ]
+        ]
+      },
+      "properties": {
+        "name": "Center Street",
+        "category": "unclassified",
+        "is_accessible": true,
+        "custom": {
+          "lanes": "2",
+          "oneway": "no",
+          "crossing_distance_m": "6.6",
+          "osm_highway": "unclassified"
+        }
+      }
+    },
+    {
+      "id": "lm-pma",
+      "element_type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          801.15,
+          437.45
+        ]
+      },
+      "properties": {
+        "name": "Portland Museum of Art",
+        "category": "museum",
+        "is_accessible": true,
+        "custom": {
+          "abbrev": "PMA"
+        }
+      }
+    },
+    {
+      "id": "lm-csp",
+      "element_type": "landmark",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          850.28,
+          415.19
+        ]
+      },
+      "properties": {
+        "name": "Congress Square Park",
+        "category": "park",
+        "is_accessible": true,
+        "custom": {
+          "abbrev": "CSP"
+        }
+      }
+    },
+    {
+      "id": "i-101484933",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          862.67,
+          329.59
+        ]
+      },
+      "properties": {
+        "name": "Congress Street & Oak Street",
+        "category": "intersection",
+        "connected_corridors": [
+          "c-11406439",
+          "c-30195121",
+          "c-511333565"
+        ],
+        "custom": {
+          "signalized": "yes",
+          "streets": "Congress Street, Oak Street"
+        }
+      }
+    },
+    {
+      "id": "i-101484927",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          906.74,
+          380.57
+        ]
+      },
+      "properties": {
+        "name": "Free Street & Oak Street",
+        "category": "intersection",
+        "connected_corridors": [
+          "c-11406439",
+          "c-11412159"
+        ],
+        "custom": {
+          "signalized": "no",
+          "streets": "Free Street, Oak Street"
+        }
+      }
+    },
+    {
+      "id": "i-101477079",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          969.9,
+          468.72
+        ]
+      },
+      "properties": {
+        "name": "Oak Street & Spring Street",
+        "category": "intersection",
+        "connected_corridors": [
+          "c-11406439",
+          "c-278159122"
+        ],
+        "custom": {
+          "signalized": "no",
+          "streets": "Oak Street, Spring Street"
+        }
+      }
+    },
+    {
+      "id": "i-101487255",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          922.6,
+          258.89
+        ]
+      },
+      "properties": {
+        "name": "Casco Street & Congress Street",
+        "category": "intersection",
+        "connected_corridors": [
+          "c-11406598",
+          "c-511333565"
+        ],
+        "custom": {
+          "signalized": "yes",
+          "streets": "Casco Street, Congress Street"
+        }
+      }
+    },
+    {
+      "id": "i-101560108",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          621.72,
+          537.61
+        ]
+      },
+      "properties": {
+        "name": "Congress Street & Park Street",
+        "category": "intersection",
+        "connected_corridors": [
+          "c-11411173",
+          "c-511350575"
+        ],
+        "custom": {
+          "signalized": "yes",
+          "streets": "Congress Street, Park Street"
+        }
+      }
+    },
+    {
+      "id": "i-101477101",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          767.34,
+          657.82
+        ]
+      },
+      "properties": {
+        "name": "Park Street & Spring Street",
+        "category": "intersection",
+        "connected_corridors": [
+          "c-11411173",
+          "c-278159122"
+        ],
+        "custom": {
+          "signalized": "no",
+          "streets": "Park Street, Spring Street"
+        }
+      }
+    },
+    {
+      "id": "i-101569126",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          980.73,
+          198.54
+        ]
+      },
+      "properties": {
+        "name": "Brown Street & Congress Street",
+        "category": "intersection",
+        "connected_corridors": [
+          "c-11411578",
+          "c-511333565"
+        ],
+        "custom": {
+          "signalized": "yes",
+          "streets": "Brown Street, Congress Street"
+        }
+      }
+    },
+    {
+      "id": "i-101569124",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          1044.39,
+          275.48
+        ]
+      },
+      "properties": {
+        "name": "Brown Street & Free Street",
+        "category": "intersection",
+        "connected_corridors": [
+          "c-11411578",
+          "c-11412159"
+        ],
+        "custom": {
+          "signalized": "no",
+          "streets": "Brown Street, Free Street"
+        }
+      }
+    },
+    {
+      "id": "i-101741057",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          769.53,
+          467.87
+        ]
+      },
+      "properties": {
+        "name": "Congress Street & Free Street",
+        "category": "intersection",
+        "connected_corridors": [
+          "c-1125237009",
+          "c-11412159",
+          "c-939384528"
+        ],
+        "custom": {
+          "signalized": "yes",
+          "streets": "Congress Street, Free Street"
+        }
+      }
+    },
+    {
+      "id": "i-101580775",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          1107.9,
+          230.51
+        ]
+      },
+      "properties": {
+        "name": "Center Street & Free Street",
+        "category": "intersection",
+        "connected_corridors": [
+          "c-11412159",
+          "c-1456491324",
+          "c-30195075"
+        ],
+        "custom": {
+          "signalized": "no",
+          "streets": "Center Street, Free Street"
+        }
+      }
+    },
+    {
+      "id": "i-101582256",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          1035.56,
+          142.96
+        ]
+      },
+      "properties": {
+        "name": "Center Street & Congress Street",
+        "category": "intersection",
+        "connected_corridors": [
+          "c-1020622022",
+          "c-30195075",
+          "c-511333565"
+        ],
+        "custom": {
+          "signalized": "yes",
+          "streets": "Center Street, Congress Street"
+        }
+      }
+    },
+    {
+      "id": "i-101466354",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          1052.1,
+          124.5
+        ]
+      },
+      "properties": {
+        "name": "Congress Street & Preble Street",
+        "category": "intersection",
+        "connected_corridors": [
+          "c-1020622022",
+          "c-176587158",
+          "c-730422616"
+        ],
+        "custom": {
+          "signalized": "yes",
+          "streets": "Congress Street, Preble Street"
+        }
+      }
+    },
+    {
+      "id": "i-101477063",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          1161.26,
+          293.8
+        ]
+      },
+      "properties": {
+        "name": "Center Street & Spring Street",
+        "category": "intersection",
+        "connected_corridors": [
+          "c-1456491324",
+          "c-278159122"
+        ],
+        "custom": {
+          "signalized": "no",
+          "streets": "Center Street, Spring Street"
+        }
+      }
+    },
+    {
+      "id": "i-101477086",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          864.17,
+          571.64
+        ]
+      },
+      "properties": {
+        "name": "High Street & Spring Street",
+        "category": "intersection",
+        "connected_corridors": [
+          "c-278159122",
+          "c-461497708"
+        ],
+        "custom": {
+          "signalized": "yes",
+          "streets": "High Street, Spring Street"
+        }
+      }
+    },
+    {
+      "id": "i-101580801",
+      "element_type": "intersection",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          755.93,
+          482.24
+        ]
+      },
+      "properties": {
+        "name": "Congress Street & High Street",
+        "category": "intersection",
+        "connected_corridors": [
+          "c-461497688",
+          "c-461497708",
+          "c-511350575",
+          "c-939384528"
+        ],
+        "custom": {
+          "signalized": "yes",
+          "streets": "Congress Street, High Street"
+        }
+      }
+    }
+  ]
+}

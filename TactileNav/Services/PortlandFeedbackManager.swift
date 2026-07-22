@@ -1,13 +1,18 @@
-// PortlandFeedbackManager.swift
-// TactileNav
 //
-// Central feedback hub for Portland map haptics and audio.
-// Uses CHHapticEngine directly for custom haptic patterns.
+//  PortlandFeedbackManager.swift
+//  TactileNav
+//
+//  Orchestrates the non-visual feedback for the Congress Square map while a finger
+//  explores it. Haptics run on the TactileMapKit package's `CoreHapticsEngine`; the
+//  traffic rumble + earcons run on `TrafficAudioEngine`; speech goes to VoiceOver via
+//  `.announcement` (so it never fights VoiceOver's own audio) or `AVSpeechSynthesizer`
+//  when VoiceOver is off. Exactly one continuous feedback stream plays at a time —
+//  every start first stops the previous, so switching features can never pile up.
+//
 
+import Foundation
 import UIKit
-import CoreHaptics
 import AVFoundation
-import TactileMapCore
 import TactileMapFeedback
 
 @MainActor
@@ -15,503 +20,75 @@ final class PortlandFeedbackManager {
 
     static let shared = PortlandFeedbackManager()
 
-    // MARK: - Haptic Engine
+    private let haptics = CoreHapticsEngine()          // from the TactileMapKit package
+    private let audio = TrafficAudioEngine.shared
+    private let synthesizer = AVSpeechSynthesizer()
+    private var crosswalkTickTimer: Timer?
 
-    private(set) var hapticEngine: CHHapticEngine?
-    private var currentPlayer: CHHapticPatternPlayer?
-    private var isEngineRunning = false
+    private init() { audio.activate() }
 
-    // MARK: - Audio
+    // MARK: - Feature feedback
 
-    private var audioEngine: AVAudioEngine?
-    private var audioPlayerNode: AVAudioPlayerNode?
-    private var speechSynthesizer = AVSpeechSynthesizer()
-    private var dingTimer: Timer?
-    private var tickTimer: Timer?
-    private var trafficRumbleTimer: Timer?
-
-    // MARK: - State
-
-    private var activeFeedbackType: PortlandFeatureType?
-
-    // MARK: - Init
-
-    private init() {
-        setupHapticEngine()
-        setupAudioEngine()
-        registerForLifecycleNotifications()
-    }
-
-    // MARK: - Engine Setup
-
-    private func setupHapticEngine() {
-        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
-
-        do {
-            hapticEngine = try CHHapticEngine()
-            hapticEngine?.isAutoShutdownEnabled = true
-            hapticEngine?.stoppedHandler = { [weak self] reason in
-                Task { @MainActor in
-                    self?.isEngineRunning = false
-                }
-            }
-            hapticEngine?.resetHandler = { [weak self] in
-                Task { @MainActor in
-                    self?.restartEngine()
-                }
-            }
-            try hapticEngine?.start()
-            isEngineRunning = true
-        } catch {
-            print("PortlandFeedbackManager: Failed to create haptic engine: \(error)")
-        }
-    }
-
-    private func restartEngine() {
-        do {
-            try hapticEngine?.start()
-            isEngineRunning = true
-        } catch {
-            print("PortlandFeedbackManager: Failed to restart haptic engine: \(error)")
-        }
-    }
-
-    private func ensureEngineRunning() {
-        guard let engine = hapticEngine, !isEngineRunning else { return }
-        do {
-            try engine.start()
-            isEngineRunning = true
-        } catch {
-            print("PortlandFeedbackManager: Could not start engine: \(error)")
-        }
-    }
-
-    private func setupAudioEngine() {
-        audioEngine = AVAudioEngine()
-        audioPlayerNode = AVAudioPlayerNode()
-        guard let engine = audioEngine, let player = audioPlayerNode else { return }
-        engine.attach(player)
-        engine.connect(player, to: engine.mainMixerNode, format: nil)
-
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
-            try AVAudioSession.sharedInstance().setActive(true)
-            try engine.start()
-        } catch {
-            print("PortlandFeedbackManager: Failed to start audio engine: \(error)")
-        }
-    }
-
-    // MARK: - Road Feedback (continuous buzz, intensity varies by traffic)
-
-    func startRoadFeedback(trafficLevel: String? = nil) {
+    func startFeedback(for feature: PortlandMapFeature, trafficLevel: TrafficLevel?) {
         stopAllFeedback()
-        activeFeedbackType = .corridor
-        ensureEngineRunning()
 
-        let intensity: Float
-        let sharpness: Float
-        let trafficToneFreq: Double?
+        switch feature.featureType {
+        case .corridor:
+            let level = trafficLevel ?? .moderate
+            // Road buzz: heavier traffic → stronger, deeper vibration (perceivable congestion).
+            haptics.start(pattern: HapticPattern(
+                intensity: level.hapticIntensity, sharpness: 0.1,
+                mode: .continuous(duration: 100)))
+            audio.startRumble(hz: level.rumbleHz, amplitude: 0.25)
 
-        switch trafficLevel {
-        case "very_light":
-            intensity = 0.3; sharpness = 0.05; trafficToneFreq = nil
-        case "light":
-            intensity = 0.5; sharpness = 0.08; trafficToneFreq = nil
-        case "moderate":
-            intensity = 0.7; sharpness = 0.1; trafficToneFreq = 220
-        case "heavy":
-            intensity = 0.9; sharpness = 0.15; trafficToneFreq = 180
-        case "very_heavy":
-            intensity = 1.0; sharpness = 0.2; trafficToneFreq = 140
-        default:
-            intensity = 0.7; sharpness = 0.1; trafficToneFreq = nil
-        }
+        case .intersection:
+            haptics.start(pattern: .intersectionPulse)
 
-        guard let engine = hapticEngine else { return }
-        do {
-            let pattern = try CHHapticPattern(events: [
-                CHHapticEvent(
-                    eventType: .hapticContinuous,
-                    parameters: [
-                        CHHapticEventParameter(parameterID: .hapticIntensity, value: intensity),
-                        CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
-                    ],
-                    relativeTime: 0,
-                    duration: 30.0
-                )
-            ], parameters: [])
-            currentPlayer = try engine.makePlayer(with: pattern)
-            try currentPlayer?.start(atTime: CHHapticTimeImmediate)
-        } catch { }
+        case .landmark:
+            haptics.start(pattern: .landmarkFastPulse)
 
-        if let freq = trafficToneFreq {
-            startTrafficRumble(frequency: freq)
+        case .sidewalk:
+            haptics.start(pattern: .streetContinuous)
+
+        case .crosswalk:
+            haptics.start(pattern: .crosswalkTick)
+            startCrosswalkTicks()
         }
     }
 
-    func stopRoadFeedback() {
-        guard activeFeedbackType == .corridor else { return }
-        stopCurrentHaptic()
-        stopTrafficRumble()
-        activeFeedbackType = nil
+    func stopAllFeedback() {
+        haptics.stopAll()
+        audio.stopRumble()
+        crosswalkTickTimer?.invalidate()
+        crosswalkTickTimer = nil
     }
 
-    // MARK: - Intersection Feedback (Pulsing + ding)
+    func playSingleTap() { haptics.playSingleTap() }
 
-    func startIntersectionFeedback() {
-        stopAllFeedback()
-        activeFeedbackType = .intersection
-        ensureEngineRunning()
-
-        guard let engine = hapticEngine else { return }
-
-        // Pulsing haptic: 0.25s interval, 0.15s on
-        do {
-            var events: [CHHapticEvent] = []
-            let pulseDuration: TimeInterval = 0.15
-            let pulseInterval: TimeInterval = 0.25
-            var time: TimeInterval = 0
-            while time < 30.0 {
-                events.append(CHHapticEvent(
-                    eventType: .hapticContinuous,
-                    parameters: [
-                        CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0),
-                        CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.5)
-                    ],
-                    relativeTime: time,
-                    duration: pulseDuration
-                ))
-                time += pulseInterval
-            }
-            let pattern = try CHHapticPattern(events: events, parameters: [])
-            currentPlayer = try engine.makePlayer(with: pattern)
-            try currentPlayer?.start(atTime: CHHapticTimeImmediate)
-        } catch {
-            // Haptics unavailable
-        }
-
-        // Repeating ding audio
-        startDingSound()
-    }
-
-    func stopIntersectionFeedback() {
-        guard activeFeedbackType == .intersection else { return }
-        stopCurrentHaptic()
-        stopDingSound()
-        activeFeedbackType = nil
-    }
-
-    // MARK: - Landmark Feedback (Fast pulse)
-
-    func startLandmarkFeedback() {
-        stopAllFeedback()
-        activeFeedbackType = .landmark
-        ensureEngineRunning()
-
-        guard let engine = hapticEngine else { return }
-        do {
-            var events: [CHHapticEvent] = []
-            let pulseDuration: TimeInterval = 0.08
-            let pulseInterval: TimeInterval = 0.12
-            var time: TimeInterval = 0
-            while time < 30.0 {
-                events.append(CHHapticEvent(
-                    eventType: .hapticContinuous,
-                    parameters: [
-                        CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0),
-                        CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.7)
-                    ],
-                    relativeTime: time,
-                    duration: pulseDuration
-                ))
-                time += pulseInterval
-            }
-            let pattern = try CHHapticPattern(events: events, parameters: [])
-            currentPlayer = try engine.makePlayer(with: pattern)
-            try currentPlayer?.start(atTime: CHHapticTimeImmediate)
-        } catch {
-            // Haptics unavailable
-        }
-    }
-
-    func stopLandmarkFeedback() {
-        guard activeFeedbackType == .landmark else { return }
-        stopCurrentHaptic()
-        activeFeedbackType = nil
-    }
-
-    // MARK: - Sidewalk Feedback (Softer continuous)
-
-    func startSidewalkFeedback() {
-        stopAllFeedback()
-        activeFeedbackType = .sidewalk
-        ensureEngineRunning()
-
-        guard let engine = hapticEngine else { return }
-        do {
-            let pattern = try CHHapticPattern(events: [
-                CHHapticEvent(
-                    eventType: .hapticContinuous,
-                    parameters: [
-                        CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.78),
-                        CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.78)
-                    ],
-                    relativeTime: 0,
-                    duration: 30.0
-                )
-            ], parameters: [])
-            currentPlayer = try engine.makePlayer(with: pattern)
-            try currentPlayer?.start(atTime: CHHapticTimeImmediate)
-        } catch {
-            // Haptics unavailable
-        }
-    }
-
-    func stopSidewalkFeedback() {
-        guard activeFeedbackType == .sidewalk else { return }
-        stopCurrentHaptic()
-        activeFeedbackType = nil
-    }
-
-    // MARK: - Crosswalk Feedback (Rapid transient ticks + audio)
-
-    func startCrosswalkFeedback() {
-        stopAllFeedback()
-        activeFeedbackType = .crosswalk
-        ensureEngineRunning()
-
-        guard let engine = hapticEngine else { return }
-        do {
-            var events: [CHHapticEvent] = []
-            let tickInterval: TimeInterval = 0.17
-            var time: TimeInterval = 0
-            while time < 30.0 {
-                events.append(CHHapticEvent(
-                    eventType: .hapticTransient,
-                    parameters: [
-                        CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0),
-                        CHHapticEventParameter(parameterID: .hapticSharpness, value: 1.0)
-                    ],
-                    relativeTime: time
-                ))
-                time += tickInterval
-            }
-            let pattern = try CHHapticPattern(events: events, parameters: [])
-            currentPlayer = try engine.makePlayer(with: pattern)
-            try currentPlayer?.start(atTime: CHHapticTimeImmediate)
-        } catch {
-            // Haptics unavailable
-        }
-
-        // Repeating tick audio
-        startTickSound()
-    }
-
-    func stopCrosswalkFeedback() {
-        guard activeFeedbackType == .crosswalk else { return }
-        stopCurrentHaptic()
-        stopTickSound()
-        activeFeedbackType = nil
-    }
-
-    // MARK: - Single Tap
-
-    func playSingleTap() {
-        ensureEngineRunning()
-        guard let engine = hapticEngine else { return }
-        do {
-            let pattern = try CHHapticPattern(events: [
-                CHHapticEvent(
-                    eventType: .hapticTransient,
-                    parameters: [
-                        CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.8),
-                        CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.5)
-                    ],
-                    relativeTime: 0
-                )
-            ], parameters: [])
-            let player = try engine.makePlayer(with: pattern)
-            try player.start(atTime: CHHapticTimeImmediate)
-        } catch {
-            // Haptics unavailable
+    private func startCrosswalkTicks() {
+        crosswalkTickTimer?.invalidate()
+        crosswalkTickTimer = Timer.scheduledTimer(withTimeInterval: 0.17, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.audio.playBeep(hz: 820, seconds: 0.012, amplitude: 0.35) }
         }
     }
 
     // MARK: - Speech
 
-    /// Speaks text using VoiceOver announcement (if running) or AVSpeechSynthesizer.
     func speak(_ text: String) {
+        guard !text.isEmpty else { return }
         if UIAccessibility.isVoiceOverRunning {
             UIAccessibility.post(notification: .announcement, argument: text)
         } else {
-            speechSynthesizer.stopSpeaking(at: .immediate)
-            let utterance = AVSpeechUtterance(string: text)
-            utterance.rate = AVSpeechUtteranceDefaultSpeechRate
-            utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
-            speechSynthesizer.speak(utterance)
+            if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
+            let u = AVSpeechUtterance(string: text)
+            u.rate = AVSpeechUtteranceDefaultSpeechRate * 1.05
+            u.voice = AVSpeechSynthesisVoice(language: "en-US")
+            synthesizer.speak(u)
         }
     }
 
-    // MARK: - Stop All
+    // MARK: - Lifecycle
 
-    func stopAllFeedback() {
-        stopCurrentHaptic()
-        stopDingSound()
-        stopTickSound()
-        stopTrafficRumble()
-        speechSynthesizer.stopSpeaking(at: .immediate)
-        activeFeedbackType = nil
-    }
-
-    private func stopCurrentHaptic() {
-        try? currentPlayer?.stop(atTime: CHHapticTimeImmediate)
-        currentPlayer = nil
-    }
-
-    // MARK: - Audio Synthesis
-
-    /// Plays a repeating 1120 Hz ding (0.16s) for intersection feedback.
-    private func startDingSound() {
-        playTone(frequency: 1120.0, duration: 0.16)
-        dingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.playTone(frequency: 1120.0, duration: 0.16)
-            }
-        }
-    }
-
-    private func stopDingSound() {
-        dingTimer?.invalidate()
-        dingTimer = nil
-    }
-
-    /// Plays a repeating 820 Hz tick (0.012s) for crosswalk feedback.
-    private func startTickSound() {
-        playTone(frequency: 820.0, duration: 0.012)
-        tickTimer = Timer.scheduledTimer(withTimeInterval: 0.17, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.playTone(frequency: 820.0, duration: 0.012)
-            }
-        }
-    }
-
-    private func stopTickSound() {
-        tickTimer?.invalidate()
-        tickTimer = nil
-    }
-
-    private func startTrafficRumble(frequency: Double) {
-        playTone(frequency: frequency, duration: 0.15)
-        trafficRumbleTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.playTone(frequency: frequency, duration: 0.15)
-            }
-        }
-    }
-
-    private func stopTrafficRumble() {
-        trafficRumbleTimer?.invalidate()
-        trafficRumbleTimer = nil
-    }
-
-    /// Synthesizes a pure tone at the given frequency and duration using AVAudioEngine.
-    private func playTone(frequency: Double, duration: Double) {
-        guard let engine = audioEngine, let player = audioPlayerNode else { return }
-
-        let sampleRate = engine.mainMixerNode.outputFormat(forBus: 0).sampleRate
-        guard sampleRate > 0 else { return }
-
-        let frameCount = AVAudioFrameCount(duration * sampleRate)
-        guard frameCount > 0,
-              let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
-              let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
-            return
-        }
-
-        buffer.frameLength = frameCount
-        guard let floatData = buffer.floatChannelData?[0] else { return }
-
-        for i in 0..<Int(frameCount) {
-            let sample = sin(2.0 * Double.pi * frequency * Double(i) / sampleRate)
-            // Apply envelope to avoid clicks
-            let envelope: Double
-            let rampSamples = min(Int(0.005 * sampleRate), Int(frameCount) / 4)
-            if i < rampSamples {
-                envelope = Double(i) / Double(rampSamples)
-            } else if i > Int(frameCount) - rampSamples {
-                envelope = Double(Int(frameCount) - i) / Double(rampSamples)
-            } else {
-                envelope = 1.0
-            }
-            floatData[i] = Float(sample * envelope * 0.3)
-        }
-
-        if !player.isPlaying {
-            player.play()
-        }
-        player.scheduleBuffer(buffer, completionHandler: nil)
-    }
-
-    // MARK: - App Lifecycle
-
-    private func registerForLifecycleNotifications() {
-        NotificationCenter.default.addObserver(
-            forName: UIApplication.didEnterBackgroundNotification,
-            object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.handleAppBackground()
-            }
-        }
-
-        NotificationCenter.default.addObserver(
-            forName: UIApplication.willEnterForegroundNotification,
-            object: nil, queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.handleAppForeground()
-            }
-        }
-    }
-
-    func handleAppBackground() {
-        stopAllFeedback()
-        hapticEngine?.stop()
-        isEngineRunning = false
-        audioEngine?.pause()
-    }
-
-    func handleAppForeground() {
-        restartEngine()
-        if let engine = audioEngine, !engine.isRunning {
-            do {
-                try engine.start()
-            } catch {
-                print("PortlandFeedbackManager: Failed to restart audio engine: \(error)")
-            }
-        }
-    }
-
-    // MARK: - Feature-Based Feedback
-
-    func startFeedback(for feature: PortlandMapFeature, trafficLevel: String? = nil) {
-        switch feature.featureType {
-        case .corridor:
-            startRoadFeedback(trafficLevel: trafficLevel)
-        case .intersection:
-            startIntersectionFeedback()
-        case .landmark:
-            startLandmarkFeedback()
-        case .sidewalk:
-            startSidewalkFeedback()
-        case .crosswalk:
-            startCrosswalkFeedback()
-        }
-    }
+    func handleAppBackground() { haptics.handleAppBackground(); stopAllFeedback() }
+    func handleAppForeground() { haptics.handleAppForeground() }
 }

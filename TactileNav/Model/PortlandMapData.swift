@@ -1,159 +1,152 @@
 // PortlandMapData.swift
 // TactileNav
 //
-// Portland map feature models.
-// Uses a 0-1000 designer grid with Y-flip (verticalFlipSum = 1320)
-// and converts to tiny lat/lon offsets for MKMapView display.
+// Domain models + MapKit render objects for the Congress Square tactile map.
+//
+// Geometry comes from `congress_square.json`, a real OpenStreetMap (ODbL) extract of
+// downtown Portland, Maine, parsed by the TactileMapKit package (`TactileMapDocument`)
+// and projected to CLLocationCoordinate2D by `CongressSquareAdapter`. Coordinates are
+// real (metric) so distances and crossing widths are truthful; the base tiles are blank
+// so only relative geometry is shown. APS and traffic point data layered on top are
+// SIMULATED (see the JSON headers) but carry real-source schemas so a future data drop
+// is a file swap.
 
 import UIKit
 import MapKit
-import CoreHaptics
 import TactileMapCore
-import TactileMapFeedback
 
 // MARK: - Physical Dimensions Bridge
 
-/// Bridge to TactileMapKit's PhysicalDimensions (full device PPI database).
+/// Bridge to TactileMapKit's PhysicalDimensions (per-device PPI database) so every
+/// feature is drawn at a true physical size (mm) regardless of screen density.
 enum PortlandPhysicalDimensions {
-    static func mmToPoints(_ mm: CGFloat) -> CGFloat {
-        return PhysicalDimensions.mmToPoints(mm)
-    }
+    static func mmToPoints(_ mm: CGFloat) -> CGFloat { PhysicalDimensions.mmToPoints(mm) }
 }
 
-// MARK: - Map Feature Protocol
+// MARK: - Feature protocol
 
-/// Protocol for all Portland map features.
 protocol PortlandMapFeature: AnyObject {
     var featureId: String { get }
     var featureType: PortlandFeatureType { get }
     var featureName: String { get }
     var level: Int { get }
-
-    func addToMap(_ mapView: MKMapView)
-    func removeFromMap(_ mapView: MKMapView)
-    func startHapticFeedback(with engine: CHHapticEngine?)
-    func stopHapticFeedback()
     func announcement() -> String
 }
 
 enum PortlandFeatureType: String {
-    case corridor
-    case intersection
-    case landmark
-    case sidewalk
-    case crosswalk
+    case corridor, intersection, landmark, sidewalk, crosswalk
 }
 
-// MARK: - Y-Flip Constant
+// MARK: - Traffic level
 
-private let kVerticalFlipSum: Double = 1320.0
-private let kCoordScale: Double = 100000.0
+/// Congestion bucket for a corridor at the selected time of day. Blind/low-vision users
+/// perceive this through haptic *intensity* and an audio *rumble* (not colour); colour is
+/// only a secondary cue for sighted/low-vision users.
+enum TrafficLevel: String {
+    case veryLight = "very_light"
+    case light
+    case moderate
+    case heavy
+    case veryHeavy = "very_heavy"
 
-/// Converts a designer grid coordinate to CLLocationCoordinate2D.
-/// - Parameters:
-///   - x: X value in 0–1000 grid
-///   - y: Y value in 0–1000 grid (already stretched if Level 1)
-func portlandGridToCoordinate(x: Double, y: Double) -> CLLocationCoordinate2D {
-    let lat = (kVerticalFlipSum - y) / kCoordScale
-    let lon = x / kCoordScale
-    return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+    init(raw: String) { self = TrafficLevel(rawValue: raw) ?? .moderate }
+
+    var spoken: String {
+        switch self {
+        case .veryLight: return "very light"
+        case .light:     return "light"
+        case .moderate:  return "moderate"
+        case .heavy:     return "heavy"
+        case .veryHeavy: return "very heavy"
+        }
+    }
+
+    /// Continuous-buzz intensity while tracing the road (heavier = stronger).
+    var hapticIntensity: Float {
+        switch self {
+        case .veryLight: return 0.30
+        case .light:     return 0.45
+        case .moderate:  return 0.65
+        case .heavy:     return 0.85
+        case .veryHeavy: return 1.0
+        }
+    }
+
+    /// Low-frequency traffic rumble; heavier traffic = lower, denser rumble.
+    /// nil means "quiet enough to detect gaps" → no rumble layer.
+    var rumbleHz: Double? {
+        switch self {
+        case .veryLight: return nil
+        case .light:     return nil
+        case .moderate:  return 220
+        case .heavy:     return 180
+        case .veryHeavy: return 140
+        }
+    }
+
+    /// Seconds between rumble pulses (denser traffic = faster).
+    var rumbleInterval: TimeInterval {
+        switch self {
+        case .veryHeavy: return 0.18
+        case .heavy:     return 0.26
+        default:         return 0.34
+        }
+    }
+
+    var color: UIColor {
+        switch self {
+        case .veryLight: return UIColor(red: 0x2E/255, green: 0x7D/255, blue: 0x32/255, alpha: 1) // green
+        case .light:     return UIColor(red: 0x21/255, green: 0x96/255, blue: 0xF3/255, alpha: 1) // blue
+        case .moderate:  return UIColor(red: 0x02/255, green: 0x3E/255, blue: 0x8A/255, alpha: 1) // deep blue
+        case .heavy:     return UIColor(red: 0xE6/255, green: 0x7E/255, blue: 0x22/255, alpha: 1) // orange
+        case .veryHeavy: return UIColor(red: 0xC1/255, green: 0x12/255, blue: 0x1F/255, alpha: 1) // red
+        }
+    }
 }
 
-// MARK: - PortlandCorridor
+// MARK: - Corridor (road)
 
-/// A road segment rendered as an MKPolyline overlay.
-final class PortlandCorridor: NSObject, PortlandMapFeature, MKOverlay {
-
+final class PortlandCorridor: NSObject, PortlandMapFeature {
     let featureId: String
     let featureType: PortlandFeatureType = .corridor
     let featureName: String
     let level: Int
     let accessible: Bool
+    let functionalClass: String
+    let lanes: Int
+    let oneway: Bool
+    let crossingDistanceM: Double
 
     private let coordinates: [CLLocationCoordinate2D]
-    private var hapticPlayer: CHHapticPatternPlayer?
 
-    // MKOverlay
-    var coordinate: CLLocationCoordinate2D {
-        return boundingMapRect.origin.coordinate
-    }
-
-    var boundingMapRect: MKMapRect {
-        var rect = MKMapRect.null
-        for coord in coordinates {
-            let point = MKMapPoint(coord)
-            let pointRect = MKMapRect(x: point.x, y: point.y, width: 0.001, height: 0.001)
-            rect = rect.union(pointRect)
-        }
-        // Expand slightly for line width
-        return rect.insetBy(dx: -0.001, dy: -0.001)
-    }
-
-    /// The polyline for rendering on the map.
     lazy var polyline: MKPolyline = {
-        var coords = coordinates
-        return MKPolyline(coordinates: &coords, count: coords.count)
+        var c = coordinates
+        return MKPolyline(coordinates: &c, count: c.count)
     }()
 
-    init(id: String, name: String, level: Int, accessible: Bool, coordinates: [CLLocationCoordinate2D]) {
+    init(id: String, name: String, level: Int, accessible: Bool,
+         coordinates: [CLLocationCoordinate2D],
+         functionalClass: String = "residential", lanes: Int = 2,
+         oneway: Bool = false, crossingDistanceM: Double = 6.6) {
         self.featureId = id
         self.featureName = name
         self.level = level
         self.accessible = accessible
         self.coordinates = coordinates
+        self.functionalClass = functionalClass
+        self.lanes = lanes
+        self.oneway = oneway
+        self.crossingDistanceM = crossingDistanceM
         super.init()
     }
 
-    func addToMap(_ mapView: MKMapView) {
-        mapView.addOverlay(polyline, level: .aboveLabels)
-    }
-
-    func removeFromMap(_ mapView: MKMapView) {
-        mapView.removeOverlay(polyline)
-    }
-
-    func announcement() -> String {
-        return featureName
-    }
-
-    // Heavy continuous buzz: intensity 1.0, sharpness 0.1
-    func startHapticFeedback(with engine: CHHapticEngine?) {
-        guard let engine = engine else { return }
-        do {
-            let pattern = try CHHapticPattern(events: [
-                CHHapticEvent(
-                    eventType: .hapticContinuous,
-                    parameters: [
-                        CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0),
-                        CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.1)
-                    ],
-                    relativeTime: 0,
-                    duration: 30.0
-                )
-            ], parameters: [])
-            hapticPlayer = try engine.makePlayer(with: pattern)
-            try hapticPlayer?.start(atTime: CHHapticTimeImmediate)
-        } catch {
-            // Haptics unavailable
-        }
-    }
-
-    func stopHapticFeedback() {
-        try? hapticPlayer?.stop(atTime: CHHapticTimeImmediate)
-        hapticPlayer = nil
-    }
-
-    /// Returns all CLLocationCoordinate2D points for hit testing.
-    func getCoordinates() -> [CLLocationCoordinate2D] {
-        return coordinates
-    }
+    func announcement() -> String { featureName }
+    func getCoordinates() -> [CLLocationCoordinate2D] { coordinates }
 }
 
-// MARK: - PortlandIntersection
+// MARK: - Intersection
 
-/// An intersection point rendered as an MKAnnotation.
 final class PortlandIntersection: NSObject, PortlandMapFeature, MKAnnotation, Identifiable {
-
     var id: String { featureId }
 
     let featureId: String
@@ -161,141 +154,73 @@ final class PortlandIntersection: NSObject, PortlandMapFeature, MKAnnotation, Id
     let featureName: String
     let level: Int
     let ways: Int
-    let hasAPS: Bool
     let signalized: Bool
-    let crossingComplexity: String
+    let streets: [String]
 
-    private var hapticPlayer: CHHapticPatternPlayer?
-
-    // MKAnnotation
     let coordinate: CLLocationCoordinate2D
-    var title: String? { return featureName }
+    var title: String? { featureName }
 
     init(id: String, name: String, level: Int, coordinate: CLLocationCoordinate2D,
-         ways: Int = 4, hasAPS: Bool = false, signalized: Bool = false,
-         crossingComplexity: String = "moderate") {
+         ways: Int = 4, signalized: Bool = false, streets: [String] = []) {
         self.featureId = id
         self.featureName = name
         self.level = level
         self.coordinate = coordinate
         self.ways = ways
-        self.hasAPS = hasAPS
         self.signalized = signalized
-        self.crossingComplexity = crossingComplexity
+        self.streets = streets
         super.init()
     }
 
-    func addToMap(_ mapView: MKMapView) {
-        mapView.addAnnotation(self)
-    }
-
-    func removeFromMap(_ mapView: MKMapView) {
-        mapView.removeAnnotation(self)
-    }
-
     func announcement() -> String {
-        let wayDesc: String
-        switch ways {
-        case 3: wayDesc = "3-way"
-        case 4: wayDesc = "4-way"
-        default: wayDesc = "\(ways)-way"
-        }
+        let wayDesc = ways >= 3 ? "\(ways)-way" : "2-way"
         return "\(wayDesc) intersection, \(featureName)"
-    }
-
-    // Pulsing haptic: 0.25s interval, 0.15s duration, intensity 1.0, sharpness 0.5
-    func startHapticFeedback(with engine: CHHapticEngine?) {
-        guard let engine = engine else { return }
-        do {
-            var events: [CHHapticEvent] = []
-            let pulseDuration: TimeInterval = 0.15
-            let pulseInterval: TimeInterval = 0.25
-            let totalDuration: TimeInterval = 30.0
-            var time: TimeInterval = 0
-            while time < totalDuration {
-                events.append(CHHapticEvent(
-                    eventType: .hapticContinuous,
-                    parameters: [
-                        CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0),
-                        CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.5)
-                    ],
-                    relativeTime: time,
-                    duration: pulseDuration
-                ))
-                time += pulseInterval
-            }
-            let pattern = try CHHapticPattern(events: events, parameters: [])
-            hapticPlayer = try engine.makePlayer(with: pattern)
-            try hapticPlayer?.start(atTime: CHHapticTimeImmediate)
-        } catch {
-            // Haptics unavailable
-        }
-    }
-
-    func stopHapticFeedback() {
-        try? hapticPlayer?.stop(atTime: CHHapticTimeImmediate)
-        hapticPlayer = nil
     }
 }
 
-// MARK: - Intersection Annotation View
-
-/// Red square annotation view for intersections (6mm side, white border).
+/// Red square intersection marker (6 mm, white border) with an optional green
+/// traffic-signal indicator dot in the corner (visual cue for low-vision users).
 final class PortlandIntersectionAnnotationView: MKAnnotationView {
-
     static let reuseIdentifier = "PortlandIntersection"
-
-    private let trafficLightDot = UIView()
+    private let signalDot = UIView()
 
     override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
         super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
-        setup()
+        build()
     }
+    required init?(coder: NSCoder) { super.init(coder: coder); build() }
 
-    required init?(coder aDecoder: NSCoder) {
-        super.init(coder: aDecoder)
-        setup()
-    }
-
-    private func setup() {
+    private func build() {
         let side = PortlandPhysicalDimensions.mmToPoints(6.0)
-        let borderWidth = PortlandPhysicalDimensions.mmToPoints(0.5)
-
         frame = CGRect(x: 0, y: 0, width: side, height: side)
-        centerOffset = CGPoint(x: 0, y: 0)
-
-        backgroundColor = UIColor(red: 0xC1/255.0, green: 0x12/255.0, blue: 0x1F/255.0, alpha: 1.0)
+        backgroundColor = UIColor(red: 0xC1/255, green: 0x12/255, blue: 0x1F/255, alpha: 1)
         layer.borderColor = UIColor.white.cgColor
-        layer.borderWidth = borderWidth
+        layer.borderWidth = PortlandPhysicalDimensions.mmToPoints(0.5)
 
-        let dotSize: CGFloat = 8
-        trafficLightDot.frame = CGRect(x: side - dotSize / 2, y: -dotSize / 2, width: dotSize, height: dotSize)
-        trafficLightDot.backgroundColor = .systemGreen
-        trafficLightDot.layer.cornerRadius = dotSize / 2
-        trafficLightDot.layer.borderColor = UIColor.white.cgColor
-        trafficLightDot.layer.borderWidth = 1
-        trafficLightDot.isHidden = true
-        addSubview(trafficLightDot)
+        let dot: CGFloat = 8
+        signalDot.frame = CGRect(x: side - dot/2, y: -dot/2, width: dot, height: dot)
+        signalDot.backgroundColor = .systemGreen
+        signalDot.layer.cornerRadius = dot/2
+        signalDot.layer.borderColor = UIColor.white.cgColor
+        signalDot.layer.borderWidth = 1
+        signalDot.isHidden = true
+        if signalDot.superview == nil { addSubview(signalDot) }
 
         isUserInteractionEnabled = false
         isAccessibilityElement = false
     }
 
-    func showTrafficLight(_ visible: Bool) {
-        trafficLightDot.isHidden = !visible
-    }
+    func showSignal(_ visible: Bool) { signalDot.isHidden = !visible }
 
     override func prepareForReuse() {
         super.prepareForReuse()
-        setup()
+        signalDot.isHidden = true
     }
 }
 
-// MARK: - PortlandLandmark
+// MARK: - Landmark
 
-/// A landmark point rendered as an MKAnnotation with a purple tag box.
 final class PortlandLandmark: NSObject, PortlandMapFeature, MKAnnotation {
-
     let featureId: String
     let featureType: PortlandFeatureType = .landmark
     let featureName: String
@@ -305,11 +230,8 @@ final class PortlandLandmark: NSObject, PortlandMapFeature, MKAnnotation {
     let announcementText: String
     let category: String
 
-    private var hapticPlayer: CHHapticPatternPlayer?
-
-    // MKAnnotation
     let coordinate: CLLocationCoordinate2D
-    var title: String? { return featureName }
+    var title: String? { featureName }
 
     init(id: String, name: String, level: Int, coordinate: CLLocationCoordinate2D,
          tag: String, side: String, announcement: String, category: String) {
@@ -324,366 +246,211 @@ final class PortlandLandmark: NSObject, PortlandMapFeature, MKAnnotation {
         super.init()
     }
 
-    func addToMap(_ mapView: MKMapView) {
-        mapView.addAnnotation(self)
-    }
-
-    func removeFromMap(_ mapView: MKMapView) {
-        mapView.removeAnnotation(self)
-    }
-
-    func announcement() -> String {
-        return announcementText
-    }
-
-    // Fast pulse: 0.12s interval, 0.08s duration, intensity 1.0, sharpness 0.7
-    func startHapticFeedback(with engine: CHHapticEngine?) {
-        guard let engine = engine else { return }
-        do {
-            var events: [CHHapticEvent] = []
-            let pulseDuration: TimeInterval = 0.08
-            let pulseInterval: TimeInterval = 0.12
-            let totalDuration: TimeInterval = 30.0
-            var time: TimeInterval = 0
-            while time < totalDuration {
-                events.append(CHHapticEvent(
-                    eventType: .hapticContinuous,
-                    parameters: [
-                        CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0),
-                        CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.7)
-                    ],
-                    relativeTime: time,
-                    duration: pulseDuration
-                ))
-                time += pulseInterval
-            }
-            let pattern = try CHHapticPattern(events: events, parameters: [])
-            hapticPlayer = try engine.makePlayer(with: pattern)
-            try hapticPlayer?.start(atTime: CHHapticTimeImmediate)
-        } catch {
-            // Haptics unavailable
-        }
-    }
-
-    func stopHapticFeedback() {
-        try? hapticPlayer?.stop(atTime: CHHapticTimeImmediate)
-        hapticPlayer = nil
-    }
+    func announcement() -> String { announcementText }
 }
 
-// MARK: - Landmark Annotation View
-
-/// Purple box annotation view for landmarks (9x6mm, tag label, white border).
+/// Purple landmark tag box (9×6 mm) showing the abbreviation.
 final class PortlandLandmarkAnnotationView: MKAnnotationView {
-
     static let reuseIdentifier = "PortlandLandmark"
-
     private let tagLabel = UILabel()
 
     override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
         super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
-        setup()
+        build()
     }
+    required init?(coder: NSCoder) { super.init(coder: coder); build() }
 
-    required init?(coder aDecoder: NSCoder) {
-        super.init(coder: aDecoder)
-        setup()
-    }
-
-    private func setup() {
-        let width = PortlandPhysicalDimensions.mmToPoints(9.0)
-        let height = PortlandPhysicalDimensions.mmToPoints(6.0)
-        let borderWidth = PortlandPhysicalDimensions.mmToPoints(0.5)
-
-        frame = CGRect(x: 0, y: 0, width: width, height: height)
-
-        backgroundColor = UIColor(red: 0x7B/255.0, green: 0x2C/255.0, blue: 0xBF/255.0, alpha: 1.0) // #7b2cbf
+    private func build() {
+        let w = PortlandPhysicalDimensions.mmToPoints(9.0)
+        let h = PortlandPhysicalDimensions.mmToPoints(6.0)
+        frame = CGRect(x: 0, y: 0, width: w, height: h)
+        backgroundColor = UIColor(red: 0x7B/255, green: 0x2C/255, blue: 0xBF/255, alpha: 1)
         layer.borderColor = UIColor.white.cgColor
-        layer.borderWidth = borderWidth
+        layer.borderWidth = PortlandPhysicalDimensions.mmToPoints(0.5)
+        layer.cornerRadius = PortlandPhysicalDimensions.mmToPoints(1.2)
 
-        tagLabel.textColor = .white
-        tagLabel.font = UIFont.systemFont(ofSize: 9, weight: .bold)
-        tagLabel.textAlignment = .center
-        tagLabel.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(tagLabel)
-
-        NSLayoutConstraint.activate([
-            tagLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            tagLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            tagLabel.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -2)
-        ])
-
-        isUserInteractionEnabled = false
-        isAccessibilityElement = false
+        if tagLabel.superview == nil {
+            tagLabel.textColor = .white
+            tagLabel.font = .systemFont(ofSize: 9, weight: .bold)
+            tagLabel.textAlignment = .center
+            tagLabel.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(tagLabel)
+            NSLayoutConstraint.activate([
+                tagLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+                tagLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+                tagLabel.widthAnchor.constraint(lessThanOrEqualTo: widthAnchor, constant: -2)
+            ])
+        }
     }
 
     override var annotation: MKAnnotation? {
         didSet {
-            if let landmark = annotation as? PortlandLandmark {
-                tagLabel.text = landmark.tag
-                // Offset to side of road
-                let offsetX = PortlandPhysicalDimensions.mmToPoints(landmark.side == "left" ? -6.0 : 6.0)
-                centerOffset = CGPoint(x: offsetX, y: 0)
-            }
+            guard let lm = annotation as? PortlandLandmark else { return }
+            tagLabel.text = lm.tag
+            let dx = PortlandPhysicalDimensions.mmToPoints(lm.side == "left" ? -6.0 : 6.0)
+            centerOffset = CGPoint(x: dx, y: 0)
         }
     }
 
-    override func prepareForReuse() {
-        super.prepareForReuse()
-        setup()
-    }
+    override func prepareForReuse() { super.prepareForReuse() }
 }
 
-// MARK: - PortlandSidewalk
+// MARK: - Sidewalk / Crosswalk (Level-2 detail only)
 
-/// A sidewalk line rendered as a gray overlay.
-final class PortlandSidewalk: NSObject, PortlandMapFeature, MKOverlay {
-
+final class PortlandSidewalk: NSObject, PortlandMapFeature {
     let featureId: String
     let featureType: PortlandFeatureType = .sidewalk
     let featureName: String
     let level: Int
-
     private let coordinates: [CLLocationCoordinate2D]
-    private var hapticPlayer: CHHapticPatternPlayer?
-
-    var coordinate: CLLocationCoordinate2D {
-        return boundingMapRect.origin.coordinate
-    }
-
-    var boundingMapRect: MKMapRect {
-        var rect = MKMapRect.null
-        for coord in coordinates {
-            let point = MKMapPoint(coord)
-            let pointRect = MKMapRect(x: point.x, y: point.y, width: 0.001, height: 0.001)
-            rect = rect.union(pointRect)
-        }
-        return rect.insetBy(dx: -0.001, dy: -0.001)
-    }
 
     lazy var polyline: MKPolyline = {
-        var coords = coordinates
-        return MKPolyline(coordinates: &coords, count: coords.count)
+        var c = coordinates
+        return MKPolyline(coordinates: &c, count: c.count)
     }()
 
     init(id: String, name: String, level: Int, coordinates: [CLLocationCoordinate2D]) {
-        self.featureId = id
-        self.featureName = name
-        self.level = level
-        self.coordinates = coordinates
-        super.init()
+        self.featureId = id; self.featureName = name; self.level = level
+        self.coordinates = coordinates; super.init()
     }
-
-    func addToMap(_ mapView: MKMapView) {
-        mapView.addOverlay(polyline, level: .aboveLabels)
-    }
-
-    func removeFromMap(_ mapView: MKMapView) {
-        mapView.removeOverlay(polyline)
-    }
-
-    func announcement() -> String {
-        return featureName
-    }
-
-    // Softer continuous: intensity 0.78, sharpness 0.78
-    func startHapticFeedback(with engine: CHHapticEngine?) {
-        guard let engine = engine else { return }
-        do {
-            let pattern = try CHHapticPattern(events: [
-                CHHapticEvent(
-                    eventType: .hapticContinuous,
-                    parameters: [
-                        CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.78),
-                        CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.78)
-                    ],
-                    relativeTime: 0,
-                    duration: 30.0
-                )
-            ], parameters: [])
-            hapticPlayer = try engine.makePlayer(with: pattern)
-            try hapticPlayer?.start(atTime: CHHapticTimeImmediate)
-        } catch {
-            // Haptics unavailable
-        }
-    }
-
-    func stopHapticFeedback() {
-        try? hapticPlayer?.stop(atTime: CHHapticTimeImmediate)
-        hapticPlayer = nil
-    }
-
-    func getCoordinates() -> [CLLocationCoordinate2D] {
-        return coordinates
-    }
+    func announcement() -> String { featureName }
+    func getCoordinates() -> [CLLocationCoordinate2D] { coordinates }
 }
 
-// MARK: - PortlandCrosswalk
-
-/// A crosswalk rendered as a white dashed overlay.
-final class PortlandCrosswalk: NSObject, PortlandMapFeature, MKOverlay {
-
+final class PortlandCrosswalk: NSObject, PortlandMapFeature {
     let featureId: String
     let featureType: PortlandFeatureType = .crosswalk
     let featureName: String
     let level: Int
-
     private let coordinates: [CLLocationCoordinate2D]
-    private var hapticPlayer: CHHapticPatternPlayer?
-
-    var coordinate: CLLocationCoordinate2D {
-        return boundingMapRect.origin.coordinate
-    }
-
-    var boundingMapRect: MKMapRect {
-        var rect = MKMapRect.null
-        for coord in coordinates {
-            let point = MKMapPoint(coord)
-            let pointRect = MKMapRect(x: point.x, y: point.y, width: 0.001, height: 0.001)
-            rect = rect.union(pointRect)
-        }
-        return rect.insetBy(dx: -0.001, dy: -0.001)
-    }
 
     lazy var polyline: MKPolyline = {
-        var coords = coordinates
-        return MKPolyline(coordinates: &coords, count: coords.count)
+        var c = coordinates
+        return MKPolyline(coordinates: &c, count: c.count)
     }()
 
     init(id: String, name: String, level: Int, coordinates: [CLLocationCoordinate2D]) {
-        self.featureId = id
-        self.featureName = name
-        self.level = level
-        self.coordinates = coordinates
-        super.init()
+        self.featureId = id; self.featureName = name; self.level = level
+        self.coordinates = coordinates; super.init()
     }
+    func announcement() -> String { featureName }
+    func getCoordinates() -> [CLLocationCoordinate2D] { coordinates }
+}
 
-    func addToMap(_ mapView: MKMapView) {
-        mapView.addOverlay(polyline, level: .aboveLabels)
-    }
+// MARK: - Time-of-day traffic state
 
-    func removeFromMap(_ mapView: MKMapView) {
-        mapView.removeOverlay(polyline)
-    }
+/// The three time-of-day states the app exposes. Backed by FHWA urban hourly volume
+/// profiles applied to HPMS-class AADT (see `portland_traffic.json`).
+enum TrafficState: String, CaseIterable, Identifiable {
+    case peak, normal, light
 
-    func announcement() -> String {
-        return featureName
-    }
-
-    // Rapid transient ticks: 0.17s interval, intensity 1.0, sharpness 1.0
-    func startHapticFeedback(with engine: CHHapticEngine?) {
-        guard let engine = engine else { return }
-        do {
-            var events: [CHHapticEvent] = []
-            let tickInterval: TimeInterval = 0.17
-            let totalDuration: TimeInterval = 30.0
-            var time: TimeInterval = 0
-            while time < totalDuration {
-                events.append(CHHapticEvent(
-                    eventType: .hapticTransient,
-                    parameters: [
-                        CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0),
-                        CHHapticEventParameter(parameterID: .hapticSharpness, value: 1.0)
-                    ],
-                    relativeTime: time
-                ))
-                time += tickInterval
-            }
-            let pattern = try CHHapticPattern(events: events, parameters: [])
-            hapticPlayer = try engine.makePlayer(with: pattern)
-            try hapticPlayer?.start(atTime: CHHapticTimeImmediate)
-        } catch {
-            // Haptics unavailable
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .peak:   return "Peak"
+        case .normal: return "Normal"
+        case .light:  return "Light"
         }
     }
-
-    func stopHapticFeedback() {
-        try? hapticPlayer?.stop(atTime: CHHapticTimeImmediate)
-        hapticPlayer = nil
-    }
-
-    func getCoordinates() -> [CLLocationCoordinate2D] {
-        return coordinates
+    var description: String {
+        switch self {
+        case .peak:   return "PM rush hour. Continuous traffic, few gaps to cross."
+        case .normal: return "Midday. Moderate, steady traffic."
+        case .light:  return "Late night. Sparse traffic with detectable gaps."
+        }
     }
 }
 
-// MARK: - APS Location
-
-struct PortlandAPSLocation: Codable {
-    let id: String
-    let location: String
-    let intersectionId: String
-    let signalType: String
-    let hasVibrotactile: Bool
-    let hasPushButton: Bool
-    let notes: String?
-}
-
-// MARK: - Traffic Data
+// MARK: - Traffic data models (match portland_traffic.json)
 
 struct PortlandTrafficSegment: Codable {
     let id: String
+    let corridorIds: [String]
     let name: String
+    let functionalClass: String
     let lanes: Int
+    let oneway: Bool
     let aadt: Int
-    let speedLimit: Int?
-    let hourlyProfile: [String: HourlyProfile]
+    let speedLimitMph: Int
+    let crossingDistanceM: Double
+    let states: [String: StateVolume]
 
-    struct HourlyProfile: Codable {
+    struct StateVolume: Codable {
+        let hour: Int
+        let vph: Int
+        let vphPerLane: Int
         let level: String
-        let pctOfAadt: Double?
 
         enum CodingKeys: String, CodingKey {
-            case level
-            case pctOfAadt = "pct_of_aadt"
+            case hour, vph, level
+            case vphPerLane = "vph_per_lane"
         }
     }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, lanes, oneway, aadt, states
+        case corridorIds = "corridor_ids"
+        case functionalClass = "functional_class"
+        case speedLimitMph = "speed_limit_mph"
+        case crossingDistanceM = "crossing_distance_m"
+    }
+
+    func level(for state: TrafficState) -> TrafficLevel {
+        TrafficLevel(raw: states[state.rawValue]?.level ?? "moderate")
+    }
+    func vehiclesPerHour(for state: TrafficState) -> Int { states[state.rawValue]?.vph ?? 0 }
 }
 
 struct PortlandTrafficIntersection: Codable {
     let id: String
+    let name: String
     let signalized: Bool
-    let hasTrafficLight: Bool?
 }
 
-// MARK: - Traffic Time of Day
+// MARK: - APS data models (mirror NYC Open Data APS schema)
 
-enum TrafficTimeOfDay: String, CaseIterable, Identifiable {
-    case morningRush = "morning_rush"
-    case midday = "midday"
-    case eveningRush = "evening_rush"
-    case evening = "evening"
-    case night = "night"
+struct PortlandAPS: Codable {
+    let objectId: Int
+    let intersectionId: String
+    let onStreet: String
+    let crossStreet: String
+    let latitude: Double
+    let longitude: Double
+    let dateInstalled: String
+    let manufacturer: String
+    let device: Device
+    let notes: String?
 
-    var id: String { rawValue }
+    struct Device: Codable {
+        let locatorTone: Bool
+        let locatorToneHz: Int
+        let walkIndication: String       // "speech" | "percussive_tone"
+        let walkMessage: String?
+        let vibrotactileArrow: Bool
+        let pushbutton: Bool
+        let pushbuttonCorners: [String]
+        let audibleBeaconing: Bool
+        let countdownSeconds: Int
 
-    var label: String {
-        switch self {
-        case .morningRush: return "Morning Rush"
-        case .midday: return "Midday"
-        case .eveningRush: return "Evening Rush"
-        case .evening: return "Evening"
-        case .night: return "Night"
+        enum CodingKeys: String, CodingKey {
+            case locatorTone = "locator_tone"
+            case locatorToneHz = "locator_tone_hz"
+            case walkIndication = "walk_indication"
+            case walkMessage = "walk_message"
+            case vibrotactileArrow = "vibrotactile_arrow"
+            case pushbutton
+            case pushbuttonCorners = "pushbutton_corners"
+            case audibleBeaconing = "audible_beaconing"
+            case countdownSeconds = "countdown_seconds"
         }
     }
 
-    var shortLabel: String {
-        switch self {
-        case .morningRush: return "AM"
-        case .midday: return "Mid"
-        case .eveningRush: return "PM"
-        case .evening: return "Eve"
-        case .night: return "Night"
-        }
-    }
-
-    var description: String {
-        switch self {
-        case .morningRush: return "7 AM to 9 AM, peak commute hours"
-        case .midday: return "10 AM to 3 PM, moderate traffic"
-        case .eveningRush: return "4 PM to 6 PM, peak commute hours"
-        case .evening: return "7 PM to 10 PM, lighter traffic"
-        case .night: return "11 PM to 6 AM, very light traffic"
-        }
+    enum CodingKeys: String, CodingKey {
+        case objectId = "object_id"
+        case intersectionId = "intersection_id"
+        case onStreet = "on_street"
+        case crossStreet = "cross_street"
+        case latitude, longitude, manufacturer, device, notes
+        case dateInstalled = "date_installed"
     }
 }
