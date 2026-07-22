@@ -86,6 +86,7 @@ final class SignalController: ObservableObject {
         guard running else { return }
         phase = .walk
         locatorTimer?.invalidate()
+        feedback.playSignalTransition(toWalk: true)   // light-state-change cue (distinct)
         // Vibrotactile arrow (raised arrow that pulses during WALK).
         if aps?.device.vibrotactileArrow == true {
             feedback.startFeedback(for: WalkPulseFeature(), trafficLevel: nil)
@@ -109,6 +110,7 @@ final class SignalController: ObservableObject {
         phase = .countdown
         locatorTimer?.invalidate()
         feedback.stopAllFeedback()
+        feedback.playSignalTransition(toWalk: false)   // clearance-starting cue (distinct)
         countdown = min(aps?.device.countdownSeconds ?? 15, 12)
         feedback.speak("Don't walk. \(countdown) seconds to finish crossing.")
         countdownTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in

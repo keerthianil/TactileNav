@@ -31,6 +31,7 @@ struct PortlandMapScreen: View {
                 trafficIntersections: trafficIntersections,
                 apsLocations: apsLocations,
                 trafficState: trafficState,
+                onTrafficStateChange: { trafficState = $0 },
                 level: 1
             )
             .ignoresSafeArea(edges: .top)

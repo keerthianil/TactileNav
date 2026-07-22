@@ -70,73 +70,6 @@
       }
     },
     {
-      "id": "c-11406598",
-      "corridor_ids": [
-        "c-11406598"
-      ],
-      "name": "Casco Street",
-      "functional_class": "residential",
-      "lanes": 2,
-      "oneway": false,
-      "aadt": 2400,
-      "speed_limit_mph": 20,
-      "crossing_distance_m": 6.6,
-      "states": {
-        "peak": {
-          "hour": 17,
-          "vph": 194,
-          "vph_per_lane": 117,
-          "level": "light"
-        },
-        "normal": {
-          "hour": 12,
-          "vph": 127,
-          "vph_per_lane": 76,
-          "level": "light"
-        },
-        "light": {
-          "hour": 23,
-          "vph": 24,
-          "vph_per_lane": 14,
-          "level": "very_light"
-        }
-      }
-    },
-    {
-      "id": "c-30195075",
-      "corridor_ids": [
-        "c-30195075",
-        "c-1456491324"
-      ],
-      "name": "Center Street",
-      "functional_class": "unclassified",
-      "lanes": 2,
-      "oneway": true,
-      "aadt": 3000,
-      "speed_limit_mph": 20,
-      "crossing_distance_m": 6.6,
-      "states": {
-        "peak": {
-          "hour": 17,
-          "vph": 243,
-          "vph_per_lane": 122,
-          "level": "light"
-        },
-        "normal": {
-          "hour": 12,
-          "vph": 159,
-          "vph_per_lane": 80,
-          "level": "light"
-        },
-        "light": {
-          "hour": 23,
-          "vph": 30,
-          "vph_per_lane": 15,
-          "level": "very_light"
-        }
-      }
-    },
-    {
       "id": "c-511333565",
       "corridor_ids": [
         "c-511333565",
@@ -340,39 +273,6 @@
           "level": "very_light"
         }
       }
-    },
-    {
-      "id": "c-278159122",
-      "corridor_ids": [
-        "c-278159122"
-      ],
-      "name": "Spring Street",
-      "functional_class": "tertiary",
-      "lanes": 2,
-      "oneway": false,
-      "aadt": 6500,
-      "speed_limit_mph": 25,
-      "crossing_distance_m": 6.6,
-      "states": {
-        "peak": {
-          "hour": 17,
-          "vph": 526,
-          "vph_per_lane": 316,
-          "level": "moderate"
-        },
-        "normal": {
-          "hour": 12,
-          "vph": 344,
-          "vph_per_lane": 207,
-          "level": "moderate"
-        },
-        "light": {
-          "hour": 23,
-          "vph": 65,
-          "vph_per_lane": 39,
-          "level": "very_light"
-        }
-      }
     }
   ],
   "intersections": [
@@ -382,29 +282,9 @@
       "signalized": true
     },
     {
-      "id": "i-101484927",
-      "name": "Free Street & Oak Street",
-      "signalized": false
-    },
-    {
-      "id": "i-101477079",
-      "name": "Oak Street & Spring Street",
-      "signalized": false
-    },
-    {
-      "id": "i-101487255",
-      "name": "Casco Street & Congress Street",
-      "signalized": true
-    },
-    {
       "id": "i-101560108",
       "name": "Congress Street & Park Street",
       "signalized": true
-    },
-    {
-      "id": "i-101477101",
-      "name": "Park Street & Spring Street",
-      "signalized": false
     },
     {
       "id": "i-101569126",
@@ -412,38 +292,8 @@
       "signalized": true
     },
     {
-      "id": "i-101569124",
-      "name": "Brown Street & Free Street",
-      "signalized": false
-    },
-    {
-      "id": "i-101741057",
-      "name": "Congress Street & Free Street",
-      "signalized": true
-    },
-    {
-      "id": "i-101580775",
-      "name": "Center Street & Free Street",
-      "signalized": false
-    },
-    {
-      "id": "i-101582256",
-      "name": "Center Street & Congress Street",
-      "signalized": true
-    },
-    {
       "id": "i-101466354",
       "name": "Congress Street & Preble Street",
-      "signalized": true
-    },
-    {
-      "id": "i-101477063",
-      "name": "Center Street & Spring Street",
-      "signalized": false
-    },
-    {
-      "id": "i-101477086",
-      "name": "High Street & Spring Street",
       "signalized": true
     },
     {

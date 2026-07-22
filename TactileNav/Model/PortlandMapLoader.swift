@@ -96,14 +96,28 @@ enum PortlandMapLoader {
                     name: "\(leg.name) sidewalk", level: 2, coordinates: [a, b]))
             }
 
-            // crosswalk across the leg, sized to the real crossing width
+            // crosswalk across the leg, sized to the real crossing width. Rendered as
+            // discrete zebra stripes (bars parallel to traffic, spaced across the width),
+            // like a real marked crossing — not one fat dashed line.
             let mid = destination(from: center, distanceM: crosswalkOutM, bearing: leg.bearing)
             let cwA = destination(from: mid, distanceM: leg.crossingM / 2, bearing: leg.bearing + 90)
             let cwB = destination(from: mid, distanceM: leg.crossingM / 2, bearing: leg.bearing - 90)
+            // ~1.4 m pitch so thin stripes keep clear gaps between them (real zebra look).
+            let stripeCount = max(3, Int((leg.crossingM / 1.4).rounded()))
+            let stripeDepth = 2.4   // metres a stripe runs along the travel direction
+            var stripes: [[CLLocationCoordinate2D]] = []
+            for j in 0..<stripeCount {
+                let f = (Double(j) + 0.5) / Double(stripeCount)
+                let cLat = cwA.latitude + (cwB.latitude - cwA.latitude) * f
+                let cLon = cwA.longitude + (cwB.longitude - cwA.longitude) * f
+                let c = CLLocationCoordinate2D(latitude: cLat, longitude: cLon)
+                stripes.append([destination(from: c, distanceM: stripeDepth/2, bearing: leg.bearing),
+                                destination(from: c, distanceM: stripeDepth/2, bearing: leg.bearing + 180)])
+            }
             features.append(PortlandCrosswalk(
                 id: "\(intersection.featureId)-cw\(i)",
                 name: "\(leg.name) crosswalk, \(Int(leg.crossingM.rounded())) meters wide",
-                level: 2, coordinates: [cwA, cwB]))
+                level: 2, coordinates: [cwA, cwB], stripes: stripes))
         }
 
         features.append(PortlandIntersection(

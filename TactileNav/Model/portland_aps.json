@@ -30,78 +30,6 @@
     },
     {
       "object_id": 2,
-      "intersection_id": "i-101487255",
-      "on_street": "Congress Street",
-      "cross_street": "Casco Street",
-      "latitude": 43.655974,
-      "longitude": -70.261102,
-      "date_installed": "2022-09-01",
-      "manufacturer": "Campbell",
-      "device": {
-        "locator_tone": true,
-        "locator_tone_hz": 880,
-        "walk_indication": "percussive_tone",
-        "walk_message": null,
-        "vibrotactile_arrow": true,
-        "pushbutton": true,
-        "pushbutton_corners": [
-          "NE"
-        ],
-        "audible_beaconing": false,
-        "countdown_seconds": 18
-      },
-      "notes": "Standard two-tone APS."
-    },
-    {
-      "object_id": 3,
-      "intersection_id": "i-101582256",
-      "on_street": "Congress Street",
-      "cross_street": "Center Street",
-      "latitude": 43.657015,
-      "longitude": -70.2597,
-      "date_installed": "2022-09-01",
-      "manufacturer": "Campbell",
-      "device": {
-        "locator_tone": true,
-        "locator_tone_hz": 880,
-        "walk_indication": "percussive_tone",
-        "walk_message": null,
-        "vibrotactile_arrow": true,
-        "pushbutton": true,
-        "pushbutton_corners": [
-          "NE"
-        ],
-        "audible_beaconing": false,
-        "countdown_seconds": 18
-      },
-      "notes": "Standard two-tone APS."
-    },
-    {
-      "object_id": 4,
-      "intersection_id": "i-101741057",
-      "on_street": "Congress Street",
-      "cross_street": "Free Street",
-      "latitude": 43.654096,
-      "longitude": -70.263003,
-      "date_installed": "2022-09-01",
-      "manufacturer": "Campbell",
-      "device": {
-        "locator_tone": true,
-        "locator_tone_hz": 880,
-        "walk_indication": "percussive_tone",
-        "walk_message": null,
-        "vibrotactile_arrow": true,
-        "pushbutton": true,
-        "pushbutton_corners": [
-          "NE"
-        ],
-        "audible_beaconing": false,
-        "countdown_seconds": 18
-      },
-      "notes": "Standard two-tone APS."
-    },
-    {
-      "object_id": 5,
       "intersection_id": "i-101580801",
       "on_street": "Congress Street",
       "cross_street": "High Street",
@@ -126,7 +54,7 @@
       "notes": "Flagship Congress Square crossing; APS on all corners."
     },
     {
-      "object_id": 6,
+      "object_id": 3,
       "intersection_id": "i-101484933",
       "on_street": "Congress Street",
       "cross_street": "Oak Street",
@@ -150,7 +78,7 @@
       "notes": "Standard two-tone APS."
     },
     {
-      "object_id": 7,
+      "object_id": 4,
       "intersection_id": "i-101560108",
       "on_street": "Congress Street",
       "cross_street": "Park Street",
@@ -174,36 +102,12 @@
       "notes": "Standard two-tone APS."
     },
     {
-      "object_id": 8,
+      "object_id": 5,
       "intersection_id": "i-101466354",
       "on_street": "Congress Street",
       "cross_street": "Preble Street",
       "latitude": 43.657181,
       "longitude": -70.259494,
-      "date_installed": "2022-09-01",
-      "manufacturer": "Campbell",
-      "device": {
-        "locator_tone": true,
-        "locator_tone_hz": 880,
-        "walk_indication": "percussive_tone",
-        "walk_message": null,
-        "vibrotactile_arrow": true,
-        "pushbutton": true,
-        "pushbutton_corners": [
-          "NE"
-        ],
-        "audible_beaconing": false,
-        "countdown_seconds": 18
-      },
-      "notes": "Standard two-tone APS."
-    },
-    {
-      "object_id": 9,
-      "intersection_id": "i-101477086",
-      "on_street": "High Street",
-      "cross_street": "Spring Street",
-      "latitude": 43.653164,
-      "longitude": -70.261828,
       "date_installed": "2022-09-01",
       "manufacturer": "Campbell",
       "device": {

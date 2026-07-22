@@ -18,22 +18,71 @@
 import SwiftUI
 import MapKit
 
-// MARK: - Accessible map view (VoiceOver back gestures + direct touch)
+// MARK: - Map sizing (scale to this map, not fixed pixels)
+//
+// Feature sizes are a fraction of the smaller on-screen viewport dimension, so they stay
+// proportional to whatever the map is showing, then clamped to a tactile minimum (a red
+// square must stay ~finger-tip sized) and a maximum (so it can't dominate). Line widths
+// derive from that: roads < intersection, sidewalks < roads, crosswalk stripes thinnest.
+enum PortlandMapSizing {
+    static func ref(_ mv: MKMapView) -> CGFloat {
+        let s = min(mv.bounds.width, mv.bounds.height)
+        return s > 0 ? s : UIScreen.main.bounds.width
+    }
+    static func intersectionSide(_ mv: MKMapView) -> CGFloat { min(max(ref(mv) * 0.055, 20), 40) }
+    static func landmarkSize(_ mv: MKMapView) -> (CGFloat, CGFloat) {
+        let s = intersectionSide(mv); return (s * 1.5, s)
+    }
+    static func roadWidth(_ mv: MKMapView, level: Int) -> CGFloat {
+        level == 2 ? min(max(ref(mv) * 0.05, 16), 34) : min(max(ref(mv) * 0.016, 7), 14)
+    }
+    static func sidewalkWidth(_ mv: MKMapView, level: Int) -> CGFloat { roadWidth(mv, level: level) * 0.5 }
+    static func crosswalkStripeWidth(_ mv: MKMapView, level: Int) -> CGFloat {
+        // Thin bars so the ~1.4 m-pitch stripes read as discrete zebra marks, not a band.
+        max(2.5, roadWidth(mv, level: level) * 0.11)
+    }
+}
+
+// MARK: - Accessible map view (VoiceOver back gestures + direct touch + context actions)
 
 final class PortlandAccessibleMapView: MKMapView {
     var onBackGesture: (() -> Void)?
+    /// Context actions surfaced via the VoiceOver Actions rotor (swipe up/down on the map).
+    var trafficActions: [(String, () -> Void)] = []
+    /// Two-finger double-tap (magic tap) shortcut to cycle the traffic time of day.
+    var onMagicTap: (() -> Void)?
 
-    func applyAccessibility() {
+    func applyAccessibility(level: Int) {
         if UIAccessibility.isVoiceOverRunning {
             isAccessibilityElement = true
             accessibilityTraits = [.allowsDirectInteraction]
             accessibilityLabel = "Tactile map"
-            accessibilityHint = "Drag to explore. Double tap an intersection for detail. Three finger swipe right, or two finger scrub, to go back."
+            var hint = "Drag to explore. Double tap an intersection for detail. "
+            if level == 1 {
+                hint += "Swipe up or down to change the traffic time of day, or two finger double tap to cycle it. "
+            }
+            hint += "Three finger swipe right, or two finger scrub, to go back."
+            accessibilityHint = hint
             if #available(iOS 17.0, *) { accessibilityDirectTouchOptions = .silentOnTouch }
         } else {
             isAccessibilityElement = false
             accessibilityTraits = []
         }
+    }
+
+    override var accessibilityCustomActions: [UIAccessibilityCustomAction]? {
+        get {
+            trafficActions.map { label, handler in
+                UIAccessibilityCustomAction(name: label) { _ in handler(); return true }
+            }
+        }
+        set {}
+    }
+
+    override func accessibilityPerformMagicTap() -> Bool {
+        guard let onMagicTap else { return false }
+        onMagicTap()
+        return true
     }
 
     // VoiceOver 3-finger swipe right → back.
@@ -128,6 +177,7 @@ struct PortlandMapView: UIViewRepresentable {
     var trafficIntersections: [PortlandTrafficIntersection] = []
     var apsLocations: [PortlandAPS] = []
     var trafficState: TrafficState = .normal
+    var onTrafficStateChange: ((TrafficState) -> Void)?
     var level: Int = 1
 
     func makeUIView(context: Context) -> PortlandAccessibleMapView {
@@ -144,7 +194,7 @@ struct PortlandMapView: UIViewRepresentable {
         mapView.isRotateEnabled = false
         mapView.isPitchEnabled = false
         mapView.delegate = context.coordinator
-        mapView.applyAccessibility()
+        mapView.applyAccessibility(level: level)
 
         mapView.addOverlay(PortlandBlankTileOverlay(urlTemplate: nil), level: .aboveLabels)
 
@@ -203,8 +253,27 @@ struct PortlandMapView: UIViewRepresentable {
     func updateUIView(_ mapView: PortlandAccessibleMapView, context: Context) {
         let c = context.coordinator
         c.parent = self
-        mapView.applyAccessibility()
+        mapView.applyAccessibility(level: level)
         mapView.onBackGesture = { [weak c] in c?.triggerBack() }
+
+        // Traffic time-of-day as VoiceOver context actions (Actions rotor) + magic-tap cycle.
+        if level == 1, let cb = onTrafficStateChange {
+            mapView.trafficActions = TrafficState.allCases.map { st in
+                ("Traffic time: \(st.label)", {
+                    cb(st)
+                    PortlandFeedbackManager.shared.speak("Traffic set to \(st.label). \(st.description)")
+                })
+            }
+            let states = TrafficState.allCases
+            let next = states[((states.firstIndex(of: trafficState) ?? 0) + 1) % states.count]
+            mapView.onMagicTap = {
+                cb(next)
+                PortlandFeedbackManager.shared.speak("Traffic set to \(next.label). \(next.description)")
+            }
+        } else {
+            mapView.trafficActions = []
+            mapView.onMagicTap = nil
+        }
 
         let featuresChanged = c.renderedFeatureKey != Self.featureKey(features)
         let timeChanged = c.renderedState != trafficState
@@ -225,9 +294,12 @@ struct PortlandMapView: UIViewRepresentable {
                     pl.portlandFeatureType = .sidewalk; pl.portlandLevel = sw.level
                     mapView.addOverlay(pl, level: .aboveLabels)
                 case let cw as PortlandCrosswalk:
-                    let pl = cw.polyline
-                    pl.portlandFeatureType = .crosswalk; pl.portlandLevel = cw.level
-                    mapView.addOverlay(pl, level: .aboveLabels)
+                    // Render discrete zebra stripes; the centerline stays in `features`
+                    // only for hit-testing / announcement (never drawn).
+                    for stripe in cw.stripePolylines() {
+                        stripe.portlandFeatureType = .crosswalk; stripe.portlandLevel = cw.level
+                        mapView.addOverlay(stripe, level: .aboveLabels)
+                    }
                 case let x as PortlandIntersection:
                     mapView.addAnnotation(x)
                 case let lm as PortlandLandmark:
@@ -259,18 +331,29 @@ struct PortlandMapView: UIViewRepresentable {
             let p = MKMapPoint(coord)
             r = r.union(MKMapRect(x: p.x, y: p.y, width: 0.01, height: 0.01))
         }
-        for f in features {
-            switch f {
-            case let x as PortlandCorridor: x.getCoordinates().forEach(add)
-            case let x as PortlandSidewalk: x.getCoordinates().forEach(add)
-            case let x as PortlandCrosswalk: x.getCoordinates().forEach(add)
-            case let x as PortlandIntersection: add(x.coordinate)
-            case let x as PortlandLandmark: add(x.coordinate)
-            default: break
+        if level == 1 {
+            // Frame the 5-crossing cluster (+ landmarks) so it fills the screen and the
+            // fixed-minimum markers don't overlap; the Congress St spine runs off-screen.
+            for f in features {
+                if let x = f as? PortlandIntersection { add(x.coordinate) }
+                if let x = f as? PortlandLandmark { add(x.coordinate) }
+            }
+        } else {
+            for f in features {
+                switch f {
+                case let x as PortlandCorridor: x.getCoordinates().forEach(add)
+                case let x as PortlandSidewalk: x.getCoordinates().forEach(add)
+                case let x as PortlandCrosswalk: x.getCoordinates().forEach(add)
+                case let x as PortlandIntersection: add(x.coordinate)
+                default: break
+                }
             }
         }
         guard !r.isNull else { return }
-        let pad = UIEdgeInsets(top: 48, left: 40, bottom: 96, right: 40)
+        // Generous padding at L1 gives the cluster breathing room around the edges.
+        let pad: UIEdgeInsets = level == 1
+            ? UIEdgeInsets(top: 90, left: 80, bottom: 120, right: 80)
+            : UIEdgeInsets(top: 48, left: 40, bottom: 96, right: 40)
         mapView.setVisibleMapRect(r, edgePadding: pad, animated: false)
     }
 
@@ -309,22 +392,25 @@ struct PortlandMapView: UIViewRepresentable {
             }
             guard let pl = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
             let r = MKPolylineRenderer(polyline: pl)
+            let level = pl.portlandLevel
             switch pl.portlandFeatureType {
             case .corridor:
                 r.strokeColor = trafficColor(forCorridorId: pl.portlandFeatureId)
-                r.lineWidth = PortlandPhysicalDimensions.mmToPoints(pl.portlandLevel == 2 ? 12 : 4)
+                r.lineWidth = PortlandMapSizing.roadWidth(mapView, level: level)
+                r.lineCap = .round; r.lineJoin = .round
             case .sidewalk:
                 r.strokeColor = UIColor(red: 0x9E/255, green: 0x9E/255, blue: 0x9E/255, alpha: 1)
-                r.lineWidth = PortlandPhysicalDimensions.mmToPoints(4)
+                r.lineWidth = PortlandMapSizing.sidewalkWidth(mapView, level: level)
+                r.lineCap = .round; r.lineJoin = .round
             case .crosswalk:
+                // Each overlay is one zebra bar → solid, butt caps (clean rectangle).
                 r.strokeColor = .white
-                r.lineWidth = PortlandPhysicalDimensions.mmToPoints(2.8)
-                r.lineDashPattern = [NSNumber(value: Float(PortlandPhysicalDimensions.mmToPoints(1.5))),
-                                     NSNumber(value: Float(PortlandPhysicalDimensions.mmToPoints(1.0)))]
+                r.lineWidth = PortlandMapSizing.crosswalkStripeWidth(mapView, level: level)
+                r.lineCap = .butt; r.lineJoin = .miter
             default:
                 r.strokeColor = .gray; r.lineWidth = 2
+                r.lineCap = .round; r.lineJoin = .round
             }
-            r.lineCap = .round; r.lineJoin = .round
             return r
         }
 
@@ -333,6 +419,7 @@ struct PortlandMapView: UIViewRepresentable {
                 let v = (mapView.dequeueReusableAnnotationView(withIdentifier: PortlandIntersectionAnnotationView.reuseIdentifier)
                          as? PortlandIntersectionAnnotationView)
                         ?? PortlandIntersectionAnnotationView(annotation: x, reuseIdentifier: PortlandIntersectionAnnotationView.reuseIdentifier)
+                v.configure(side: PortlandMapSizing.intersectionSide(mapView))
                 v.annotation = x
                 v.showSignal(x.signalized)
                 return v
@@ -341,6 +428,8 @@ struct PortlandMapView: UIViewRepresentable {
                 let v = (mapView.dequeueReusableAnnotationView(withIdentifier: PortlandLandmarkAnnotationView.reuseIdentifier)
                          as? PortlandLandmarkAnnotationView)
                         ?? PortlandLandmarkAnnotationView(annotation: lm, reuseIdentifier: PortlandLandmarkAnnotationView.reuseIdentifier)
+                let sz = PortlandMapSizing.landmarkSize(mapView)
+                v.configure(width: sz.0, height: sz.1)
                 v.annotation = lm
                 return v
             }

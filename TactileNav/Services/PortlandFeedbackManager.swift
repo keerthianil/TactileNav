@@ -65,6 +65,18 @@ final class PortlandFeedbackManager {
 
     func playSingleTap() { haptics.playSingleTap() }
 
+    /// Distinct haptic that marks a *traffic-signal state change* — deliberately different
+    /// from the road-traffic rumble (audio) and the APS vibrotactile arrow (sustained
+    /// pulse): a quick double tap when WALK begins, a single tap when clearance begins.
+    func playSignalTransition(toWalk: Bool) {
+        haptics.playSingleTap()
+        if toWalk {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+                self?.haptics.playSingleTap()
+            }
+        }
+    }
+
     private func startCrosswalkTicks() {
         crosswalkTickTimer?.invalidate()
         crosswalkTickTimer = Timer.scheduledTimer(withTimeInterval: 0.17, repeats: true) { [weak self] _ in
