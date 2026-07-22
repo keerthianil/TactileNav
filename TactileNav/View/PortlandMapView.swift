@@ -17,6 +17,24 @@
 
 import SwiftUI
 import MapKit
+import TactileMapCore
+import TactileMapLogging
+
+// MARK: - UIKit helpers
+
+extension UIView {
+    /// Walk the responder chain to the enclosing navigation controller (used to disable
+    /// the interactive edge-swipe pop so one-finger dragging can't accidentally go back).
+    var enclosingNavigationController: UINavigationController? {
+        var r: UIResponder? = self.next
+        while let cur = r {
+            if let nc = cur as? UINavigationController { return nc }
+            if let vc = cur as? UIViewController, let nc = vc.navigationController { return nc }
+            r = cur.next
+        }
+        return nil
+    }
+}
 
 // MARK: - Map sizing (scale to this map, not fixed pixels)
 //
@@ -275,6 +293,14 @@ struct PortlandMapView: UIViewRepresentable {
             mapView.onMagicTap = nil
         }
 
+        // Disable the one-finger interactive edge-swipe pop so dragging to explore near the
+        // left edge can't accidentally navigate back (Level 1 is a pushed screen).
+        if level == 1, let nav = mapView.enclosingNavigationController {
+            nav.interactivePopGestureRecognizer?.isEnabled = false
+            c.disabledPopNav = nav
+        }
+        c.startLogIfNeeded()
+
         let featuresChanged = c.renderedFeatureKey != Self.featureKey(features)
         let timeChanged = c.renderedState != trafficState
 
@@ -318,6 +344,8 @@ struct PortlandMapView: UIViewRepresentable {
 
     static func dismantleUIView(_ mapView: PortlandAccessibleMapView, coordinator: Coordinator) {
         coordinator.feedback.stopAllFeedback()
+        coordinator.endLog()
+        coordinator.disabledPopNav?.interactivePopGestureRecognizer?.isEnabled = true
     }
 
     private static func featureKey(_ features: [PortlandMapFeature]) -> String {
@@ -371,12 +399,58 @@ struct PortlandMapView: UIViewRepresentable {
         var renderedState: TrafficState?
 
         private var currentFeatureId: String?
+        private var currentFeature: PortlandMapFeature?
         private var lastPoint: CGPoint?
         private var lastMoveTime: CFTimeInterval = 0
         private var backTriggered = false
 
+        // CSV touch logging (same logger type the Roux map + Data Files screen use).
+        let logger = CSVTouchLogger(fileNameGenerator: { meta in
+            let df = DateFormatter()
+            df.locale = Locale(identifier: "en_US_POSIX")
+            df.dateFormat = "yyyyMMdd_HHmmss"
+            return "CongressSquare_L\(meta["level"] ?? "1")_\(df.string(from: Date()))"
+        })
+        private var sessionStarted = false
+        private var sessionStart = Date()
+        weak var disabledPopNav: UINavigationController?
+
         init(parent: PortlandMapView) { self.parent = parent }
         deinit { NotificationCenter.default.removeObserver(self) }
+
+        func startLogIfNeeded() {
+            guard !sessionStarted else { return }
+            sessionStarted = true
+            sessionStart = Date()
+            logger.startSession(metadata: ["map": "CongressSquare", "level": "\(parent.level)"])
+        }
+
+        func endLog() {
+            guard sessionStarted else { return }
+            sessionStarted = false
+            logger.endSession()
+        }
+
+        private func log(_ type: TouchEventType, at p: CGPoint, feature: PortlandMapFeature?) {
+            guard sessionStarted else { return }
+            logger.logEvent(TouchEvent(
+                timestamp: Date(),
+                sessionElapsed: Date().timeIntervalSince(sessionStart),
+                eventType: type,
+                elementName: feature?.featureName ?? "Background",
+                elementType: feature.map { Self.tactileType($0.featureType) },
+                touchPoint: p))
+        }
+
+        private static func tactileType(_ t: PortlandFeatureType) -> TactileElementType {
+            switch t {
+            case .corridor: return .corridor
+            case .intersection: return .intersection
+            case .landmark: return .landmark
+            case .sidewalk: return TactileElementType(rawValue: "sidewalk")
+            case .crosswalk: return TactileElementType(rawValue: "crosswalk")
+            }
+        }
 
         @objc func voiceOverChanged() { /* accessibility re-applied in updateUIView */ }
 
@@ -484,16 +558,20 @@ struct PortlandMapView: UIViewRepresentable {
             let p = g.location(in: mv)
             switch g.state {
             case .began:
+                startLogIfNeeded()
                 lastPoint = p; lastMoveTime = CACurrentMediaTime()
                 exploreStart(at: p, in: mv, velocity: 0)
+                log(.touchDown, at: p, feature: currentFeature)
                 touchIndicator?.show(at: p)
             case .changed:
                 let now = CACurrentMediaTime()
                 let v = velocity(to: p, now: now)
                 lastPoint = p; lastMoveTime = now
                 exploreUpdate(at: p, in: mv, velocity: v)
+                log(.touchMove, at: p, feature: currentFeature)   // logger throttles moves
                 touchIndicator?.show(at: p)
             case .ended, .cancelled, .failed:
+                log(.touchUp, at: p, feature: currentFeature)
                 exploreStop()
                 touchIndicator?.hide()
                 lastPoint = nil
@@ -533,6 +611,7 @@ struct PortlandMapView: UIViewRepresentable {
 
         private func exploreUpdate(at p: CGPoint, in mv: MKMapView, velocity v: CGFloat) {
             let f = hitFeature(at: p, in: mv, velocity: v)
+            currentFeature = f
             if f?.featureId != currentFeatureId {
                 currentFeatureId = f?.featureId
                 feedback.stopAllFeedback()
@@ -546,6 +625,7 @@ struct PortlandMapView: UIViewRepresentable {
         private func exploreStop() {
             feedback.stopAllFeedback()
             currentFeatureId = nil
+            currentFeature = nil
         }
 
         private func trafficLevel(for f: PortlandMapFeature) -> TrafficLevel? {

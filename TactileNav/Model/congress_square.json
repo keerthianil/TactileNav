@@ -1216,7 +1216,7 @@
         ]
       },
       "properties": {
-        "name": "Brown Street & Congress Street",
+        "name": "Congress Street & Brown Street",
         "category": "intersection",
         "connected_corridors": [
           "c-11411578",

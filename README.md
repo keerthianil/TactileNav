@@ -41,7 +41,9 @@ A single-lane bird's-eye sandbox for the audio engine and the two hardest crossi
   distance. Headphones recommended.
 
 ### Roux Institute Map & Tools
-The Roux Institute neighborhood map (real OSM data) and the feedback-tester / CSV-log tools are unchanged.
+The Roux Institute neighborhood map (real OSM data) and the feedback-tester / CSV-log tools
+are also present. Touch exploration on the Congress Square map is logged to CSV as well, and
+those logs appear in the Data Files screen.
 
 ## Interaction model (VoiceOver-first)
 
