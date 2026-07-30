@@ -17,7 +17,7 @@ import SwiftUI
 struct SpatialAudioSimulationView: View {
 
     private let audio = TrafficAudioEngine.shared
-    private let feedback = PortlandFeedbackManager.shared
+    private let feedback = TactileSpeechChannel()
 
     @State private var vehicle: TrafficAudioEngine.VehicleType = .car
     @State private var turning = false
@@ -42,7 +42,7 @@ struct SpatialAudioSimulationView: View {
         .onAppear {
             audio.activate()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                feedback.speak("Street crossing audio sandbox. Put on headphones. Choose a vehicle and whether it goes straight or turns across your path, then start the pass.")
+                feedback.speakNow("Street crossing audio sandbox. Put on headphones. Choose a vehicle and whether it goes straight or turns across your path, then start the pass.")
             }
         }
         .onDisappear { audio.stopVehiclePass(); running = false }
@@ -192,7 +192,7 @@ struct SpatialAudioSimulationView: View {
         cfg.curbDistanceM = 4
         cfg.spanM = 60
 
-        feedback.speak(turning
+        feedback.speakNow(turning
             ? "\(vehicle.label) approaching from the left, will turn across your crosswalk."
             : "\(vehicle.label) approaching from the left, going straight through.")
 
@@ -203,12 +203,12 @@ struct SpatialAudioSimulationView: View {
             closing = isClosing
             if !isClosing && !announcedPass {
                 announcedPass = true
-                feedback.speak(turning ? "Turning through the crosswalk now." : "Passing you now.")
+                feedback.speakNow(turning ? "Turning through the crosswalk now." : "Passing you now.")
             }
         }, onComplete: {
             running = false
             progress = 0
-            feedback.speak("Vehicle gone.")
+            feedback.speakNow("Vehicle gone.")
         })
     }
 }

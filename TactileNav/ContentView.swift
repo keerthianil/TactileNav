@@ -12,7 +12,7 @@ struct ContentView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Congress Square")
                                     .font(.headline)
-                                Text("Tactile map of downtown Portland with time-of-day traffic and APS crossings")
+                                Text("Pannable tactile street map of downtown Portland at true lane scale")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -21,7 +21,7 @@ struct ContentView: View {
                                 .foregroundColor(Color(red: 0x02/255, green: 0x3E/255, blue: 0x8A/255))
                         }
                     }
-                    .accessibilityHint("Opens tactile map with drag exploration, haptic feedback, and time-of-day traffic")
+                    .accessibilityHint("Opens the street map. Drag one finger to explore streets by touch, two fingers to pan")
 
                     NavigationLink {
                         SpatialAudioSimulationView()
