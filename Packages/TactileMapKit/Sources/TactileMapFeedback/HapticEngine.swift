@@ -1,5 +1,6 @@
 import CoreHaptics
 import UIKit
+import TactileMapCore
 
 // MARK: - Protocol
 
@@ -94,7 +95,7 @@ public final class CoreHapticsEngine: HapticEngine {
 
             try hapticEngine?.start()
         } catch {
-            // Engine failed to start -- haptics will be unavailable.
+            TactileMapDiagnostics.log("Haptic engine failed to start -- haptics unavailable: \(error)")
         }
     }
 
@@ -102,13 +103,17 @@ public final class CoreHapticsEngine: HapticEngine {
         do {
             try hapticEngine?.start()
 
-            // Re-create the active pattern player if one was running.
-            if isContinuousPlaying, let pattern = activePattern {
+            // Re-create the active pattern player if one was running.  This
+            // covers looping patterns of either category (continuous *and*
+            // pulsing/burst) so haptics survive an engine reset triggered by
+            // interruptions, Siri, or backgrounding.
+            if let pattern = activePattern, isContinuousPlaying || isPulsingPlaying {
                 isContinuousPlaying = false
+                isPulsingPlaying = false
                 start(pattern: pattern)
             }
         } catch {
-            // Engine restart failed.
+            TactileMapDiagnostics.log("Haptic engine restart failed: \(error)")
         }
     }
 
@@ -128,6 +133,12 @@ public final class CoreHapticsEngine: HapticEngine {
                          onDuration: onDuration,
                          offDuration: offDuration,
                          count: count)
+
+        case .burst(let pulseCount, let onDuration, let offDuration):
+            startBurst(pattern: pattern,
+                       pulseCount: pulseCount,
+                       onDuration: onDuration,
+                       offDuration: offDuration)
 
         case .transient:
             playTransient(pattern: pattern)
@@ -164,7 +175,7 @@ public final class CoreHapticsEngine: HapticEngine {
         do {
             try hapticEngine?.start()
         } catch {
-            // Foreground engine restart failed.
+            TactileMapDiagnostics.log("Foreground engine restart failed: \(error)")
         }
     }
 
@@ -201,7 +212,7 @@ public final class CoreHapticsEngine: HapticEngine {
 
             isContinuousPlaying = true
         } catch {
-            // Continuous pattern failed to start.
+            TactileMapDiagnostics.log("Continuous pattern failed to start: \(error)")
         }
     }
 
@@ -230,6 +241,8 @@ public final class CoreHapticsEngine: HapticEngine {
         stopPulsing()
 
         do {
+            try ensureEngineRunning()
+
             let cycleInterval = onDuration + offDuration
             var events: [CHHapticEvent] = []
 
@@ -259,7 +272,76 @@ public final class CoreHapticsEngine: HapticEngine {
 
             isPulsingPlaying = true
         } catch {
-            // Pulsing pattern failed to start.
+            TactileMapDiagnostics.log("Pulsing pattern failed to start: \(error)")
+        }
+    }
+
+    // MARK: - Burst vibration
+
+    /// Plays repeating bursts: `pulseCount` evenly-spaced transient taps within
+    /// `onDuration`, then a silent rest of `offDuration`, looping.
+    ///
+    /// A single zero-intensity spacer event pads the pattern to the full
+    /// `onDuration + offDuration` cycle so `loopEnabled` honors the rest between
+    /// bursts (transient events have ~0 duration, so without it the loop would
+    /// restart immediately with no gap).  Reuses the pulse player slot so
+    /// `stop()`/`stopAll()` treat bursts like any other looping pattern.
+    private func startBurst(
+        pattern: HapticPattern,
+        pulseCount: Int,
+        onDuration: TimeInterval,
+        offDuration: TimeInterval
+    ) {
+        guard let engine = hapticEngine else { return }
+        guard pulseCount > 0, onDuration > 0 else { return }
+
+        // Stop any other vibration first.
+        stopContinuous()
+        stopPulsing()
+
+        do {
+            try ensureEngineRunning()
+
+            let spacing = onDuration / TimeInterval(pulseCount)
+            var events: [CHHapticEvent] = []
+
+            for i in 0..<pulseCount {
+                let intensityParam = CHHapticEventParameter(
+                    parameterID: .hapticIntensity,
+                    value: pattern.intensity
+                )
+                let sharpnessParam = CHHapticEventParameter(
+                    parameterID: .hapticSharpness,
+                    value: pattern.sharpness
+                )
+
+                let event = CHHapticEvent(
+                    eventType: .hapticTransient,
+                    parameters: [intensityParam, sharpnessParam],
+                    relativeTime: TimeInterval(i) * spacing
+                )
+                events.append(event)
+            }
+
+            // Silent spacer spanning the rest so the loop period is the full cycle.
+            let spacer = CHHapticEvent(
+                eventType: .hapticContinuous,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0)
+                ],
+                relativeTime: onDuration,
+                duration: offDuration
+            )
+            events.append(spacer)
+
+            let hapticPattern = try CHHapticPattern(events: events, parameters: [])
+            pulsePlayer = try engine.makeAdvancedPlayer(with: hapticPattern)
+            pulsePlayer?.loopEnabled = true
+            try pulsePlayer?.start(atTime: CHHapticTimeImmediate)
+
+            isPulsingPlaying = true
+        } catch {
+            TactileMapDiagnostics.log("Burst pattern failed to start: \(error)")
         }
     }
 

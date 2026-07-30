@@ -1,13 +1,8 @@
 import CoreGraphics
 import Foundation
-#if canImport(SwiftUI)
-import SwiftUI
-#endif
 #if canImport(CoreHaptics)
 import CoreHaptics
 #endif
-import MapKit
-import CoreLocation
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -127,6 +122,8 @@ public struct PhysicalDimensions {
         let pixels = inches * ppi
         let points = pixels / scale
 
+        TactileMapDiagnostics.log("Converting \(mm)mm to \(points) points (PPI: \(ppi), scale: \(scale))")
+
         return points
     }
 
@@ -140,6 +137,8 @@ public struct PhysicalDimensions {
             guard let value = element.value as? Int8, value != 0 else { return identifier }
             return identifier + String(UnicodeScalar(UInt8(value)))
         }
+
+        TactileMapDiagnostics.log("Raw Identifier: \(identifier)")
 
         let ppi: CGFloat
 
@@ -181,6 +180,8 @@ public struct PhysicalDimensions {
                 #endif
             }
         }
+
+        TactileMapDiagnostics.log("Resolved device PPI: \(ppi)")
 
         cachedPPI = ppi
         return ppi

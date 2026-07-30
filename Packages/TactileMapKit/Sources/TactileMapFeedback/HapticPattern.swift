@@ -1,4 +1,4 @@
-import CoreHaptics
+import Foundation
 
 /// A configurable haptic pattern definition that decouples pattern design
 /// from engine playback.
@@ -40,6 +40,21 @@ public struct HapticPattern: Sendable {
         ///   - offDuration: Silent gap between pulses (seconds).
         ///   - count:       Number of pulse events in a single loop iteration.
         case pulsing(onDuration: TimeInterval, offDuration: TimeInterval, count: Int)
+
+        /// Repeating bursts of discrete taps.
+        ///
+        /// Plays `pulseCount` evenly-spaced taps within `onDuration`, then
+        /// rests for `offDuration`, then repeats.  Unlike ``pulsing`` -- which
+        /// controls the length of, and gap between, individual pulses -- this
+        /// groups a fixed number of taps into an active window followed by a
+        /// silent rest, e.g. a phone-ringer cadence.
+        ///
+        /// - Parameters:
+        ///   - pulseCount:  Number of taps per burst.
+        ///   - onDuration:  Length of the active window the taps are spread
+        ///                  across (seconds).
+        ///   - offDuration: Silent rest between bursts (seconds).
+        case burst(pulseCount: Int, onDuration: TimeInterval, offDuration: TimeInterval)
 
         /// A single, instantaneous tap.
         case transient

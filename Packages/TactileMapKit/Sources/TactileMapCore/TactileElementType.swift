@@ -28,6 +28,20 @@ public struct TactileElementType: RawRepresentable, Hashable, Sendable, Codable 
     /// A named point of interest (room, elevator, exit, etc.).
     public static let landmark = TactileElementType(rawValue: "landmark")
 
+    // MARK: - Built-in outdoor types
+
+    /// A pedestrian crosswalk.
+    public static let crosswalk = TactileElementType(rawValue: "crosswalk")
+
+    /// A navigation route or path overlay.
+    public static let route = TactileElementType(rawValue: "route")
+
+    /// A street or sidewalk.
+    public static let street = TactileElementType(rawValue: "street")
+
+    /// A major road.
+    public static let road = TactileElementType(rawValue: "road")
+
     // MARK: - Codable
 
     public init(from decoder: Decoder) throws {

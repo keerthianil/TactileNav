@@ -1,6 +1,6 @@
 # TactileMapKit
 
-A foundational Swift Package to load a JSON tactile map and get haptics, spatial audio, and VoiceOver support. Used by **TactileNav** for shared engines and data models; the Roux Institute Map (`RTM`) implements its own `RTMLiveMapView` on top of MapKit rather than using the package's `TactileMapView`.
+A foundational Swift Package to load a JSON tactile map and get haptics, spatial audio, and VoiceOver support. Used by **TactileNav** for shared data models and feedback engines. Both of its maps render themselves rather than using the package's `TactileMapView`, because each needs viewport movement the package does not provide — see [which modules are used](#tactilenav--which-modules-are-used).
 
 ## Quick Start
 
@@ -26,7 +26,7 @@ struct MyMapView: View {
 
 You get: corridors, intersections, landmarks rendered on a map with haptic feedback per element type, spoken names via TTS, VoiceOver direct-interaction, and anchor points on corridors for landmarks.
 
-> **TactileNav RTM note:** the app's **Roux Institute Map** imports `TactileMapCore`, `TactileMapFeedback`, and `TactileMapLogging` only. It loads `roux_portland.json` via `TactileMapDocument`, converts coordinates in `RTMDocumentAdapter`, and renders with custom `RTMLiveMapView` (finger-as-cursor, page-turn panning, three functional zoom levels). See `TactileNav/RTM_DEVELOPER_GUIDE.md` and `README_RTM.md` in the app repo.
+> **TactileNav note:** both app maps load their JSON through `TactileMapDocument` and take haptics, speech and logging from this package, but supply their own renderer because each needs a movable viewport. See [which modules are used](#tactilenav--which-modules-are-used) for the split.
 
 ## Rendering Modes
 
@@ -192,18 +192,26 @@ Run unit tests in Xcode: **Product > Test** (Cmd+U). Three test suites: Core, Fe
 
 Haptics/audio require a physical iPhone — connect via USB, select the device, Cmd+R.
 
-## TactileNav RTM — which modules are used
+## TactileNav — which modules are used
 
-The Roux Institute Map in TactileNav is a separate implementation from `TactileMapView`. Module usage:
+Both of TactileNav's maps render themselves rather than using `TactileMapView`, because each needs
+viewport movement that this package does not provide. They consume the rest of the stack.
 
-| Module | Used by RTM? | How |
+| Module | Congress Square | Roux Institute Map |
 |---|---|---|
-| **TactileMapCore** | Yes | `TactileMapDocument.load`, `PhysicalDimensions`, element types |
-| **TactileMapFeedback** | Yes | `CoreHapticsEngine`, `AVSpatialAudioEngine`, `HapticPattern` presets |
-| **TactileMapLogging** | Yes | `CSVTouchLogger` touch-session CSV files |
-| **TactileMapView** | No | RTM uses `RTMLiveMapView` (custom `MKMapView` + Coordinator) |
+| **TactileMapCore** | `TactileMapDocument.load`, `MapElement` / `TactileGeometry` as the only geometry model, `TactileElementType` (`.road` / `.street` / `.crosswalk`), `PhysicalDimensions.mmToPoints`, `TactileMapDiagnostics` | `TactileMapDocument.load`, `PhysicalDimensions`, element types |
+| **TactileMapFeedback** | `CoreHapticsEngine`, `HapticPattern` presets + `.burst`, `OutdoorFeedbackPolicy` (subclassed), `SpatialAudioEngine` (conformed to for VoiceOver-gated speech) | `CoreHapticsEngine`, `AVSpatialAudioEngine`, `HapticPattern` presets |
+| **TactileMapLogging** | `CSVTouchLogger`, `TouchEvent` | `CSVTouchLogger` touch-session CSV files |
+| **TactileMapView** | `HitDetectionConfig` only — renders on a `CATiledLayer` canvas inside a `UIScrollView` | Not used — renders with `RTMLiveMapView` (custom `MKMapView` + Coordinator) |
 
-RTM-specific behavior (not in this package): finger-as-cursor explore (no location dot), page-turn panning at screen edges, three functional zoom levels (1000 / 300 / 120 m), triple-tap zoom cycle, off-path haptic tick, zoom-aware street widths, and system-background tile overlay hiding Apple Maps.
+App-side behavior that is deliberately **not** in this package:
+
+- **Congress Square** — fixed-scale physical-millimetre sizing (one traffic lane = 4 mm on glass),
+  continuous two-finger panning with momentum over a `CATiledLayer` canvas larger than the
+  `CALayer` backing-store limit, and a dwell-gated announcement coordinator.
+- **Roux Institute Map** — finger-as-cursor explore (no location dot), page-turn panning at screen
+  edges, three functional zoom levels (1000 / 300 / 120 m), triple-tap zoom cycle, off-path haptic
+  tick, zoom-aware street widths, and a system-background tile overlay.
 
 ---
 
@@ -213,7 +221,8 @@ RTM-specific behavior (not in this package): finger-as-cursor explore (no locati
 - **Spatial audio sounds the same from both sides** — Use headphones/AirPods on a physical device.
 - **Map is blank** — Check your JSON file is in Build Phases > Copy Bundle Resources.
 - **VoiceOver back gesture not working** — VoiceOver must be on, `onBackGesture` must be set, view must be in a `NavigationStack`.
-- **TactileNav map shows Apple labels** — RTM hides tiles with `RTMWhiteTileOverlay` + muted `MKStandardMapConfiguration`; see `RTMLiveMapView.swift`, not `TactileMapView`.
+- **TactileNav map shows Apple labels** — the Roux map hides tiles with `RTMWhiteTileOverlay` + muted `MKStandardMapConfiguration`; see `RTMLiveMapView.swift`, not `TactileMapView`. Congress Square draws on a plain `CATiledLayer` canvas and has no basemap to hide.
+- **Haptics stop after a Siri interruption** — `CoreHapticsEngine` restores looping continuous *and* pulsing/burst patterns after an engine reset; make sure you are on a current build of this package.
 
 ## Project Structure
 
@@ -221,9 +230,9 @@ RTM-specific behavior (not in this package): finger-as-cursor explore (no locati
 Package.swift
 LICENSE (MIT)
 Sources/
-  TactileMapCore/        8 files — models, JSON, coordinates, dimensions, departure zones
-  TactileMapFeedback/    6 files — haptics, spatial audio, speech, feedback policy
-  TactileMapView/       11 files — MapKit view, gestures, hit detection, rendering
+  TactileMapCore/        9 files — models, JSON, coordinates, dimensions, departure zones, diagnostics
+  TactileMapFeedback/    9 files — haptics, spatial audio, speech, tones, feedback policies
+  TactileMapView/       15 files — MapKit + Canvas views, gestures, hit detection, rendering
   TactileMapLogging/     4 files — CSV logger, events, file browser
 Tests/                   3 test suites
 DemoApp/                 sample map + usage examples

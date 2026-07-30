@@ -1,4 +1,5 @@
 import XCTest
+import TactileMapCore
 @testable import TactileMapFeedback
 
 final class TactileMapFeedbackTests: XCTestCase {
@@ -58,5 +59,31 @@ final class TactileMapFeedbackTests: XCTestCase {
         )
         XCTAssertEqual(custom.intensity, 0.5)
         XCTAssertEqual(custom.sharpness, 0.8)
+    }
+
+    func testBurstPattern() {
+        let burst = HapticPattern(
+            intensity: 1.0,
+            sharpness: 0.8,
+            mode: .burst(pulseCount: 3, onDuration: 0.25, offDuration: 0.4)
+        )
+        XCTAssertEqual(burst.intensity, 1.0)
+        XCTAssertEqual(burst.sharpness, 0.8)
+        if case .burst(let pulseCount, let on, let off) = burst.mode {
+            XCTAssertEqual(pulseCount, 3)
+            XCTAssertEqual(on, 0.25)
+            XCTAssertEqual(off, 0.4)
+        } else {
+            XCTFail("Pattern should use burst mode")
+        }
+    }
+
+    // MARK: - Outdoor element types
+
+    func testOutdoorElementTypeRawValues() {
+        XCTAssertEqual(TactileElementType.crosswalk.rawValue, "crosswalk")
+        XCTAssertEqual(TactileElementType.route.rawValue, "route")
+        XCTAssertEqual(TactileElementType.street.rawValue, "street")
+        XCTAssertEqual(TactileElementType.road.rawValue, "road")
     }
 }
