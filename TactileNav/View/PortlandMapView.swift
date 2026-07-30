@@ -2,85 +2,115 @@
 //  PortlandMapView.swift
 //  TactileNav
 //
-//  The tactile Congress Square map. A blank (white-tiled) MKMapView renders the real
-//  OSM geometry; the user explores by dragging a finger. The interaction model is the
-//  proven drag-to-explore approach: UIKit gesture recognizers stay active in BOTH modes
-//  and, when VoiceOver is on, `.allowsDirectInteraction` passes raw touches straight to
-//  them (so there is no separate/fragile manual touch path to race with VoiceOver).
+//  The pannable Congress Square street map.
 //
-//  Gesture contract (identical with VoiceOver on or off):
-//    • long-press + drag  → explore (haptics + rumble + spoken feature)
-//    • single tap         → speak the feature under the finger
-//    • double tap         → drill into an intersection (Level 1) / go back (Level 2)
-//    • 3-finger swipe/pan, VoiceOver 3-finger scroll, VoiceOver Z-scrub → go back
+//  Gesture contract, identical with VoiceOver on or off:
+//    • one finger, press and drag  → explore (haptics + spoken surface under the finger)
+//    • one finger, single tap      → speak the surface under the finger
+//    • two fingers, drag           → pan the map, continuously, with momentum
+//    • three-finger swipe or drag  → go back
+//    • VoiceOver Actions rotor     → pan by half a screen, or recentre
+//
+//  Panning lives on two fingers because the one-finger channel is the tactile exploration
+//  model and cannot be shared. A UIScrollView with `minimumNumberOfTouches = 2` separates
+//  the two cleanly and brings momentum, deceleration and rubber-banding with it. Three
+//  fingers is not available for panning: VoiceOver reserves it and delivers it as a
+//  discrete `accessibilityScroll`, so it stays on back, and the Actions rotor covers users
+//  who can't manage a smooth two-finger drag.
+//
+//  There is deliberately no zoom. Every width on this map is a physical millimetre
+//  measurement, and a variable scale would make that untrue.
 //
 
 import SwiftUI
-import MapKit
 import TactileMapCore
 import TactileMapLogging
+import UIKit
 
 // MARK: - UIKit helpers
 
 extension UIView {
-    /// Walk the responder chain to the enclosing navigation controller (used to disable
-    /// the interactive edge-swipe pop so one-finger dragging can't accidentally go back).
+    /// Walk the responder chain to the enclosing navigation controller, so the interactive
+    /// edge-swipe pop can be switched off while the map is open. Without that, a one-finger
+    /// explore drag started near the left edge navigates back instead of exploring.
     var enclosingNavigationController: UINavigationController? {
-        var r: UIResponder? = self.next
-        while let cur = r {
-            if let nc = cur as? UINavigationController { return nc }
-            if let vc = cur as? UIViewController, let nc = vc.navigationController { return nc }
-            r = cur.next
+        var responder: UIResponder? = next
+        while let current = responder {
+            if let nav = current as? UINavigationController { return nav }
+            if let controller = current as? UIViewController, let nav = controller.navigationController {
+                return nav
+            }
+            responder = current.next
         }
         return nil
     }
 }
 
-// MARK: - Map sizing (scale to this map, not fixed pixels)
-//
-// Feature sizes are a fraction of the smaller on-screen viewport dimension, so they stay
-// proportional to whatever the map is showing, then clamped to a tactile minimum (a red
-// square must stay ~finger-tip sized) and a maximum (so it can't dominate). Line widths
-// derive from that: roads < intersection, sidewalks < roads, crosswalk stripes thinnest.
-enum PortlandMapSizing {
-    static func ref(_ mv: MKMapView) -> CGFloat {
-        let s = min(mv.bounds.width, mv.bounds.height)
-        return s > 0 ? s : UIScreen.main.bounds.width
+// MARK: - Touch indicator
+
+/// A follow dot under the finger. Purely a sighted-observer aid — it is never an
+/// accessibility element and never affects what is spoken.
+final class PortlandTouchIndicatorView: UIView {
+    override init(frame: CGRect) {
+        super.init(frame: CGRect(x: 0, y: 0, width: 36, height: 36))
+        isUserInteractionEnabled = false
+        isAccessibilityElement = false
+        backgroundColor = .clear
+        isHidden = true
     }
-    static func intersectionSide(_ mv: MKMapView) -> CGFloat { min(max(ref(mv) * 0.055, 20), 40) }
-    static func landmarkSize(_ mv: MKMapView) -> (CGFloat, CGFloat) {
-        let s = intersectionSide(mv); return (s * 1.5, s)
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override func draw(_ rect: CGRect) {
+        guard let ctx = UIGraphicsGetCurrentContext() else { return }
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let outer: CGFloat = 16, inner: CGFloat = 5
+        ctx.setFillColor(UIColor(red: 1, green: 0.88, blue: 0, alpha: 0.28).cgColor)
+        ctx.fillEllipse(in: CGRect(x: center.x - outer, y: center.y - outer,
+                                   width: outer * 2, height: outer * 2))
+        ctx.setStrokeColor(UIColor.white.cgColor)
+        ctx.setLineWidth(2)
+        ctx.strokeEllipse(in: CGRect(x: center.x - outer, y: center.y - outer,
+                                     width: outer * 2, height: outer * 2))
+        ctx.setFillColor(UIColor.white.cgColor)
+        ctx.fillEllipse(in: CGRect(x: center.x - inner, y: center.y - inner,
+                                   width: inner * 2, height: inner * 2))
     }
-    static func roadWidth(_ mv: MKMapView, level: Int) -> CGFloat {
-        level == 2 ? min(max(ref(mv) * 0.05, 16), 34) : min(max(ref(mv) * 0.016, 7), 14)
+
+    func show(at point: CGPoint) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        center = point
+        isHidden = false
+        CATransaction.commit()
     }
-    static func sidewalkWidth(_ mv: MKMapView, level: Int) -> CGFloat { roadWidth(mv, level: level) * 0.5 }
-    static func crosswalkStripeWidth(_ mv: MKMapView, level: Int) -> CGFloat {
-        // Thin bars so the ~1.4 m-pitch stripes read as discrete zebra marks, not a band.
-        max(2.5, roadWidth(mv, level: level) * 0.11)
-    }
+
+    func hide() { isHidden = true }
 }
 
-// MARK: - Accessible map view (VoiceOver back gestures + direct touch + context actions)
+// MARK: - Scroll view
 
-final class PortlandAccessibleMapView: MKMapView {
+/// Hosts the canvas and owns the accessibility surface.
+///
+/// The scroll view rather than the canvas is the accessibility element, because it is the
+/// view that stays the size of the screen. `.allowsDirectInteraction` hands raw touches to
+/// our recognizers, and `.silentOnTouch` stops VoiceOver speaking on every touch-down —
+/// what gets spoken is decided by the exploration logic, not by the touch itself.
+final class PortlandStreetScrollView: UIScrollView {
+
     var onBackGesture: (() -> Void)?
-    /// Context actions surfaced via the VoiceOver Actions rotor (swipe up/down on the map).
-    var trafficActions: [(String, () -> Void)] = []
-    /// Two-finger double-tap (magic tap) shortcut to cycle the traffic time of day.
-    var onMagicTap: (() -> Void)?
+    /// Actions offered on the VoiceOver Actions rotor (swipe up/down, then double-tap).
+    var panActions: [(String, () -> Void)] = []
 
-    func applyAccessibility(level: Int) {
+    func applyAccessibility() {
         if UIAccessibility.isVoiceOverRunning {
             isAccessibilityElement = true
             accessibilityTraits = [.allowsDirectInteraction]
-            accessibilityLabel = "Tactile map"
-            var hint = "Drag to explore. Double tap an intersection for detail. "
-            if level == 1 {
-                hint += "Swipe up or down to change the traffic time of day, or two finger double tap to cycle it. "
-            }
-            hint += "Three finger swipe right, or two finger scrub, to go back."
-            accessibilityHint = hint
+            accessibilityLabel = "Tactile street map"
+            accessibilityHint = "Drag one finger to explore streets. "
+                + "Drag two fingers to pan the map. "
+                + "Swipe up or down for pan and recentre actions. "
+                + "Three finger swipe right, or two finger scrub, to go back."
             if #available(iOS 17.0, *) { accessibilityDirectTouchOptions = .silentOnTouch }
         } else {
             isAccessibilityElement = false
@@ -90,20 +120,15 @@ final class PortlandAccessibleMapView: MKMapView {
 
     override var accessibilityCustomActions: [UIAccessibilityCustomAction]? {
         get {
-            trafficActions.map { label, handler in
-                UIAccessibilityCustomAction(name: label) { _ in handler(); return true }
+            panActions.map { name, handler in
+                UIAccessibilityCustomAction(name: name) { _ in handler(); return true }
             }
         }
         set {}
     }
 
-    override func accessibilityPerformMagicTap() -> Bool {
-        guard let onMagicTap else { return false }
-        onMagicTap()
-        return true
-    }
-
-    // VoiceOver 3-finger swipe right → back.
+    // VoiceOver three-finger swipe right → back. Kept as back rather than repurposed for
+    // paged panning, so the gesture means the same thing it does elsewhere in the app.
     override func accessibilityScroll(_ direction: UIAccessibilityScrollDirection) -> Bool {
         if direction == .right {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.8)
@@ -114,7 +139,7 @@ final class PortlandAccessibleMapView: MKMapView {
         return super.accessibilityScroll(direction)
     }
 
-    // VoiceOver 2-finger Z-scrub escape → back.
+    // VoiceOver two-finger Z-scrub → back.
     override func accessibilityPerformEscape() -> Bool {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.8)
         onBackGesture?()
@@ -122,605 +147,468 @@ final class PortlandAccessibleMapView: MKMapView {
     }
 }
 
-// MARK: - Touch indicator (yellow follow dot)
-
-final class PortlandTouchIndicatorView: UIView {
-    override init(frame: CGRect) {
-        super.init(frame: CGRect(x: 0, y: 0, width: 36, height: 36))
-        isUserInteractionEnabled = false
-        isAccessibilityElement = false
-        backgroundColor = .clear
-        isHidden = true
-    }
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func draw(_ rect: CGRect) {
-        guard let ctx = UIGraphicsGetCurrentContext() else { return }
-        let c = CGPoint(x: rect.midX, y: rect.midY)
-        let outer: CGFloat = 16, inner: CGFloat = 5
-        ctx.setFillColor(UIColor(red: 1, green: 0.88, blue: 0, alpha: 0.28).cgColor)
-        ctx.fillEllipse(in: CGRect(x: c.x - outer, y: c.y - outer, width: outer*2, height: outer*2))
-        ctx.setStrokeColor(UIColor.white.cgColor); ctx.setLineWidth(2)
-        ctx.strokeEllipse(in: CGRect(x: c.x - outer, y: c.y - outer, width: outer*2, height: outer*2))
-        ctx.setFillColor(UIColor.white.cgColor)
-        ctx.fillEllipse(in: CGRect(x: c.x - inner, y: c.y - inner, width: inner*2, height: inner*2))
-    }
-
-    func show(at p: CGPoint) {
-        CATransaction.begin(); CATransaction.setDisableActions(true)
-        center = p; isHidden = false
-        CATransaction.commit()
-    }
-    func hide() { isHidden = true }
-}
-
-// MARK: - Blank white base tiles
-
-final class PortlandBlankTileOverlay: MKTileOverlay {
-    override init(urlTemplate: String?) { super.init(urlTemplate: nil); canReplaceMapContent = true }
-}
-final class PortlandWhiteTileRenderer: MKTileOverlayRenderer {
-    override func draw(_ mapRect: MKMapRect, zoomScale: MKZoomScale, in context: CGContext) {
-        context.setFillColor(UIColor.white.cgColor)
-        context.fill(rect(for: mapRect))
-    }
-}
-
-// MARK: - Overlay tagging (feature type / id on the polyline)
-
-private var kTypeKey: UInt8 = 0, kIdKey: UInt8 = 0, kLevelKey: UInt8 = 0
-extension MKPolyline {
-    var portlandFeatureType: PortlandFeatureType? {
-        get { objc_getAssociatedObject(self, &kTypeKey) as? PortlandFeatureType }
-        set { objc_setAssociatedObject(self, &kTypeKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
-    }
-    var portlandFeatureId: String? {
-        get { objc_getAssociatedObject(self, &kIdKey) as? String }
-        set { objc_setAssociatedObject(self, &kIdKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
-    }
-    var portlandLevel: Int {
-        get { (objc_getAssociatedObject(self, &kLevelKey) as? Int) ?? 1 }
-        set { objc_setAssociatedObject(self, &kLevelKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
-    }
-}
-
 // MARK: - PortlandMapView
+
+/// Container holding the canvas and, above it, the scroll view that drives it.
+///
+/// The canvas cannot live *inside* the scroll view: at this scale a view the size of the map
+/// is far larger than a CALayer can back. So the scroll view scrolls an empty spacer, and the
+/// canvas redraws the window that scrolling exposes. The scroll view sits on top and stays
+/// transparent, so it receives every touch while the canvas below it is what is seen.
+final class PortlandStreetMapContainerView: UIView {
+    let canvas = PortlandStreetCanvasView(frame: .zero)
+    let scrollView = PortlandStreetScrollView(frame: .zero)
+    /// Empty, never drawn, exists only to give the scroll view something the size of the map.
+    let spacer = UIView(frame: .zero)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = UIColor(cgColor: StreetMapSizing.backgroundColor)
+        addSubview(canvas)
+        scrollView.backgroundColor = .clear
+        scrollView.addSubview(spacer)
+        addSubview(scrollView)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        canvas.frame = bounds
+        scrollView.frame = bounds
+    }
+}
 
 struct PortlandMapView: UIViewRepresentable {
 
-    let features: [PortlandMapFeature]
-    var onDoubleTapIntersection: ((PortlandIntersection) -> Void)?
+    let map: StreetMap
     var onBackGesture: (() -> Void)?
-    var trafficSegments: [PortlandTrafficSegment] = []
-    var trafficIntersections: [PortlandTrafficIntersection] = []
-    var apsLocations: [PortlandAPS] = []
-    var trafficState: TrafficState = .normal
-    var onTrafficStateChange: ((TrafficState) -> Void)?
-    var level: Int = 1
 
-    func makeUIView(context: Context) -> PortlandAccessibleMapView {
-        let mapView = PortlandAccessibleMapView(frame: .zero)
-        mapView.mapType = .mutedStandard
-        mapView.backgroundColor = .white
-        mapView.pointOfInterestFilter = .excludingAll
-        mapView.showsBuildings = false
-        mapView.showsTraffic = false
-        mapView.showsCompass = false
-        mapView.showsScale = false
-        mapView.isZoomEnabled = false
-        mapView.isScrollEnabled = false
-        mapView.isRotateEnabled = false
-        mapView.isPitchEnabled = false
-        mapView.delegate = context.coordinator
-        mapView.applyAccessibility(level: level)
+    func makeUIView(context: Context) -> PortlandStreetMapContainerView {
+        let coordinator = context.coordinator
+        let container = PortlandStreetMapContainerView(frame: .zero)
+        let scrollView = container.scrollView
 
-        mapView.addOverlay(PortlandBlankTileOverlay(urlTemplate: nil), level: .aboveLabels)
+        scrollView.delegate = coordinator
+        scrollView.showsVerticalScrollIndicator = true
+        scrollView.showsHorizontalScrollIndicator = true
+        scrollView.decelerationRate = .normal
+        scrollView.contentInsetAdjustmentBehavior = .never
 
+        // Fixed scale: physical millimetre sizing is only true at one scale.
+        scrollView.minimumZoomScale = 1
+        scrollView.maximumZoomScale = 1
+        scrollView.bouncesZoom = false
+
+        // Two fingers to pan, and never more than two — a three-finger back drag must not
+        // also pan the map.
+        scrollView.panGestureRecognizer.minimumNumberOfTouches = 2
+        scrollView.panGestureRecognizer.maximumNumberOfTouches = 2
+
+        // A one-finger explore drag must reach the canvas immediately and must never be
+        // cancelled part-way through, which would strand haptics with no touch-up.
+        scrollView.delaysContentTouches = false
+        scrollView.canCancelContentTouches = false
+
+        container.canvas.map = map
+        container.spacer.frame = CGRect(origin: .zero, size: map.contentSize)
+        scrollView.contentSize = map.contentSize
+        coordinator.container = container
+
+        // The indicator rides on the canvas, which does not scroll, so it is positioned in
+        // view coordinates and needs no offset correction.
         let indicator = PortlandTouchIndicatorView()
-        mapView.addSubview(indicator)
-        context.coordinator.touchIndicator = indicator
+        container.addSubview(indicator)
+        coordinator.touchIndicator = indicator
 
-        // --- Gesture recognizers: active in BOTH VoiceOver and non-VoiceOver modes.
-        let c = context.coordinator
-
-        let doubleTap = UITapGestureRecognizer(target: c, action: #selector(Coordinator.handleDoubleTap(_:)))
+        // --- Gestures. Attached to the scroll view so they see touches regardless of where
+        // the canvas has scrolled to; locations are converted to canvas space when used.
+        let doubleTap = UITapGestureRecognizer(target: coordinator,
+                                               action: #selector(Coordinator.handleDoubleTap(_:)))
         doubleTap.numberOfTapsRequired = 2
-        doubleTap.delegate = c
-        doubleTap.cancelsTouchesInView = true
+        doubleTap.delegate = coordinator
+        doubleTap.cancelsTouchesInView = false
         doubleTap.delaysTouchesBegan = false
         doubleTap.delaysTouchesEnded = false
-        mapView.addGestureRecognizer(doubleTap)
+        scrollView.addGestureRecognizer(doubleTap)
 
-        let singleTap = UITapGestureRecognizer(target: c, action: #selector(Coordinator.handleSingleTap(_:)))
-        singleTap.delegate = c
+        let singleTap = UITapGestureRecognizer(target: coordinator,
+                                               action: #selector(Coordinator.handleSingleTap(_:)))
+        singleTap.delegate = coordinator
         singleTap.cancelsTouchesInView = false
         singleTap.require(toFail: doubleTap)
-        mapView.addGestureRecognizer(singleTap)
+        scrollView.addGestureRecognizer(singleTap)
 
-        let longPress = UILongPressGestureRecognizer(target: c, action: #selector(Coordinator.handleLongPress(_:)))
-        longPress.minimumPressDuration = 0.1     // not 0 — a quick tap must not trigger drag
-        longPress.allowableMovement = 10_000     // never cancels while dragging
-        longPress.numberOfTouchesRequired = 1    // don't swallow the 3-finger back gesture
-        longPress.delegate = c
+        // 0.1 s press latches exploration; the large allowable movement stops the recognizer
+        // cancelling as the finger slides, which turns `.changed` into the drag stream.
+        let longPress = UILongPressGestureRecognizer(target: coordinator,
+                                                     action: #selector(Coordinator.handleLongPress(_:)))
+        longPress.minimumPressDuration = 0.1
+        longPress.allowableMovement = 10_000
+        longPress.numberOfTouchesRequired = 1
+        longPress.delegate = coordinator
         longPress.cancelsTouchesInView = false
-        longPress.require(toFail: doubleTap)
-        mapView.addGestureRecognizer(longPress)
+        scrollView.addGestureRecognizer(longPress)
 
-        let swipe = UISwipeGestureRecognizer(target: c, action: #selector(Coordinator.handleBackGesture))
-        swipe.numberOfTouchesRequired = 3
-        swipe.direction = .right
-        swipe.delegate = c
-        mapView.addGestureRecognizer(swipe)
+        let backSwipe = UISwipeGestureRecognizer(target: coordinator,
+                                                 action: #selector(Coordinator.handleBackGesture))
+        backSwipe.numberOfTouchesRequired = 3
+        backSwipe.direction = .right
+        backSwipe.delegate = coordinator
+        scrollView.addGestureRecognizer(backSwipe)
 
-        // Pan backup — 3-finger swipe recognizers are finicky; a slow drag is more reliable.
-        let pan = UIPanGestureRecognizer(target: c, action: #selector(Coordinator.handleThreeFingerPan(_:)))
-        pan.minimumNumberOfTouches = 3
-        pan.maximumNumberOfTouches = 3
-        pan.delegate = c
-        mapView.addGestureRecognizer(pan)
+        // Three-finger swipe recognizers are unreliable in practice; a slow drag is not.
+        let backPan = UIPanGestureRecognizer(target: coordinator,
+                                             action: #selector(Coordinator.handleThreeFingerPan(_:)))
+        backPan.minimumNumberOfTouches = 3
+        backPan.maximumNumberOfTouches = 3
+        backPan.delegate = coordinator
+        scrollView.addGestureRecognizer(backPan)
 
-        mapView.onBackGesture = { [weak c] in c?.triggerBack() }
+        scrollView.onBackGesture = { [weak coordinator] in coordinator?.triggerBack() }
+        scrollView.applyAccessibility()
 
         NotificationCenter.default.addObserver(
-            c, selector: #selector(Coordinator.voiceOverChanged),
+            coordinator, selector: #selector(Coordinator.voiceOverStatusChanged),
             name: UIAccessibility.voiceOverStatusDidChangeNotification, object: nil)
 
-        return mapView
+        return container
     }
 
-    func updateUIView(_ mapView: PortlandAccessibleMapView, context: Context) {
-        let c = context.coordinator
-        c.parent = self
-        mapView.applyAccessibility(level: level)
-        mapView.onBackGesture = { [weak c] in c?.triggerBack() }
+    func updateUIView(_ container: PortlandStreetMapContainerView, context: Context) {
+        let coordinator = context.coordinator
+        coordinator.parent = self
+        container.scrollView.applyAccessibility()
+        container.scrollView.onBackGesture = { [weak coordinator] in coordinator?.triggerBack() }
+        container.scrollView.panActions = coordinator.makePanActions()
 
-        // Traffic time-of-day as VoiceOver context actions (Actions rotor) + magic-tap cycle.
-        if level == 1, let cb = onTrafficStateChange {
-            mapView.trafficActions = TrafficState.allCases.map { st in
-                ("Traffic time: \(st.label)", {
-                    cb(st)
-                    PortlandFeedbackManager.shared.speak("Traffic set to \(st.label). \(st.description)")
-                })
-            }
-            let states = TrafficState.allCases
-            let next = states[((states.firstIndex(of: trafficState) ?? 0) + 1) % states.count]
-            mapView.onMagicTap = {
-                cb(next)
-                PortlandFeedbackManager.shared.speak("Traffic set to \(next.label). \(next.description)")
-            }
-        } else {
-            mapView.trafficActions = []
-            mapView.onMagicTap = nil
-        }
-
-        // Disable the one-finger interactive edge-swipe pop so dragging to explore near the
-        // left edge can't accidentally navigate back (Level 1 is a pushed screen).
-        if level == 1, let nav = mapView.enclosingNavigationController {
+        // Switch off the one-finger interactive pop so exploring near the left edge cannot
+        // navigate back. Restored when the view goes away.
+        if let nav = container.enclosingNavigationController {
             nav.interactivePopGestureRecognizer?.isEnabled = false
-            c.disabledPopNav = nav
+            coordinator.disabledPopNavigation = nav
         }
-        c.startLogIfNeeded()
 
-        let featuresChanged = c.renderedFeatureKey != Self.featureKey(features)
-        let timeChanged = c.renderedState != trafficState
-
-        if featuresChanged {
-            let old = mapView.overlays.filter { !($0 is PortlandBlankTileOverlay) }
-            mapView.removeOverlays(old)
-            mapView.removeAnnotations(mapView.annotations)
-
-            for f in features {
-                switch f {
-                case let road as PortlandCorridor:
-                    let pl = road.polyline
-                    pl.portlandFeatureType = .corridor; pl.portlandFeatureId = road.featureId; pl.portlandLevel = road.level
-                    mapView.addOverlay(pl, level: .aboveLabels)
-                case let sw as PortlandSidewalk:
-                    let pl = sw.polyline
-                    pl.portlandFeatureType = .sidewalk; pl.portlandLevel = sw.level
-                    mapView.addOverlay(pl, level: .aboveLabels)
-                case let cw as PortlandCrosswalk:
-                    // Render discrete zebra stripes; the centerline stays in `features`
-                    // only for hit-testing / announcement (never drawn).
-                    for stripe in cw.stripePolylines() {
-                        stripe.portlandFeatureType = .crosswalk; stripe.portlandLevel = cw.level
-                        mapView.addOverlay(stripe, level: .aboveLabels)
-                    }
-                case let x as PortlandIntersection:
-                    mapView.addAnnotation(x)
-                case let lm as PortlandLandmark:
-                    mapView.addAnnotation(lm)
-                default: break
-                }
-            }
-            c.renderedFeatureKey = Self.featureKey(features)
-            c.renderedState = trafficState
-            setFixedViewport(mapView)
-        } else if timeChanged {
-            c.renderedState = trafficState
-            c.refreshTrafficColors(on: mapView)
-        }
+        coordinator.startLoggingIfNeeded()
+        coordinator.centerOnInitialLocationIfNeeded()
     }
 
-    static func dismantleUIView(_ mapView: PortlandAccessibleMapView, coordinator: Coordinator) {
-        coordinator.feedback.stopAllFeedback()
-        coordinator.endLog()
-        coordinator.disabledPopNav?.interactivePopGestureRecognizer?.isEnabled = true
-    }
-
-    private static func featureKey(_ features: [PortlandMapFeature]) -> String {
-        "\(features.count)-\(features.first?.featureId ?? "")-\(features.first?.level ?? 0)"
-    }
-
-    private func setFixedViewport(_ mapView: MKMapView) {
-        guard !features.isEmpty else { return }
-        var r = MKMapRect.null
-        func add(_ coord: CLLocationCoordinate2D) {
-            let p = MKMapPoint(coord)
-            r = r.union(MKMapRect(x: p.x, y: p.y, width: 0.01, height: 0.01))
-        }
-        if level == 1 {
-            // Frame the 5-crossing cluster (+ landmarks) so it fills the screen and the
-            // fixed-minimum markers don't overlap; the Congress St spine runs off-screen.
-            for f in features {
-                if let x = f as? PortlandIntersection { add(x.coordinate) }
-                if let x = f as? PortlandLandmark { add(x.coordinate) }
-            }
-        } else {
-            for f in features {
-                switch f {
-                case let x as PortlandCorridor: x.getCoordinates().forEach(add)
-                case let x as PortlandSidewalk: x.getCoordinates().forEach(add)
-                case let x as PortlandCrosswalk: x.getCoordinates().forEach(add)
-                case let x as PortlandIntersection: add(x.coordinate)
-                default: break
-                }
-            }
-        }
-        guard !r.isNull else { return }
-        // Generous padding at L1 gives the cluster breathing room around the edges.
-        let pad: UIEdgeInsets = level == 1
-            ? UIEdgeInsets(top: 90, left: 80, bottom: 120, right: 80)
-            : UIEdgeInsets(top: 48, left: 40, bottom: 96, right: 40)
-        mapView.setVisibleMapRect(r, edgePadding: pad, animated: false)
+    static func dismantleUIView(_ container: PortlandStreetMapContainerView, coordinator: Coordinator) {
+        coordinator.feedback.stopAll()
+        coordinator.endLogging()
+        coordinator.disabledPopNavigation?.interactivePopGestureRecognizer?.isEnabled = true
+        NotificationCenter.default.removeObserver(coordinator)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
     // MARK: - Coordinator
 
-    final class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
+    final class Coordinator: NSObject, UIScrollViewDelegate, UIGestureRecognizerDelegate {
 
         var parent: PortlandMapView
-        let feedback = PortlandFeedbackManager.shared
+        let feedback = StreetFeedbackController.shared
+
+        weak var container: PortlandStreetMapContainerView?
         var touchIndicator: PortlandTouchIndicatorView?
+        weak var disabledPopNavigation: UINavigationController?
 
-        var renderedFeatureKey = ""
-        var renderedState: TrafficState?
+        private var scrollView: PortlandStreetScrollView? { container?.scrollView }
 
-        private var currentFeatureId: String?
-        private var currentFeature: PortlandMapFeature?
-        private var lastPoint: CGPoint?
-        private var lastMoveTime: CFTimeInterval = 0
-        private var backTriggered = false
-
-        // CSV touch logging (same logger type the Roux map + Data Files screen use).
-        let logger = CSVTouchLogger(fileNameGenerator: { meta in
-            let df = DateFormatter()
-            df.locale = Locale(identifier: "en_US_POSIX")
-            df.dateFormat = "yyyyMMdd_HHmmss"
-            return "CongressSquare_L\(meta["level"] ?? "1")_\(df.string(from: Date()))"
-        })
-        private var sessionStarted = false
-        private var sessionStart = Date()
-        weak var disabledPopNav: UINavigationController?
-
-        init(parent: PortlandMapView) { self.parent = parent }
-        deinit { NotificationCenter.default.removeObserver(self) }
-
-        func startLogIfNeeded() {
-            guard !sessionStarted else { return }
-            sessionStarted = true
-            sessionStart = Date()
-            logger.startSession(metadata: ["map": "CongressSquare", "level": "\(parent.level)"])
+        /// A point in the scroll view's own coordinates → the same point on the map.
+        private func contentPoint(_ pointInScrollView: CGPoint) -> CGPoint {
+            guard let scrollView else { return pointInScrollView }
+            return CGPoint(x: pointInScrollView.x + scrollView.contentOffset.x,
+                           y: pointInScrollView.y + scrollView.contentOffset.y)
         }
 
-        func endLog() {
-            guard sessionStarted else { return }
-            sessionStarted = false
+        private var currentFeatureID: String?
+        private var currentFeature: StreetFeature?
+        private var lastPoint: CGPoint?
+        private var lastMoveTime: CFTimeInterval = 0
+        private var lastHitTestTime: CFTimeInterval = 0
+        private var isExploring = false
+        private var backTriggered = false
+        private var hasCentered = false
+        private var panSettleWork: DispatchWorkItem?
+
+        // MARK: Logging
+
+        let logger = CSVTouchLogger(fileNameGenerator: { _ in
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "yyyyMMdd_HHmmss"
+            return "CongressSquare_\(formatter.string(from: Date()))"
+        })
+        private var loggingStarted = false
+        private var sessionStart = Date()
+
+        init(parent: PortlandMapView) { self.parent = parent }
+
+        func startLoggingIfNeeded() {
+            guard !loggingStarted else { return }
+            loggingStarted = true
+            sessionStart = Date()
+            let map = parent.map
+            // Recorded so a trace can be interpreted later: the same drag covers a different
+            // number of streets on devices with different pixel densities, because the map is
+            // sized in physical millimetres rather than points.
+            logger.startSession(metadata: [
+                "map": "CongressSquare",
+                "featureCount": "\(map.features.count)",
+                "pointsPerMeter": String(format: "%.3f", map.metrics.pointsPerMeter),
+                "laneWidthPoints": String(format: "%.2f", map.metrics.laneWidthPoints),
+                "contentSize": "\(Int(map.contentSize.width))x\(Int(map.contentSize.height))",
+                "voiceOver": UIAccessibility.isVoiceOverRunning ? "on" : "off",
+            ])
+        }
+
+        func endLogging() {
+            guard loggingStarted else { return }
+            loggingStarted = false
             logger.endSession()
         }
 
-        private func log(_ type: TouchEventType, at p: CGPoint, feature: PortlandMapFeature?) {
-            guard sessionStarted else { return }
-            logger.logEvent(TouchEvent(
+        /// Touch events carry the canvas-space point so a trace can be replayed against the
+        /// map, plus the surface type so a run can be split by what was under the finger.
+        private func logTouch(_ type: TouchEventType, at point: CGPoint, feature: StreetFeature?) {
+            guard loggingStarted else { return }
+            _ = logger.logEvent(TouchEvent(
                 timestamp: Date(),
                 sessionElapsed: Date().timeIntervalSince(sessionStart),
                 eventType: type,
-                elementName: feature?.featureName ?? "Background",
-                elementType: feature.map { Self.tactileType($0.featureType) },
-                touchPoint: p))
+                elementName: feature?.name ?? "Background",
+                elementType: feature?.surface.elementType,
+                touchPoint: point,
+                custom: ["gesture": "explore"]))
         }
 
-        private static func tactileType(_ t: PortlandFeatureType) -> TactileElementType {
-            switch t {
-            case .corridor: return .corridor
-            case .intersection: return .intersection
-            case .landmark: return .landmark
-            case .sidewalk: return TactileElementType(rawValue: "sidewalk")
-            case .crosswalk: return TactileElementType(rawValue: "crosswalk")
-            }
+        /// Pan is logged where it settles rather than every frame: what matters for
+        /// analysis is which part of the map the user chose to look at.
+        private func logPanSettled(center: CGPoint) {
+            guard loggingStarted else { return }
+            let scale = parent.map.metrics.pointsPerMeter
+            _ = logger.logEvent(TouchEvent(
+                timestamp: Date(),
+                sessionElapsed: Date().timeIntervalSince(sessionStart),
+                eventType: .touchUp,
+                elementName: parent.map.nearestRoadName(to: center, within: 200) ?? "Background",
+                elementType: nil,
+                touchPoint: center,
+                custom: [
+                    "gesture": "pan",
+                    "centerMetersX": String(format: "%.1f", center.x / scale),
+                    "centerMetersY": String(format: "%.1f", center.y / scale),
+                ]))
         }
 
-        @objc func voiceOverChanged() { /* accessibility re-applied in updateUIView */ }
+        // MARK: Viewport
 
-        // Allow the exploration recognizers to coexist; never block the back gestures.
-        func gestureRecognizer(_ g: UIGestureRecognizer,
-                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
-
-        // MARK: Rendering
-
-        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-            if overlay is PortlandBlankTileOverlay {
-                return PortlandWhiteTileRenderer(tileOverlay: overlay as! MKTileOverlay)
-            }
-            guard let pl = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
-            let r = MKPolylineRenderer(polyline: pl)
-            let level = pl.portlandLevel
-            switch pl.portlandFeatureType {
-            case .corridor:
-                r.strokeColor = trafficColor(forCorridorId: pl.portlandFeatureId)
-                r.lineWidth = PortlandMapSizing.roadWidth(mapView, level: level)
-                r.lineCap = .round; r.lineJoin = .round
-            case .sidewalk:
-                r.strokeColor = UIColor(red: 0x9E/255, green: 0x9E/255, blue: 0x9E/255, alpha: 1)
-                r.lineWidth = PortlandMapSizing.sidewalkWidth(mapView, level: level)
-                r.lineCap = .round; r.lineJoin = .round
-            case .crosswalk:
-                // Each overlay is one zebra bar → solid, butt caps (clean rectangle).
-                r.strokeColor = .white
-                r.lineWidth = PortlandMapSizing.crosswalkStripeWidth(mapView, level: level)
-                r.lineCap = .butt; r.lineJoin = .miter
-            default:
-                r.strokeColor = .gray; r.lineWidth = 2
-                r.lineCap = .round; r.lineJoin = .round
-            }
-            return r
+        func centerOnInitialLocationIfNeeded() {
+            guard !hasCentered, let scrollView, scrollView.bounds.width > 0 else { return }
+            hasCentered = true
+            center(on: parent.map.initialCenter, animated: false)
         }
 
-        func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
-            if let x = annotation as? PortlandIntersection {
-                let v = (mapView.dequeueReusableAnnotationView(withIdentifier: PortlandIntersectionAnnotationView.reuseIdentifier)
-                         as? PortlandIntersectionAnnotationView)
-                        ?? PortlandIntersectionAnnotationView(annotation: x, reuseIdentifier: PortlandIntersectionAnnotationView.reuseIdentifier)
-                v.configure(side: PortlandMapSizing.intersectionSide(mapView))
-                v.annotation = x
-                v.showSignal(x.signalized)
-                return v
-            }
-            if let lm = annotation as? PortlandLandmark {
-                let v = (mapView.dequeueReusableAnnotationView(withIdentifier: PortlandLandmarkAnnotationView.reuseIdentifier)
-                         as? PortlandLandmarkAnnotationView)
-                        ?? PortlandLandmarkAnnotationView(annotation: lm, reuseIdentifier: PortlandLandmarkAnnotationView.reuseIdentifier)
-                let sz = PortlandMapSizing.landmarkSize(mapView)
-                v.configure(width: sz.0, height: sz.1)
-                v.annotation = lm
-                return v
-            }
-            return nil
+        private func center(on point: CGPoint, animated: Bool) {
+            guard let scrollView else { return }
+            let size = scrollView.bounds.size
+            let offset = CGPoint(
+                x: clamp(point.x - size.width / 2, 0, max(0, parent.map.contentSize.width - size.width)),
+                y: clamp(point.y - size.height / 2, 0, max(0, parent.map.contentSize.height - size.height))
+            )
+            scrollView.setContentOffset(offset, animated: animated)
         }
 
-        // MARK: Traffic colour (secondary, for low-vision users)
-
-        private func segment(forCorridorId id: String?) -> PortlandTrafficSegment? {
-            guard let id else { return nil }
-            return parent.trafficSegments.first { $0.corridorIds.contains(id) || $0.id == id }
+        private var viewportCenter: CGPoint {
+            guard let scrollView else { return .zero }
+            return CGPoint(x: scrollView.contentOffset.x + scrollView.bounds.width / 2,
+                           y: scrollView.contentOffset.y + scrollView.bounds.height / 2)
         }
 
-        private func trafficColor(forCorridorId id: String?) -> UIColor {
-            guard let seg = segment(forCorridorId: id) else {
-                return UIColor(red: 0x02/255, green: 0x3E/255, blue: 0x8A/255, alpha: 1)
-            }
-            return seg.level(for: parent.trafficState).color
+        private func clamp(_ value: CGFloat, _ low: CGFloat, _ high: CGFloat) -> CGFloat {
+            min(max(value, low), high)
         }
 
-        func refreshTrafficColors(on mapView: MKMapView) {
-            for o in mapView.overlays {
-                guard let pl = o as? MKPolyline, pl.portlandFeatureType == .corridor,
-                      let r = mapView.renderer(for: o) as? MKPolylineRenderer else { continue }
-                r.strokeColor = trafficColor(forCorridorId: pl.portlandFeatureId)
-                r.setNeedsDisplay()
+        /// Half-screen steps on the Actions rotor, for users who can't make a smooth
+        /// two-finger drag. North is up, matching the drawing.
+        func makePanActions() -> [(String, () -> Void)] {
+            [
+                ("Pan north", { [weak self] in self?.step(dx: 0, dy: -0.5) }),
+                ("Pan south", { [weak self] in self?.step(dx: 0, dy: 0.5) }),
+                ("Pan east", { [weak self] in self?.step(dx: 0.5, dy: 0) }),
+                ("Pan west", { [weak self] in self?.step(dx: -0.5, dy: 0) }),
+                ("Recentre on Congress Square", { [weak self] in
+                    guard let self else { return }
+                    self.center(on: self.parent.map.initialCenter, animated: true)
+                    self.announceViewportCenter(prefix: "Recentred")
+                }),
+            ]
+        }
+
+        private func step(dx: CGFloat, dy: CGFloat) {
+            guard let scrollView else { return }
+            let size = scrollView.bounds.size
+            center(on: CGPoint(x: viewportCenter.x + size.width * dx,
+                               y: viewportCenter.y + size.height * dy), animated: true)
+            announceViewportCenter(prefix: nil)
+        }
+
+        // MARK: Scroll view delegate
+
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            container?.canvas.contentOffset = scrollView.contentOffset
+        }
+
+        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+            if !decelerate { schedulePanSettled() }
+        }
+
+        func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+            schedulePanSettled()
+        }
+
+        func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+            schedulePanSettled()
+        }
+
+        /// Wait for motion to actually stop before saying anything, and stay quiet if a
+        /// finger is exploring — an orientation cue must never cut across a street name.
+        private func schedulePanSettled() {
+            panSettleWork?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.logPanSettled(center: self.viewportCenter)
+                guard !self.isExploring else { return }
+                self.announceViewportCenter(prefix: nil)
             }
+            panSettleWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+        }
+
+        private func announceViewportCenter(prefix: String?) {
+            let name = parent.map.nearestRoadName(to: viewportCenter, within: 260)
+            let body = name.map { "Near \($0)" } ?? "No street nearby"
+            feedback.announceOrientation([prefix, body].compactMap { $0 }.joined(separator: ". "))
+        }
+
+        // MARK: Gesture delegate
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            true
+        }
+
+        @objc func voiceOverStatusChanged() {
+            scrollView?.applyAccessibility()
         }
 
         // MARK: Gestures
 
-        @objc func handleDoubleTap(_ g: UITapGestureRecognizer) {
-            guard let mv = g.view as? MKMapView else { return }
-            if parent.level == 2 { triggerBack(); return }
-            if let x = hitIntersection(at: g.location(in: mv), in: mv, radiusPts: 34) {
-                feedback.stopAllFeedback()
-                feedback.playSingleTap()
-                parent.onDoubleTapIntersection?(x)
+        @objc func handleSingleTap(_ gesture: UITapGestureRecognizer) {
+            guard let scrollView else { return }
+            let point = contentPoint(gesture.location(in: scrollView))
+            if let feature = parent.map.feature(at: point, velocity: 0) {
+                feedback.playTap()
+                feedback.announceImmediately(feature.announcement)
             }
         }
 
-        @objc func handleSingleTap(_ g: UITapGestureRecognizer) {
-            guard let mv = g.view as? MKMapView else { return }
-            if let f = hitFeature(at: g.location(in: mv), in: mv, velocity: 0) {
-                feedback.playSingleTap()
-                announce(f)
-            }
+        @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
+            // Nothing to drill into on this map. Consumed so a double tap can't be
+            // mistaken for two single taps and speak the same street twice.
         }
 
-        @objc func handleLongPress(_ g: UILongPressGestureRecognizer) {
-            guard let mv = g.view as? MKMapView else { return }
-            let p = g.location(in: mv)
-            switch g.state {
+        @objc func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
+            guard let scrollView else { return }
+            let pointInView = gesture.location(in: scrollView)
+            let point = contentPoint(pointInView)
+
+            switch gesture.state {
             case .began:
-                startLogIfNeeded()
-                lastPoint = p; lastMoveTime = CACurrentMediaTime()
-                exploreStart(at: p, in: mv, velocity: 0)
-                log(.touchDown, at: p, feature: currentFeature)
-                touchIndicator?.show(at: p)
+                startLoggingIfNeeded()
+                isExploring = true
+                panSettleWork?.cancel()
+                lastPoint = point
+                lastMoveTime = CACurrentMediaTime()
+                lastHitTestTime = 0
+                currentFeatureID = nil
+                updateExploration(at: point, velocity: 0)
+                logTouch(.touchDown, at: point, feature: currentFeature)
+                touchIndicator?.show(at: pointInView)
+
             case .changed:
                 let now = CACurrentMediaTime()
-                let v = velocity(to: p, now: now)
-                lastPoint = p; lastMoveTime = now
-                exploreUpdate(at: p, in: mv, velocity: v)
-                log(.touchMove, at: p, feature: currentFeature)   // logger throttles moves
-                touchIndicator?.show(at: p)
+                let speed = velocity(to: point, now: now)
+                lastPoint = point
+                lastMoveTime = now
+                // Hit-test at a bounded rate; the indicator still follows every frame.
+                if now - lastHitTestTime >= parent.map.hitConfig.updateThreshold {
+                    lastHitTestTime = now
+                    updateExploration(at: point, velocity: speed)
+                }
+                logTouch(.touchMove, at: point, feature: currentFeature)
+                touchIndicator?.show(at: pointInView)
+
             case .ended, .cancelled, .failed:
-                log(.touchUp, at: p, feature: currentFeature)
-                exploreStop()
-                touchIndicator?.hide()
+                logTouch(.touchUp, at: point, feature: currentFeature)
+                isExploring = false
+                feedback.stopAll()
+                currentFeatureID = nil
+                currentFeature = nil
                 lastPoint = nil
-            default: break
+                touchIndicator?.hide()
+
+            default:
+                break
             }
         }
 
         @objc func handleBackGesture() { triggerBack() }
 
-        @objc func handleThreeFingerPan(_ g: UIPanGestureRecognizer) {
-            guard let mv = g.view else { return }
-            if g.state == .changed, g.translation(in: mv).x > 100 { triggerBack() }
-            if g.state == .ended || g.state == .cancelled { backTriggered = false }
+        @objc func handleThreeFingerPan(_ gesture: UIPanGestureRecognizer) {
+            guard let view = gesture.view else { return }
+            if gesture.state == .changed, gesture.translation(in: view).x > 100 { triggerBack() }
+            if gesture.state == .ended || gesture.state == .cancelled { backTriggered = false }
         }
 
         func triggerBack() {
             guard !backTriggered else { return }
             backTriggered = true
-            feedback.stopAllFeedback()
-            feedback.playSingleTap()
+            feedback.stopAll()
+            feedback.playTap()
             parent.onBackGesture?()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.backTriggered = false }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.backTriggered = false
+            }
         }
 
-        private func velocity(to p: CGPoint, now: CFTimeInterval) -> CGFloat {
-            guard let lp = lastPoint else { return 0 }
-            let dt = max(0.001, now - lastMoveTime)
-            return hypot(p.x - lp.x, p.y - lp.y) / CGFloat(dt)
+        private func velocity(to point: CGPoint, now: CFTimeInterval) -> CGFloat {
+            guard let last = lastPoint else { return 0 }
+            let elapsed = max(0.001, now - lastMoveTime)
+            return hypot(point.x - last.x, point.y - last.y) / CGFloat(elapsed)
         }
 
         // MARK: Exploration
 
-        private func exploreStart(at p: CGPoint, in mv: MKMapView, velocity v: CGFloat) {
-            currentFeatureId = nil
-            exploreUpdate(at: p, in: mv, velocity: v)
-        }
+        /// Haptics change the instant the surface changes; speech is dwell-gated inside the
+        /// feedback controller. That split is what lets a fast sweep feel every surface it
+        /// crosses while only naming the one the finger settles on.
+        private func updateExploration(at point: CGPoint, velocity: CGFloat) {
+            let feature = parent.map.feature(at: point, velocity: velocity)
+            currentFeature = feature
 
-        private func exploreUpdate(at p: CGPoint, in mv: MKMapView, velocity v: CGFloat) {
-            let f = hitFeature(at: p, in: mv, velocity: v)
-            currentFeature = f
-            if f?.featureId != currentFeatureId {
-                currentFeatureId = f?.featureId
-                feedback.stopAllFeedback()
-                if let f {
-                    feedback.startFeedback(for: f, trafficLevel: trafficLevel(for: f))
-                    announce(f)
-                }
+            guard feature?.id != currentFeatureID else { return }
+            currentFeatureID = feature?.id
+
+            if let feature {
+                feedback.enter(surface: feature.surface,
+                               identifier: feature.id,
+                               announcement: feature.announcement)
+            } else {
+                // Empty space is silent: no haptic, nothing spoken.
+                feedback.leaveAll()
             }
-        }
-
-        private func exploreStop() {
-            feedback.stopAllFeedback()
-            currentFeatureId = nil
-            currentFeature = nil
-        }
-
-        private func trafficLevel(for f: PortlandMapFeature) -> TrafficLevel? {
-            guard let road = f as? PortlandCorridor,
-                  let seg = segment(forCorridorId: road.featureId) else { return nil }
-            return seg.level(for: parent.trafficState)
-        }
-
-        // MARK: Hit testing (point-space, velocity-adaptive)
-
-        private func point(_ coord: CLLocationCoordinate2D, in mv: MKMapView) -> CGPoint {
-            mv.convert(coord, toPointTo: mv)
-        }
-
-        private func hitFeature(at p: CGPoint, in mv: MKMapView, velocity v: CGFloat) -> PortlandMapFeature? {
-            let lineBonus = min(v / 40, 22)   // grow line radius when tracing fast
-            for f in parent.features {
-                if let lm = f as? PortlandLandmark,
-                   hypot2(point(lm.coordinate, in: mv), p) < 30 { return lm }
-            }
-            for f in parent.features {
-                if let x = f as? PortlandIntersection,
-                   hypot2(point(x.coordinate, in: mv), p) < 26 { return x }
-            }
-            for f in parent.features {
-                if let cw = f as? PortlandCrosswalk,
-                   distToPolyline(p, cw.getCoordinates(), in: mv) < 20 + lineBonus { return cw }
-            }
-            for f in parent.features {
-                if let sw = f as? PortlandSidewalk,
-                   distToPolyline(p, sw.getCoordinates(), in: mv) < 20 + lineBonus { return sw }
-            }
-            for f in parent.features {
-                if let road = f as? PortlandCorridor,
-                   distToPolyline(p, road.getCoordinates(), in: mv) < 22 + lineBonus { return road }
-            }
-            return nil
-        }
-
-        private func hitIntersection(at p: CGPoint, in mv: MKMapView, radiusPts: CGFloat) -> PortlandIntersection? {
-            var best: (PortlandIntersection, CGFloat)?
-            for f in parent.features {
-                if let x = f as? PortlandIntersection {
-                    let d = hypot2(point(x.coordinate, in: mv), p)
-                    if d < radiusPts, best == nil || d < best!.1 { best = (x, d) }
-                }
-            }
-            return best?.0
-        }
-
-        private func hypot2(_ a: CGPoint, _ b: CGPoint) -> CGFloat { hypot(a.x - b.x, a.y - b.y) }
-
-        private func distToPolyline(_ p: CGPoint, _ coords: [CLLocationCoordinate2D], in mv: MKMapView) -> CGFloat {
-            guard coords.count >= 2 else { return .greatestFiniteMagnitude }
-            var minD = CGFloat.greatestFiniteMagnitude
-            var prev = point(coords[0], in: mv)
-            for i in 1..<coords.count {
-                let cur = point(coords[i], in: mv)
-                minD = min(minD, distToSegment(p, prev, cur))
-                prev = cur
-            }
-            return minD
-        }
-
-        private func distToSegment(_ p: CGPoint, _ a: CGPoint, _ b: CGPoint) -> CGFloat {
-            let dx = b.x - a.x, dy = b.y - a.y
-            let len2 = dx*dx + dy*dy
-            guard len2 > 0 else { return hypot(p.x - a.x, p.y - a.y) }
-            var t = ((p.x - a.x)*dx + (p.y - a.y)*dy) / len2
-            t = max(0, min(1, t))
-            return hypot(p.x - (a.x + t*dx), p.y - (a.y + t*dy))
-        }
-
-        // MARK: Announcements
-
-        private func announce(_ f: PortlandMapFeature) {
-            var text = f.announcement()
-
-            if let x = f as? PortlandIntersection {
-                let hasAPS = parent.apsLocations.contains { $0.intersectionId == x.featureId }
-                if x.signalized { text = "Signalized. " + text }
-                if hasAPS { text += ", accessible pedestrian signal" }
-                if parent.level == 1 { text += ". Double tap for crossing detail" }
-            }
-            if let road = f as? PortlandCorridor {
-                if let seg = segment(forCorridorId: road.featureId) {
-                    text += ". \(seg.lanes) lanes, \(seg.level(for: parent.trafficState).spoken) traffic"
-                } else {
-                    text += ". \(road.lanes) lanes"
-                }
-            }
-            if let lm = f as? PortlandLandmark, !lm.tag.isEmpty {
-                text = "\(lm.tag), \(lm.featureName)"
-            }
-            feedback.speak(text)
         }
     }
 }

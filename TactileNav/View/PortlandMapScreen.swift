@@ -2,9 +2,11 @@
 //  PortlandMapScreen.swift
 //  TactileNav
 //
-//  Level-1 screen: the Congress Square tactile map plus a time-of-day traffic selector
-//  (peak / normal / light). Double-tapping an intersection presents the Level-2 crossing
-//  simulation. All feedback stops on disappear.
+//  The Congress Square screen: a pannable street-only tactile map of downtown Portland.
+//
+//  Loading happens off the main thread — the extract is ~2,000 elements, and projecting it
+//  and building the spatial index would drop frames on the way in. All feedback stops when
+//  the screen goes away.
 //
 
 import SwiftUI
@@ -12,82 +14,71 @@ import SwiftUI
 struct PortlandMapScreen: View {
 
     @Environment(\.dismiss) private var dismiss
-    @State private var trafficState: TrafficState = .normal
-    @State private var corridors: [PortlandCorridor] = []
-    @State private var features: [PortlandMapFeature] = []
-    @State private var apsLocations: [PortlandAPS] = []
-    @State private var trafficSegments: [PortlandTrafficSegment] = []
-    @State private var trafficIntersections: [PortlandTrafficIntersection] = []
-    @State private var selectedIntersection: PortlandIntersection?
+
+    private enum LoadPhase {
+        case loading
+        case ready(StreetMap)
+        case failed
+    }
+
+    @State private var phase: LoadPhase = .loading
     @State private var hasAppeared = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            PortlandMapView(
-                features: features,
-                onDoubleTapIntersection: { selectedIntersection = $0 },
-                onBackGesture: { dismiss() },
-                trafficSegments: trafficSegments,
-                trafficIntersections: trafficIntersections,
-                apsLocations: apsLocations,
-                trafficState: trafficState,
-                onTrafficStateChange: { trafficState = $0 },
-                level: 1
-            )
-            .ignoresSafeArea(edges: .top)
-
-            trafficSelector
-        }
-        .navigationTitle("Congress Square")
-        .navigationBarTitleDisplayMode(.inline)
-        .fullScreenCover(item: $selectedIntersection) { intersection in
-            PortlandIntersectionDetailView(
-                intersection: intersection,
-                allCorridors: corridors,
-                trafficSegments: trafficSegments,
-                apsLocations: apsLocations,
-                trafficState: trafficState
-            )
-        }
-        .onAppear {
-            guard !hasAppeared else { return }
-            hasAppeared = true
-            loadData()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                PortlandFeedbackManager.shared.speak(
-                    "Congress Square, downtown Portland. Drag to explore streets and intersections. Double tap an intersection for its crossing detail.")
+        content
+            .navigationTitle("Congress Square")
+            .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                guard !hasAppeared else { return }
+                hasAppeared = true
+                load()
             }
-        }
-        .onDisappear { PortlandFeedbackManager.shared.stopAllFeedback() }
+            .onDisappear { StreetFeedbackController.shared.stopAll() }
     }
 
-    private var trafficSelector: some View {
-        VStack(spacing: 8) {
-            Picker("Traffic time of day", selection: $trafficState) {
-                ForEach(TrafficState.allCases) { Text($0.label).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
-            .accessibilityLabel("Traffic time of day")
-            .accessibilityHint("Changes traffic density: felt as vibration strength and heard as road rumble while exploring")
+    @ViewBuilder
+    private var content: some View {
+        switch phase {
+        case .loading:
+            ProgressView("Loading map")
+                .accessibilityLabel("Loading the Congress Square map")
 
-            Text(trafficState.description)
-                .font(.caption2)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .accessibilityLabel("\(trafficState.label). \(trafficState.description)")
+        case .ready(let map):
+            PortlandMapView(map: map, onBackGesture: { dismiss() })
+                .ignoresSafeArea(edges: .bottom)
+
+        case .failed:
+            VStack(spacing: 12) {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.largeTitle)
+                Text("The Congress Square map could not be loaded.")
+                    .multilineTextAlignment(.center)
+            }
+            .padding()
+            .accessibilityElement(children: .combine)
         }
-        .padding(.vertical, 8)
-        .background(Color(.systemBackground))
     }
 
-    private func loadData() {
-        let map = PortlandMapLoader.loadLevel1()
-        corridors = map.corridors
-        features = map.all
-        apsLocations = PortlandMapLoader.loadAPS()
-        let traffic = PortlandMapLoader.loadTraffic()
-        trafficSegments = traffic.segments
-        trafficIntersections = traffic.intersections
+    private func load() {
+        // Read the device metrics and label font here, on the main actor, then project the
+        // ~2,000-element extract off it.
+        let context = PortlandMapLoader.LoadContext.current()
+        Task.detached(priority: .userInitiated) {
+            let result = try? PortlandMapLoader.loadStreetMap(context: context)
+            await MainActor.run {
+                guard let result else {
+                    phase = .failed
+                    return
+                }
+                phase = .ready(result)
+                announceEntry(featureCount: result.features.count)
+            }
+        }
+    }
+
+    private func announceEntry(featureCount: Int) {
+        StreetFeedbackController.shared.announceScreenEntry(
+            "Congress Square, downtown Portland. A street map of \(featureCount) streets, "
+            + "sidewalks and crossings. Drag one finger to explore, two fingers to pan the map.")
     }
 }
