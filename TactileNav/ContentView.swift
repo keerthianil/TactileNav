@@ -30,7 +30,7 @@ struct ContentView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Street Crossing Audio")
                                     .font(.headline)
-                                Text("Vehicle pass-by with real Doppler: straight vs. turning, car vs. EV")
+                                Text("Judge a four-way signal by ear at Congress and High")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -39,7 +39,7 @@ struct ContentView: View {
                                 .foregroundColor(.blue)
                         }
                     }
-                    .accessibilityHint("Hear different vehicles passing by with spatial audio using headphones")
+                    .accessibilityHint("Listen to traffic on all four legs of a real intersection and work out when it is safe to cross. Headphones needed")
                 }
 
                 Section("Roux Institute") {

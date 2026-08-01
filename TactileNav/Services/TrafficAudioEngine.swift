@@ -2,13 +2,14 @@
 //  TrafficAudioEngine.swift
 //  TactileNav
 //
-//  The audio backbone for traffic perception. One AVAudioEngine drives:
-//    • a synthesized, continuously-looping vehicle engine tone whose PITCH is shifted in
-//      real time to reproduce the Doppler effect (rising as a vehicle approaches, falling
-//      as it recedes) — pitch/pan/volume are all driven live from the vehicle's modelled
-//      position, so the Doppler shift is physically computed, never a cosmetic label;
-//    • earcons for accessible pedestrian signals (locator tone, WALK tick) and a
-//      low-frequency traffic "rumble" whose density tracks the congestion level.
+//  The audio backbone for traffic perception. One AVAudioEngine drives a pool of vehicle
+//  voices: each is a synthesized, continuously-looping engine tone whose PITCH is shifted in
+//  real time to reproduce the Doppler effect (rising as a vehicle approaches, falling as it
+//  recedes). Pitch, pan and volume are all driven live from the vehicle's modelled position,
+//  so the Doppler shift is physically computed, never a cosmetic label.
+//
+//  The pool exists because a four-way intersection has traffic on more than one leg at once,
+//  and telling those movements apart by ear is the entire skill being demonstrated.
 //
 //  Doppler:  f' = f · c / (c − v_radial),  v_radial = closing speed toward the listener.
 //  A 25 mph pass produces ≈1.1 semitones of total shift (matching the research report),
@@ -78,10 +79,6 @@ final class TrafficAudioEngine {
     // MARK: - Engine graph
 
     private let engine = AVAudioEngine()
-    private let vehiclePlayer = AVAudioPlayerNode()     // adopts AVAudioMixing → .pan/.volume
-    private let vehiclePitch = AVAudioUnitTimePitch()   // real-time Doppler pitch shift
-    private let earconPlayer = AVAudioPlayerNode()      // APS tones, ding
-    private let rumblePlayer = AVAudioPlayerNode()      // continuous traffic rumble
     private let sampleRate = 44_100.0
     private var started = false
 
@@ -97,15 +94,17 @@ final class TrafficAudioEngine {
             try session.setActive(true)
 
             let fmt = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2)!
-            engine.attach(vehiclePlayer)
-            engine.attach(vehiclePitch)
-            engine.attach(earconPlayer)
-            engine.attach(rumblePlayer)
-            // vehicle: player → pitch(Doppler) → mainMixer.   pan/volume set on the player.
-            engine.connect(vehiclePlayer, to: vehiclePitch, format: fmt)
-            engine.connect(vehiclePitch, to: engine.mainMixerNode, format: fmt)
-            engine.connect(earconPlayer, to: engine.mainMixerNode, format: fmt)
-            engine.connect(rumblePlayer, to: engine.mainMixerNode, format: fmt)
+            // One player → pitch → mixer chain per simultaneous vehicle. Each vehicle needs
+            // its own pitch shifter because each carries a different Doppler curve.
+            voices = (0..<Self.voiceCount).map { _ in
+                let player = AVAudioPlayerNode()   // adopts AVAudioMixing → .pan/.volume
+                let pitch = AVAudioUnitTimePitch() // real-time Doppler pitch shift
+                engine.attach(player)
+                engine.attach(pitch)
+                engine.connect(player, to: pitch, format: fmt)
+                engine.connect(pitch, to: engine.mainMixerNode, format: fmt)
+                return Voice(player: player, pitch: pitch)
+            }
             try engine.start()
             started = true
         } catch {
@@ -114,9 +113,7 @@ final class TrafficAudioEngine {
     }
 
     func deactivate() {
-        stopVehiclePass()
-        stopRumble()
-        vehiclePlayer.stop(); earconPlayer.stop(); rumblePlayer.stop()
+        releaseAllVoices()
         engine.stop()
         started = false
         try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
@@ -146,127 +143,64 @@ final class TrafficAudioEngine {
         return buf
     }
 
-    // MARK: - Continuous traffic rumble (density = congestion)
+    // MARK: - Voice pool
+    //
+    // A four-way intersection has traffic on several legs at once, so one shared player is
+    // not enough — each vehicle needs its own pitch shifter to carry its own Doppler curve.
+    // Voices are pooled rather than created per vehicle because attaching and connecting
+    // nodes on a running engine is expensive and audibly glitchy.
 
-    private var rumbleLoop: AVAudioPCMBuffer?
-
-    /// Start a low rumble at the given fundamental (nil = quiet, gaps detectable → stop).
-    func startRumble(hz: Double?, amplitude: Float) {
-        guard started else { return }
-        stopRumble()
-        guard let hz else { return }
-        let buf = toneBuffer(frequency: hz, harmonics: [1, 2], seconds: 0.5, amplitude: amplitude)
-        rumbleLoop = buf
-        rumblePlayer.scheduleBuffer(buf, at: nil, options: [.loops], completionHandler: nil)
-        rumblePlayer.play()
+    private struct Voice {
+        let player: AVAudioPlayerNode
+        let pitch: AVAudioUnitTimePitch
+        var inUse = false
     }
 
-    func stopRumble() {
-        rumblePlayer.stop()
-        rumbleLoop = nil
+    private var voices: [Voice] = []
+
+    /// Simultaneous vehicles. Beyond this the intersection is a wall of noise anyway, and the
+    /// individual Doppler curves stop being distinguishable — which is the thing being taught.
+    static let voiceCount = 6
+
+    /// Claim a voice and start its engine tone looping. Returns nil when all are busy.
+    func acquireVoice(type: VehicleType) -> Int? {
+        guard started else { return nil }
+        guard let index = voices.firstIndex(where: { !$0.inUse }) else { return nil }
+
+        voices[index].inUse = true
+        let voice = voices[index]
+
+        let harmonics: [Double] = type.isEV ? [1, 2.5] : [1, 2, 3, 4]
+        let loop = toneBuffer(frequency: type.baseFrequency, harmonics: harmonics,
+                              seconds: 0.5, amplitude: type.loudness)
+        voice.pitch.pitch = 0
+        voice.player.volume = 0
+        voice.player.scheduleBuffer(loop, at: nil, options: [.loops], completionHandler: nil)
+        voice.player.play()
+        return index
     }
 
-    // MARK: - Earcons (APS + confirmation)
-
-    /// A short beep (locator tone / ding / WALK tick), non-spatial.
-    func playBeep(hz: Double, seconds: Double = 0.08, amplitude: Float = 0.5) {
-        guard started else { return }
-        let buf = toneBuffer(frequency: hz, harmonics: [1], seconds: seconds, amplitude: amplitude)
-        earconPlayer.scheduleBuffer(buf, at: nil, options: [.interrupts], completionHandler: nil)
-        earconPlayer.play()
+    /// Drive a voice from its vehicle's modelled position.
+    func updateVoice(_ index: Int, pan: Float, volume: Float, cents: Float) {
+        guard voices.indices.contains(index) else { return }
+        let voice = voices[index]
+        voice.player.pan = max(-1, min(1, pan))
+        voice.player.volume = max(0, min(1, volume))
+        voice.pitch.pitch = max(-2_400, min(2_400, cents))
     }
 
-    // MARK: - Vehicle pass with real Doppler
-
-    struct PassConfig {
-        var type: VehicleType = .car
-        var speedMph: Double = 25
-        var turning: Bool = false      // false = through / straight; true = turns across path
-        var curbDistanceM: Double = 4  // lateral distance from listener to the lane
-        var spanM: Double = 60         // total travel length
+    func releaseVoice(_ index: Int) {
+        guard voices.indices.contains(index) else { return }
+        voices[index].player.stop()
+        voices[index].pitch.pitch = 0
+        voices[index].inUse = false
     }
 
-    private var passTimer: Timer?
-    private var passStart: CFTimeInterval = 0
-    private var passConfig = PassConfig()
-    private var lastDistance: Double = .greatestFiniteMagnitude
-    private var onPassProgress: ((_ progress: Double, _ closing: Bool, _ pitchCents: Double) -> Void)?
-    private var onPassDone: (() -> Void)?
-
-    /// Animate one pass. `progress` 0…1 drives the UI; audio pan/volume/pitch update live.
-    func startVehiclePass(_ config: PassConfig,
-                          onProgress: @escaping (Double, Bool, Double) -> Void,
-                          onComplete: @escaping () -> Void) {
-        guard started else { onComplete(); return }
-        stopVehiclePass()
-        passConfig = config
-        onPassProgress = onProgress
-        onPassDone = onComplete
-        lastDistance = .greatestFiniteMagnitude
-
-        // continuous looping engine tone for this vehicle
-        let harmonics: [Double] = config.type.isEV ? [1, 2.5] : [1, 2, 3, 4]
-        let loop = toneBuffer(frequency: config.type.baseFrequency, harmonics: harmonics,
-                              seconds: 0.5, amplitude: config.type.loudness)
-        vehiclePitch.pitch = 0
-        vehiclePlayer.scheduleBuffer(loop, at: nil, options: [.loops], completionHandler: nil)
-        vehiclePlayer.play()
-
-        passStart = CACurrentMediaTime()
-        passTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tickPass() }
+    func releaseAllVoices() {
+        for index in voices.indices {
+            voices[index].player.stop()
+            voices[index].pitch.pitch = 0
+            voices[index].inUse = false
         }
-    }
-
-    func stopVehiclePass() {
-        passTimer?.invalidate(); passTimer = nil
-        vehiclePlayer.stop()
-        vehiclePitch.pitch = 0
-        onPassProgress = nil
-        onPassDone = nil
-    }
-
-    private func tickPass() {
-        let speedMps = passConfig.speedMph * 0.44704
-        let elapsed = CACurrentMediaTime() - passStart
-        let travelled = speedMps * elapsed
-        let total = passConfig.spanM
-        let progress = travelled / total
-        guard progress <= 1.0 else {
-            let done = onPassDone
-            stopVehiclePass()
-            done?()
-            return
-        }
-
-        // Listener at origin. Straight pass: vehicle runs along x at constant lateral z.
-        // Turning: it slows and curves toward the listener's crossing (z shrinks), lingering.
-        let x = -total / 2 + travelled
-        var z = passConfig.curbDistanceM
-        if passConfig.turning {
-            // in the second half, bend toward the crosswalk (z → ~1 m) and slow the x advance feel
-            let p = max(0, (progress - 0.5) * 2)   // 0→1 over the back half
-            z = passConfig.curbDistanceM * (1 - 0.8 * p) + 1.0 * p
-        }
-        let distance = max(0.6, sqrt(x * x + z * z))
-
-        // Doppler from radial closing speed (finite-difference on distance).
-        let dt = 1.0 / 60.0
-        let closingSpeed = (lastDistance - distance) / dt   // >0 approaching
-        lastDistance = distance
-        let c = 343.0
-        let ratio = c / max(1.0, c - closingSpeed)          // approaching → >1 → higher pitch
-        let cents = max(-400, min(400, 1200 * log2(ratio)))
-        vehiclePitch.pitch = Float(cents)
-
-        // Direction (pan) and distance (volume). EVs keep a low floor → near-silent hazard.
-        let pan = Float(max(-1, min(1, x / (total / 2))))
-        vehiclePlayer.pan = pan
-        let refDist = 6.0
-        var vol = Float(refDist / distance)
-        vol = min(vol, 1.0) * passConfig.type.loudness
-        vehiclePlayer.volume = max(passConfig.type.isEV ? 0.02 : 0.05, vol)
-
-        onPassProgress?(progress, closingSpeed > 0, cents)
     }
 }

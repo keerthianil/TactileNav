@@ -49,16 +49,24 @@ Identical with VoiceOver on or off.
 | One finger, single tap | Speak what is under the finger |
 | **Two fingers, drag** | Pan the map — continuous, with momentum, like any map |
 | Three-finger swipe right, or drag | Go back |
-| VoiceOver two-finger scrub | Go back |
-| VoiceOver Actions rotor (swipe up/down) | Pan north / south / east / west by half a screen, or recentre on Congress Square |
+| Back button | Go back |
+| VoiceOver Actions rotor (swipe up/down) | Pan north / south / east / west by half a screen, or recenter |
+| Recenter button (toolbar) | Jump back to Congress Square |
 
 Panning is on **two** fingers because one finger is the exploration channel and cannot be shared.
 Three fingers is not available for continuous panning — VoiceOver reserves it and delivers it as a
 discrete scroll — so it stays on "go back", and the Actions rotor gives a step-at-a-time alternative
 for anyone who finds a two-finger drag difficult.
 
-The one-finger interactive edge-swipe back gesture is switched off while the map is open, so exploring
-near the left edge cannot accidentally navigate away.
+**Nothing a single finger can do navigates away.** Back is the three-finger swipe and the Back button,
+nothing else. The interactive edge-swipe pop is switched off while the map is open, the scroll view
+needs two touches to pan and accepts at most two, so a three-finger back drag cannot pan at the same
+time. Exploring hard against the left edge is safe.
+
+Because the map is about 67 screens wide it is genuinely possible to pan away and lose your bearings,
+so there is a **Recenter** button in the toolbar — the equivalent of the "back to my location" control
+on a visual map. It is in the toolbar rather than floating on the map so VoiceOver can always reach it,
+and the same action is on the Actions rotor.
 
 #### Haptics and speech
 
@@ -84,17 +92,41 @@ exploring.
 After a pan settles, the map names the nearest street to the new centre, which is what makes a map this
 large navigable rather than disorienting.
 
-### Street Crossing Audio (spatial-audio sandbox)
+### Street Crossing Audio — judging a four-way signal by ear
 
-A single-lane bird's-eye sandbox for the audio engine and the two hardest crossing judgments:
+You stand on the corner of **Congress Street at High Street** — the same junction you can explore by
+touch on the map screen — about to cross Congress. Traffic runs on all four legs under a signal cycle,
+and the task is the one blind travellers actually perform: work out from sound alone when it is safe
+to step off.
 
-- **Straight vs. turning** — a turning vehicle stays closer, longer (needs ~11 dB more to judge than
-  mere presence).
-- **Car vs. EV** — the electric vehicle is near-silent (under 45 dBA under 20 mph), demonstrating the
-  detection-gap hazard.
-- **Real Doppler.** Pitch is shifted live from the vehicle's modelled position (`f' = f·c/(c−v)`), not a
-  cosmetic number; a 25 mph pass yields ≈1.1 semitones of total shift. Pan + volume convey direction and
-  distance. Headphones recommended.
+The technique being demonstrated is the real one. You do not cross when it goes quiet; you cross with
+the **parallel surge** — the moment the traffic beside you, running the way you want to walk, pulls
+away from the line. Here that is High Street. Traffic sweeping left to right across your front is
+Congress Street and means wait.
+
+**Nothing is narrated.** There is deliberately no spoken commentary on what the traffic is doing —
+being told the answer is the opposite of the exercise. A **Reveal the current phase** button shows
+which street has the green whenever you want to check yourself, and every control is labelled for
+VoiceOver as usual. The bird's-eye diagram's accessibility label is deliberately static: if it
+reported the live phase, VoiceOver would hand over the very thing you are meant to work out.
+
+What makes the intersection readable by ear:
+
+- **Real geometry.** The four legs use the true OpenStreetMap bearings of Congress and High (43°, 145°,
+  240°, 320°), so the crossing angle is the real one.
+- **Vehicles keep right.** One direction of Congress passes about 5 m in front of you and the other is
+  a full roadway away at about 11 m. Down a shared centreline everything would sound identical and the
+  intersection would carry no information at all.
+- **Greens open with a surge.** Two or three vehicles pull away together, because a surge is what a
+  listener recognises — one car alone is ambiguous.
+- **Turning vehicles.** During the walk phase some vehicles turn across the crosswalk. A turn lingers
+  near you instead of sweeping past and away, and that is the movement most likely to hit a pedestrian
+  who has already stepped off.
+- **Real Doppler.** Pitch is shifted live from each vehicle's modelled position (`f' = f·c/(c−v)`), not
+  a cosmetic number. Pan and volume carry direction and distance. Six vehicles can sound at once, each
+  with its own pitch shifter.
+- **Gas vs. electric.** An all-electric fleet is under 45 dBA at low speed, so the surge you would
+  normally step off with is barely there — the technique itself starts to fail. Headphones required.
 
 ### Roux Institute Map & Tools
 
@@ -163,14 +195,15 @@ TactileNav/
     StreetMapSizing.swift          Physical mm constants + the lane-anchored map scale
     StreetMapGeometry.swift        Projection, spatial index, hit testing, spoken forms, labels
     PortlandMapLoader.swift        Document load + off-main-thread projection
+    IntersectionCrossingModel.swift  Four-way signal cycle, traffic, lane geometry
   View/
     PortlandMapScreen.swift        Screen shell + async load
     PortlandMapView.swift          Scroll view, gestures, VoiceOver, logging
     PortlandStreetCanvasView.swift Viewport renderer
-    SpatialAudioSimulationView.swift  Lane sandbox: straight/turning × car/EV, real Doppler
+    SpatialAudioSimulationView.swift  Crossing demo screen + bird's-eye diagram
   Services/
     StreetFeedbackPolicy.swift     Per-surface haptics + the single dwell-gated speech channel
-    TrafficAudioEngine.swift       Real-Doppler vehicle audio for the crossing sandbox
+    TrafficAudioEngine.swift       Pooled real-Doppler vehicle voices
 Packages/
   TactileMapKit/                   Vendored foundation package
 tools/
