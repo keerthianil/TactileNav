@@ -41,8 +41,12 @@ Two different things come off that 4 mm constant, and they are worth keeping apa
   points. So the *spacing* of the network — how far apart two streets run, how wide a junction is, how
   far a crossing reaches — stays true to the ground even though the lines are a constant width.
 
-A useful consequence: because crossings keep their real length, a crossing drawn across a 4 mm road line
-shows the true distance you would have to walk to get over it.
+Crossings are the one thing drawn to the map's line weights rather than to the ground. A crossing way in
+the data spans the whole roadway, which on a four-lane street is several times the width of the 4 mm line
+that street is drawn as — at true length it sprawls well past the road on both sides and stops looking
+like part of the same drawing. Each crossing is a compact zebra mark: white bars on a darker patch, the
+way a real one is white paint on asphalt. The patch matters — white bars alone are invisible against the
+white background and punch a hole through the road where they cross it.
 
 Lane counts come from OpenStreetMap's `lanes` tag where it exists (205 of 715 streets) and from the
 road's OSM class otherwise. They no longer affect the drawn width, but are carried on every road.
@@ -70,9 +74,17 @@ discrete scroll — so it stays on "go back", and the Actions rotor gives a step
 for anyone who finds a two-finger drag difficult.
 
 **Nothing a single finger can do navigates away.** Back is the three-finger swipe and the Back button,
-nothing else. The interactive edge-swipe pop is switched off while the map is open, the scroll view
-needs two touches to pan and accepts at most two, so a three-finger back drag cannot pan at the same
-time. Exploring hard against the left edge is safe.
+nothing else. Suppressing the one-finger swipe-back takes two mechanisms, because clearing `isEnabled`
+alone does not hold — SwiftUI re-enables the recognizer as the navigation stack updates — so the map
+also takes over the recognizer's delegate and refuses to let it begin. The scroll view needs two touches
+to pan and accepts at most two, so a three-finger back drag cannot pan at the same time. Exploring hard
+against the left edge is safe.
+
+**Exploration runs on raw touches, not a gesture recognizer.** Inside a direct-interaction accessibility
+element VoiceOver hands touches straight to the responder chain, and gesture recognizers attached to that
+view do not fire dependably. A recognizer-driven explore therefore works with VoiceOver off and goes
+completely dead with it on — the worst possible failure for this app. `touchesBegan/Moved/Ended` behave
+identically either way.
 
 Because the map is about 67 screens wide it is genuinely possible to pan away and lose your bearings,
 so there is a **Recenter** button in the toolbar — the equivalent of the "back to my location" control

@@ -9,6 +9,7 @@
 
 import CoreText
 import SwiftUI
+import TactileMapCore
 import Testing
 import UIKit
 @testable import TactileNav
@@ -349,18 +350,110 @@ struct CongressSquareMapTests {
         var backCount = 0
         scrollView.onBackGesture = { backCount += 1 }
 
-        // Two-finger scrub must no longer escape — nothing but three fingers and the Back
-        // button may leave the screen.
+        // Two-finger scrub must not escape — nothing but three fingers and the Back button
+        // may leave the screen.
         #expect(scrollView.accessibilityPerformEscape() == false)
         #expect(backCount == 0)
 
-        // Three-finger swipe right still goes back.
         #expect(scrollView.accessibilityScroll(.right) == true)
         #expect(backCount == 1)
-
-        // No other scroll direction navigates.
         #expect(scrollView.accessibilityScroll(.left) == false)
         #expect(backCount == 1)
+    }
+
+    /// The one-finger swipe-back has to be dead while the map is open.
+    ///
+    /// Clearing `isEnabled` alone does not hold — SwiftUI re-enables the recognizer as the
+    /// navigation stack updates — so the delegate is taken over as well. This builds a real
+    /// navigation controller because that is the only way to find out whether the responder
+    /// walk actually reaches one.
+    @Test func oneFingerSwipeCannotLeaveTheMap() throws {
+        let map = try loadMap()
+        let host = PortlandMapView(map: map)
+        let coordinator = host.makeCoordinator()
+        let container = host.makeContainer(coordinator: coordinator)
+
+        let root = UIViewController()
+        let navigation = UINavigationController(rootViewController: root)
+        navigation.view.frame = CGRect(x: 0, y: 0, width: 402, height: 800)
+
+        let pushed = UIViewController()
+        navigation.pushViewController(pushed, animated: false)
+        pushed.view.addSubview(container)
+        container.frame = pushed.view.bounds
+        navigation.view.layoutIfNeeded()
+        container.layoutIfNeeded()
+
+        let pop = try #require(navigation.interactivePopGestureRecognizer)
+        #expect(pop.isEnabled == false, "the swipe-back is still enabled over the map")
+        #expect(pop.delegate is SwipeBackBlocker, "the swipe-back delegate was not taken over")
+        #expect(pop.delegate?.gestureRecognizerShouldBegin?(pop) == false)
+
+        // Even if something re-enables it — which SwiftUI does — the delegate still refuses to
+        // let it start, and the next layout clears the flag again.
+        pop.isEnabled = true
+        #expect(pop.delegate?.gestureRecognizerShouldBegin?(pop) == false,
+                "the delegate must keep refusing even while enabled")
+        container.setNeedsLayout()
+        container.layoutIfNeeded()
+        #expect(pop.isEnabled == false, "re-enabling should be undone on the next layout")
+
+        // And the rest of the app gets its swipe back when the map goes away.
+        container.restoreSwipeBack()
+        #expect(pop.isEnabled == true)
+        #expect(!(pop.delegate is SwipeBackBlocker))
+    }
+
+    // MARK: - Exploration touches
+
+    /// Exploration must not depend on a gesture recognizer.
+    ///
+    /// Inside a direct-interaction accessibility element VoiceOver hands touches to the
+    /// responder chain, and recognizers on that view do not fire dependably — which is how the
+    /// map ended up buzzing with VoiceOver off and doing nothing at all with it on.
+    @Test func explorationRunsOnRawTouchesNotGestureRecognizers() throws {
+        let laidOut = try laidOutContainer(size: CGSize(width: 402, height: 720))
+        let scrollView = laidOut.container.scrollView
+
+        // None of the recognizers we add may be a tap or long-press: those are the ones that
+        // go silent under VoiceOver. UIScrollView's own scrollbar-knob recognizers are long
+        // presses too, so only the ones this screen owns are checked.
+        let ours = (scrollView.gestureRecognizers ?? []).filter {
+            $0.delegate === laidOut.coordinator
+        }
+        #expect(!ours.isEmpty, "the back gestures should still be recognizers")
+        for recognizer in ours {
+            #expect(!(recognizer is UITapGestureRecognizer),
+                    "exploration must not rely on a tap recognizer")
+            #expect(!(recognizer is UILongPressGestureRecognizer),
+                    "exploration must not rely on a long-press recognizer")
+        }
+
+        // The raw touch callbacks are wired.
+        #expect(scrollView.onExploreBegan != nil)
+        #expect(scrollView.onExploreMoved != nil)
+        #expect(scrollView.onExploreEnded != nil)
+        #expect(scrollView.onExploreTapped != nil)
+    }
+
+    @Test func aTouchOnAStreetStartsTheRightFeedback() throws {
+        let laidOut = try laidOutContainer(size: CGSize(width: 402, height: 720))
+        let map = laidOut.map
+
+        // Drive the same lookup the touch handler uses, on a point that is genuinely on a
+        // street. (The opening centre is a junction, which need not sit exactly on a line.)
+        let road = try #require(map.features.first { $0.surface == .road })
+        let feature = try #require(map.feature(at: polylineMidpoint(road.points), velocity: 0))
+        let element = StreetSurfaceElement(id: feature.id, surface: feature.surface,
+                                           announcement: feature.announcement)
+
+        // Each surface maps to its own element type, which is what selects the haptic.
+        switch feature.surface {
+        case .road: #expect(element.elementType == .road)
+        case .sidewalk: #expect(element.elementType == .street)
+        case .crosswalk: #expect(element.elementType == .crosswalk)
+        }
+        #expect(element.properties.name == feature.announcement)
     }
 
     // MARK: - Pixel helpers

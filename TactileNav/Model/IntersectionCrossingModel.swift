@@ -268,7 +268,6 @@ final class IntersectionCrossingModel {
     private var lastPhaseIndex = -1
 
     var currentPhase: SignalPhase { SignalPhase.phase(at: elapsed).phase }
-    var phaseProgress: Double { SignalPhase.phase(at: elapsed).progress }
 
     func reset() {
         vehicles.removeAll()

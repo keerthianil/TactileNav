@@ -210,7 +210,9 @@ struct IntersectionDiagramView: View {
                 roadBand(bearing: DemoIntersection.highBearings.outbound,
                          center: center, scale: scale, length: side * 1.6)
 
-                crosswalk(center: center, scale: scale)
+                ForEach(IntersectionLeg.allCases) { leg in
+                    crosswalk(on: leg, center: center, scale: scale)
+                }
 
                 Image(systemName: "figure.stand")
                     .font(.system(size: 26, weight: .bold))
@@ -224,6 +226,7 @@ struct IntersectionDiagramView: View {
                         .position(diagramPoint(for: vehicle, center: center, scale: scale))
                 }
             }
+            .clipShape(RoundedRectangle(cornerRadius: 12))
         }
         .frame(minHeight: 340)
         .accessibilityElement()
@@ -242,20 +245,24 @@ struct IntersectionDiagramView: View {
             .position(center)
     }
 
-    /// The crossing the listener is standing at, across Congress Street. Bars run parallel
-    /// to Congress traffic and step along the walking direction, as painted zebras do.
-    private func crosswalk(center: CGPoint, scale: CGFloat) -> some View {
-        let mid = worldPoint(DemoIntersection.crosswalkCenterM, center: center, scale: scale)
-        let along = DemoIntersection.direction(DemoIntersection.highBearings.outbound)
-        let spacing: CGFloat = 7
+    /// A marked crossing on one leg. All four are drawn — a signalised four-way has a
+    /// crossing on every arm, and showing only the listener's made the junction look wrong.
+    ///
+    /// Bars run parallel to the traffic on the leg being crossed and step along the walking
+    /// direction, the way a painted zebra does.
+    private func crosswalk(on leg: IntersectionLeg, center: CGPoint, scale: CGFloat) -> some View {
+        let out = DemoIntersection.direction(leg.bearing)
+        let distance = CGFloat(DemoIntersection.roadHalfWidthM + 2.2) * scale
+        let mid = CGPoint(x: center.x + CGFloat(out.x) * distance,
+                          y: center.y - CGFloat(out.y) * distance)
+        let span = CGFloat(DemoIntersection.roadHalfWidthM * 2) * scale
         return ForEach(0..<4, id: \.self) { index in
-            let step = CGFloat(index) - 1.5
             Rectangle()
                 .fill(.white)
-                .frame(width: CGFloat(DemoIntersection.roadHalfWidthM * 1.6) * scale, height: 3)
-                .rotationEffect(.degrees(DemoIntersection.congressBearings.outbound - 90))
-                .position(x: mid.x + step * spacing * CGFloat(along.x),
-                          y: mid.y - step * spacing * CGFloat(along.y))
+                .frame(width: 3, height: span)
+                .rotationEffect(.degrees(leg.bearing + 90))
+                .position(x: mid.x + CGFloat(index) * 7 * CGFloat(out.x) - 10 * CGFloat(out.x),
+                          y: mid.y - CGFloat(index) * 7 * CGFloat(out.y) + 10 * CGFloat(out.y))
         }
     }
 

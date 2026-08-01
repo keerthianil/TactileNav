@@ -64,15 +64,6 @@ final class TrafficAudioEngine {
             case .ev:    return 0.28
             }
         }
-        /// Approx. sound level 7.5 m away at ~30 mph, for the on-screen readout.
-        var dBADescriptor: String {
-            switch self {
-            case .car:   return "65–70 dBA"
-            case .bus:   return "75–85 dBA"
-            case .truck: return "75–85 dBA"
-            case .ev:    return "under 45 dBA (near-silent)"
-            }
-        }
         var isEV: Bool { self == .ev }
     }
 
@@ -112,12 +103,6 @@ final class TrafficAudioEngine {
         }
     }
 
-    func deactivate() {
-        releaseAllVoices()
-        engine.stop()
-        started = false
-        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
-    }
 
     // MARK: - Buffer synthesis (phase-continuous harmonic tone)
 

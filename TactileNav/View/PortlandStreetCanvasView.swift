@@ -71,7 +71,7 @@ final class PortlandStreetCanvasView: UIView {
                color: StreetMapSizing.sidewalkColor, in: ctx)
         stroke(visible.filter { $0.surface == .road },
                color: StreetMapSizing.roadColor, in: ctx)
-        drawCrosswalks(visible.filter { $0.surface == .crosswalk }, in: ctx)
+        drawCrosswalks(visible.filter { $0.surface == .crosswalk }, metrics: map.metrics, in: ctx)
         drawLabels(map.labels(in: window), in: ctx)
 
         ctx.restoreGState()
@@ -91,35 +91,56 @@ final class PortlandStreetCanvasView: UIView {
         }
     }
 
-    /// Three evenly spaced stripes along the crossing, with a gap at each end so the pattern
-    /// is centred on the span rather than running edge to edge.
-    private func drawCrosswalks(_ features: [StreetFeature], in ctx: CGContext) {
+    /// A crossing: a small patch of roadway with zebra bars painted along it.
+    ///
+    /// Sized to the map's line weights rather than to the real street. A crossing way in the
+    /// data spans the whole roadway, which on a four-lane street is several times the width of
+    /// the 4 mm line that street is drawn as — at true length the crossing sprawls well past
+    /// the road on both sides and stops looking like part of the same drawing.
+    ///
+    /// The darker patch under the bars is what makes a crossing findable at all: white paint on
+    /// a white background is invisible, and drawn straight onto the road it just punches a hole
+    /// through it. Real crossings are white on asphalt for the same reason.
+    private func drawCrosswalks(_ features: [StreetFeature], metrics: StreetMapSizing.Metrics,
+                                in ctx: CGContext) {
         guard !features.isEmpty else { return }
-        ctx.setStrokeColor(StreetMapSizing.crosswalkColor)
-        ctx.setLineCap(.butt)
-        ctx.setLineJoin(.miter)
 
-        let stripeCount = StreetMapSizing.crosswalkStripeCount
+        let length = metrics.roadWidth * StreetMapSizing.crosswalkLengthInRoadWidths
+        let width = metrics.roadWidth * StreetMapSizing.crosswalkWidthInRoadWidths
+        let count = StreetMapSizing.crosswalkBarCount
+        let barWidth = max(width / CGFloat(count * 2 + 1), 1.5)
+        let pitch = width / CGFloat(count)
 
-        for feature in features {
-            let length = polylineLength(feature.points)
-            guard length > 1 else { continue }
-            ctx.setLineWidth(feature.strokeWidth)
+        for feature in features where feature.points.count >= 2 {
+            // Centre the mark on the crossing and align it with the way's local direction.
+            let centre = polylineMidpoint(feature.points)
+            let along = direction(of: feature.points)
 
-            let stripeLength = StreetMapSizing.crosswalkStripeLength(span: length)
-            let gap = max((length - stripeLength * CGFloat(stripeCount)) / CGFloat(stripeCount + 1), 0)
-            var offset = gap
-            for _ in 0..<stripeCount {
-                if let start = pointAlongPolyline(feature.points, distance: offset),
-                   let end = pointAlongPolyline(feature.points, distance: offset + stripeLength) {
-                    ctx.beginPath()
-                    ctx.move(to: start)
-                    ctx.addLine(to: end)
-                    ctx.strokePath()
-                }
-                offset += stripeLength + gap
+            ctx.saveGState()
+            ctx.translateBy(x: centre.x, y: centre.y)
+            ctx.rotate(by: atan2(along.y, along.x))
+
+            ctx.setFillColor(StreetMapSizing.crosswalkSurfaceColor)
+            ctx.fill(CGRect(x: -length / 2, y: -width / 2, width: length, height: width))
+
+            ctx.setFillColor(StreetMapSizing.crosswalkColor)
+            for bar in 0..<count {
+                // Bars run the length of the crossing — you walk along a bar to get across —
+                // and repeat sideways over its width.
+                let offset = (CGFloat(bar) - CGFloat(count - 1) / 2) * pitch
+                ctx.fill(CGRect(x: -length / 2, y: offset - barWidth / 2,
+                                width: length, height: barWidth))
             }
+            ctx.restoreGState()
         }
+    }
+
+    /// Unit vector along the middle of a polyline.
+    private func direction(of points: [CGPoint]) -> CGPoint {
+        let midIndex = max(points.count / 2, 1)
+        let a = points[midIndex - 1], b = points[midIndex]
+        let magnitude = max(hypot(b.x - a.x, b.y - a.y), 0.0001)
+        return CGPoint(x: (b.x - a.x) / magnitude, y: (b.y - a.y) / magnitude)
     }
 
     private func drawLabels(_ labels: [StreetLabel], in ctx: CGContext) {

@@ -104,6 +104,75 @@ final class PortlandStreetScrollView: UIScrollView {
     /// Called whenever the scroll position changes, so the canvas can redraw the new window.
     var onOffsetChange: ((CGPoint) -> Void)?
 
+    // MARK: Exploration touches
+    //
+    // Exploration is driven from raw touches rather than a gesture recognizer. Inside a
+    // direct-interaction accessibility element, VoiceOver delivers touches straight to the
+    // responder chain, and gesture recognizers on that view do not fire dependably — so a
+    // recognizer-based explore works with VoiceOver off and goes completely dead with it on,
+    // which is the worst possible failure for this app. Raw touches behave the same either way.
+
+    var onExploreBegan: ((CGPoint) -> Void)?
+    var onExploreMoved: ((CGPoint) -> Void)?
+    var onExploreEnded: (() -> Void)?
+    var onExploreTapped: ((CGPoint) -> Void)?
+
+    private var exploreTouch: UITouch?
+    private var exploreStartedAt: CFTimeInterval = 0
+    private var exploreStartPoint: CGPoint = .zero
+
+    /// A touch this brief and this still is a tap, not a drag.
+    private let tapMaxDuration: TimeInterval = 0.45
+    private let tapMaxDisplacement: CGFloat = 28
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesBegan(touches, with: event)
+
+        // A second finger means the user is panning, not exploring.
+        let activeCount = event?.allTouches?.filter { $0.phase != .ended && $0.phase != .cancelled }.count
+            ?? touches.count
+        guard activeCount == 1, !isDragging, !isDecelerating, let touch = touches.first else {
+            endExplore(cancelled: true)
+            return
+        }
+
+        exploreTouch = touch
+        exploreStartedAt = CACurrentMediaTime()
+        exploreStartPoint = touch.location(in: self)
+        onExploreBegan?(exploreStartPoint)
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesMoved(touches, with: event)
+        guard let touch = exploreTouch, touches.contains(touch) else { return }
+        onExploreMoved?(touch.location(in: self))
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesEnded(touches, with: event)
+        guard let touch = exploreTouch, touches.contains(touch) else { return }
+
+        let point = touch.location(in: self)
+        let travelled = hypot(point.x - exploreStartPoint.x, point.y - exploreStartPoint.y)
+        let elapsed = CACurrentMediaTime() - exploreStartedAt
+        endExplore(cancelled: false)
+
+        if elapsed <= tapMaxDuration, travelled <= tapMaxDisplacement {
+            onExploreTapped?(point)
+        }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesCancelled(touches, with: event)
+        endExplore(cancelled: true)
+    }
+
+    private func endExplore(cancelled: Bool) {
+        guard exploreTouch != nil else { return }
+        exploreTouch = nil
+        onExploreEnded?()
+    }
+
     /// UIScrollView lays out on every scroll, which makes this a more dependable place to
     /// push the offset than the delegate — it fires for programmatic changes and cannot be
     /// missed if something else takes over as delegate.
@@ -177,6 +246,8 @@ final class PortlandStreetMapContainerView: UIView {
 
     /// The navigation controller whose swipe-back was switched off, so it can be restored.
     private(set) weak var suppressedPopNavigation: UINavigationController?
+    private var originalPopDelegate: UIGestureRecognizerDelegate?
+    private let popBlocker = SwipeBackBlocker()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -211,20 +282,47 @@ final class PortlandStreetMapContainerView: UIView {
 
     /// Turn off the one-finger swipe-back.
     ///
-    /// Done from `didMoveToWindow` and every layout, not from `updateUIView`: the responder
-    /// chain only reaches a navigation controller once the view is actually in the hierarchy,
-    /// and SwiftUI may never call `updateUIView` again after that happens. Getting this wrong
-    /// leaves the swipe live, and a one-finger explore drag walks straight out of the map.
+    /// Two mechanisms, because one is not enough. Clearing `isEnabled` is the obvious move but
+    /// does not stick: SwiftUI re-enables the recognizer on its own as the navigation stack
+    /// updates, and the swipe quietly comes back. Owning the recognizer's *delegate* and
+    /// refusing to let it begin is what actually holds, so both are applied and re-applied on
+    /// every layout.
+    ///
+    /// This runs from `didMoveToWindow` and `layoutSubviews`, never from `updateUIView`: the
+    /// responder chain only reaches a navigation controller once the view is in the hierarchy,
+    /// and SwiftUI may never call `updateUIView` again after that point.
     private func suppressSwipeBack() {
-        guard let nav = enclosingNavigationController else { return }
-        suppressedPopNavigation = nav
-        nav.interactivePopGestureRecognizer?.isEnabled = false
+        guard let nav = enclosingNavigationController,
+              let pop = nav.interactivePopGestureRecognizer else { return }
+
+        if suppressedPopNavigation !== nav {
+            suppressedPopNavigation = nav
+            originalPopDelegate = pop.delegate
+        }
+        pop.delegate = popBlocker
+        pop.isEnabled = false
     }
 
+    /// Hand the swipe back when the map goes away, so the rest of the app behaves normally.
     func restoreSwipeBack() {
-        suppressedPopNavigation?.interactivePopGestureRecognizer?.isEnabled = true
+        guard let nav = suppressedPopNavigation,
+              let pop = nav.interactivePopGestureRecognizer else { return }
+        pop.delegate = originalPopDelegate
+        pop.isEnabled = true
         suppressedPopNavigation = nil
+        originalPopDelegate = nil
     }
+}
+
+/// Refuses to let the navigation controller's swipe-back gesture start.
+///
+/// On this screen a one-finger drag is exploration and must never navigate. Back is the
+/// three-finger swipe and the Back button, and nothing else.
+final class SwipeBackBlocker: NSObject, UIGestureRecognizerDelegate {
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool { false }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldReceive touch: UITouch) -> Bool { false }
 }
 
 /// Lets the screen drive the map without owning it — the SwiftUI equivalent of holding a
@@ -289,34 +387,9 @@ struct PortlandMapView: UIViewRepresentable {
         container.addSubview(indicator)
         coordinator.touchIndicator = indicator
 
-        // --- Gestures. Attached to the scroll view so they see touches regardless of where
-        // the canvas has scrolled to; locations are converted to canvas space when used.
-        let doubleTap = UITapGestureRecognizer(target: coordinator,
-                                               action: #selector(Coordinator.handleDoubleTap(_:)))
-        doubleTap.numberOfTapsRequired = 2
-        doubleTap.delegate = coordinator
-        doubleTap.cancelsTouchesInView = false
-        doubleTap.delaysTouchesBegan = false
-        doubleTap.delaysTouchesEnded = false
-        scrollView.addGestureRecognizer(doubleTap)
-
-        let singleTap = UITapGestureRecognizer(target: coordinator,
-                                               action: #selector(Coordinator.handleSingleTap(_:)))
-        singleTap.delegate = coordinator
-        singleTap.cancelsTouchesInView = false
-        singleTap.require(toFail: doubleTap)
-        scrollView.addGestureRecognizer(singleTap)
-
-        // 0.1 s press latches exploration; the large allowable movement stops the recognizer
-        // cancelling as the finger slides, which turns `.changed` into the drag stream.
-        let longPress = UILongPressGestureRecognizer(target: coordinator,
-                                                     action: #selector(Coordinator.handleLongPress(_:)))
-        longPress.minimumPressDuration = 0.1
-        longPress.allowableMovement = 10_000
-        longPress.numberOfTouchesRequired = 1
-        longPress.delegate = coordinator
-        longPress.cancelsTouchesInView = false
-        scrollView.addGestureRecognizer(longPress)
+        // --- Exploration runs on raw touches (see the scroll view). Only the back
+        // gestures need recognizers, because they are multi-touch.
+        coordinator.bindExplorationTouches(on: scrollView)
 
         let backSwipe = UISwipeGestureRecognizer(target: coordinator,
                                                  action: #selector(Coordinator.handleBackGesture))
@@ -572,63 +645,68 @@ struct PortlandMapView: UIViewRepresentable {
 
         // MARK: Gestures
 
-        @objc func handleSingleTap(_ gesture: UITapGestureRecognizer) {
-            guard let scrollView else { return }
-            let point = contentPoint(gesture.location(in: scrollView))
-            if let feature = parent.map.feature(at: point, velocity: 0) {
-                feedback.playTap()
-                feedback.announceImmediately(feature.announcement)
-            }
+
+
+
+        // MARK: Exploration
+
+        /// Wire the scroll view's raw touch stream to exploration.
+        func bindExplorationTouches(on scrollView: PortlandStreetScrollView) {
+            scrollView.onExploreBegan = { [weak self] point in self?.exploreBegan(at: point) }
+            scrollView.onExploreMoved = { [weak self] point in self?.exploreMoved(to: point) }
+            scrollView.onExploreEnded = { [weak self] in self?.exploreEnded() }
+            scrollView.onExploreTapped = { [weak self] point in self?.exploreTapped(at: point) }
         }
 
-        @objc func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
-            // Nothing to drill into on this map. Consumed so a double tap can't be
-            // mistaken for two single taps and speak the same street twice.
-        }
+        private func exploreBegan(at pointInView: CGPoint) {
+            startLoggingIfNeeded()
+            isExploring = true
+            panSettleWork?.cancel()
+            lastPoint = pointInView
+            lastMoveTime = CACurrentMediaTime()
+            lastHitTestTime = 0
+            currentFeatureID = nil
 
-        @objc func handleLongPress(_ gesture: UILongPressGestureRecognizer) {
-            guard let scrollView else { return }
-            let pointInView = gesture.location(in: scrollView)
             let point = contentPoint(pointInView)
+            updateExploration(at: point, velocity: 0)
+            logTouch(.touchDown, at: point, feature: currentFeature)
+            touchIndicator?.show(at: pointInView)
+        }
 
-            switch gesture.state {
-            case .began:
-                startLoggingIfNeeded()
-                isExploring = true
-                panSettleWork?.cancel()
-                lastPoint = point
-                lastMoveTime = CACurrentMediaTime()
-                lastHitTestTime = 0
-                currentFeatureID = nil
-                updateExploration(at: point, velocity: 0)
-                logTouch(.touchDown, at: point, feature: currentFeature)
-                touchIndicator?.show(at: pointInView)
+        private func exploreMoved(to pointInView: CGPoint) {
+            let now = CACurrentMediaTime()
+            let speed = velocity(to: pointInView, now: now)
+            lastPoint = pointInView
+            lastMoveTime = now
 
-            case .changed:
-                let now = CACurrentMediaTime()
-                let speed = velocity(to: point, now: now)
-                lastPoint = point
-                lastMoveTime = now
-                // Hit-test at a bounded rate; the indicator still follows every frame.
-                if now - lastHitTestTime >= parent.map.hitConfig.updateThreshold {
-                    lastHitTestTime = now
-                    updateExploration(at: point, velocity: speed)
-                }
-                logTouch(.touchMove, at: point, feature: currentFeature)
-                touchIndicator?.show(at: pointInView)
-
-            case .ended, .cancelled, .failed:
-                logTouch(.touchUp, at: point, feature: currentFeature)
-                isExploring = false
-                feedback.stopAll()
-                currentFeatureID = nil
-                currentFeature = nil
-                lastPoint = nil
-                touchIndicator?.hide()
-
-            default:
-                break
+            let point = contentPoint(pointInView)
+            // Hit-test at a bounded rate; the indicator still follows every frame.
+            if now - lastHitTestTime >= parent.map.hitConfig.updateThreshold {
+                lastHitTestTime = now
+                updateExploration(at: point, velocity: speed)
             }
+            logTouch(.touchMove, at: point, feature: currentFeature)
+            touchIndicator?.show(at: pointInView)
+        }
+
+        private func exploreEnded() {
+            if let last = lastPoint {
+                logTouch(.touchUp, at: contentPoint(last), feature: currentFeature)
+            }
+            isExploring = false
+            feedback.stopAll()
+            currentFeatureID = nil
+            currentFeature = nil
+            lastPoint = nil
+            touchIndicator?.hide()
+        }
+
+        /// A quick, still touch speaks what is under it straight away, without waiting for the
+        /// dwell a drag uses — the user has already committed.
+        private func exploreTapped(at pointInView: CGPoint) {
+            guard let feature = parent.map.feature(at: contentPoint(pointInView), velocity: 0) else { return }
+            feedback.playTap()
+            feedback.announceImmediately(feature.announcement)
         }
 
         @objc func handleBackGesture() { triggerBack() }

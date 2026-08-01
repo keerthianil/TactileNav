@@ -43,22 +43,20 @@ nonisolated enum StreetMapSizing {
     /// Width of a single crosswalk stripe.
     static let crosswalkStripeWidthMM: CGFloat = 2.8
 
-    /// Number of stripes drawn per crossing.
-    static let crosswalkStripeCount = 3
+    /// Number of zebra bars painted on a crossing.
+    static let crosswalkBarCount = 3
 
-    /// Shortest a stripe may be, in points.
-    ///
-    /// The stripe length itself is a fraction of the crossing's span (see
-    /// `crosswalkStripeLength`) rather than a fixed number of points. A fixed length is fine
-    /// when roads are a few points wide, but at true lane scale a crossing spans ~100 points,
-    /// and three 6-point dashes across it read as specks rather than as a marked crossing.
-    static let crosswalkStripeMinimumLengthPoints: CGFloat = 6
+    // A crossing is drawn as a compact mark *sized to the map's own line weights*, not to the
+    // real roadway. A crossing way in the data runs the full width of the street — four lanes
+    // is about four times the width of the 4 mm line the street is drawn as — so drawing it at
+    // true length gives a band sprawling far past the road on both sides. Everything else here
+    // is a schematic line, and the crossing has to read as part of the same drawing.
 
-    /// Stripe length for a crossing of the given span: three stripes separated by four equal
-    /// gaps, so the pattern is centred and fills the crossing at any scale.
-    static func crosswalkStripeLength(span: CGFloat) -> CGFloat {
-        max(span / CGFloat(crosswalkStripeCount * 2 + 1), crosswalkStripeMinimumLengthPoints)
-    }
+    /// Length of a crossing mark along the walking direction, as a multiple of a road's width.
+    static let crosswalkLengthInRoadWidths: CGFloat = 1.7
+
+    /// Width of a crossing mark across the walking direction, as a multiple of a road's width.
+    static let crosswalkWidthInRoadWidths: CGFloat = 0.8
 
     // MARK: - Real-world reference
 
@@ -151,6 +149,11 @@ nonisolated enum StreetMapSizing {
 
     static let roadColor = CGColor(red: 0x02 / 255, green: 0x3E / 255, blue: 0x8A / 255, alpha: 1)
     static let sidewalkColor = CGColor(red: 0x9E / 255, green: 0x9E / 255, blue: 0x9E / 255, alpha: 1)
+    /// The crossing surface. Crossings are drawn as a band with white bars painted on it,
+    /// exactly as a real one reads: white paint on darker roadway. White bars alone would be
+    /// invisible against the white background and would erase the road where they overlapped
+    /// it — so the band is what makes a crossing findable at all.
+    static let crosswalkSurfaceColor = CGColor(gray: 0.42, alpha: 1)
     static let crosswalkColor = CGColor(gray: 1, alpha: 1)
     static let backgroundColor = CGColor(gray: 1, alpha: 1)
 
