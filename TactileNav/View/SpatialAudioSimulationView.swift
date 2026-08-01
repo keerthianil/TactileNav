@@ -32,15 +32,15 @@ struct SpatialAudioSimulationView: View {
     @State private var lastTick = CACurrentMediaTime()
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                IntersectionDiagramView(vehicles: vehicles)
-                statusView
-                controls
-                infoView
-            }
-            .padding()
+        VStack(spacing: 14) {
+            // The intersection is the demo, so it gets the room.
+            IntersectionDiagramView(vehicles: vehicles)
+                .frame(maxHeight: .infinity)
+            statusView
+            controls
         }
+        .padding(.horizontal)
+        .padding(.bottom, 12)
         .navigationTitle("Street Crossing Audio")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { audio.activate() }
@@ -64,25 +64,21 @@ struct SpatialAudioSimulationView: View {
             }
 
             if phaseRevealed {
-                Label(isWalkPhase
-                      ? "High Street is green. This is the surge you cross with."
-                      : "Congress Street is green. Traffic is crossing your path — wait.",
+                Label(isWalkPhase ? "High Street green — cross now" : "Congress Street green — wait",
                       systemImage: isWalkPhase ? "figure.walk" : "hand.raised.fill")
                     .font(.subheadline)
                     .foregroundColor(isWalkPhase ? .green : .red)
             } else {
-                Text("Listen first. Which street has the green?")
+                Text("Which street has the green?")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
 
-            Button(phaseRevealed ? "Hide the answer" : "Reveal the current phase") {
-                phaseRevealed.toggle()
-            }
-            .font(.subheadline)
-            .accessibilityHint(phaseRevealed
-                ? "Stops showing which street has the green"
-                : "Shows which street has the green, so you can check your judgement")
+            Button(phaseRevealed ? "Hide answer" : "Reveal phase") { phaseRevealed.toggle() }
+                .font(.subheadline)
+                .accessibilityHint(phaseRevealed
+                    ? "Stops showing which street has the green"
+                    : "Shows which street has the green, so you can check your judgement")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
@@ -93,16 +89,12 @@ struct SpatialAudioSimulationView: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Traffic").font(.subheadline).bold()
-                Picker("Traffic", selection: $fleet) {
-                    ForEach(IntersectionCrossingModel.Fleet.allCases) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .accessibilityHint("Electric traffic is near-silent, so the surge is much harder to hear")
-
-                Text(fleet.detail).font(.caption).foregroundColor(.secondary)
+            Picker("Traffic", selection: $fleet) {
+                ForEach(IntersectionCrossingModel.Fleet.allCases) { Text($0.label).tag($0) }
             }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("Traffic type")
+            .accessibilityHint("Electric traffic is near-silent, so the surge is much harder to hear")
             .onChange(of: fleet) { _, newValue in model.fleet = newValue }
 
             Button(action: toggle) {
@@ -114,30 +106,6 @@ struct SpatialAudioSimulationView: View {
                     .foregroundColor(.white)
             }
         }
-    }
-
-    // MARK: - Info
-
-    private var infoView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(DemoIntersection.name, systemImage: "mappin.and.ellipse")
-                .font(.subheadline).bold()
-            Text("You are crossing Congress Street. High Street runs parallel to your path, so "
-                 + "when High Street traffic pulls away together, your walk signal is on. "
-                 + "Traffic sweeping left to right across your front is Congress Street, and "
-                 + "means wait.")
-                .font(.caption).foregroundColor(.secondary)
-            Text("During the walk phase, listen for a vehicle that stays close instead of "
-                 + "passing — that is a car turning across the crosswalk, the movement most "
-                 + "likely to hit a pedestrian who has already stepped off.")
-                .font(.caption).foregroundColor(.secondary)
-            Label("Headphones needed for the left and right cues", systemImage: "headphones")
-                .font(.caption).foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Run loop
@@ -232,7 +200,7 @@ struct IntersectionDiagramView: View {
             let side = min(geo.size.width, geo.size.height)
             let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
             // Metres to points for the diagram only; the audio works in real metres.
-            let scale = side / CGFloat(IntersectionCrossingModel.legLengthM * 2.1)
+            let scale = side / CGFloat(IntersectionCrossingModel.legLengthM * 1.5)
 
             ZStack {
                 RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6))
@@ -245,19 +213,19 @@ struct IntersectionDiagramView: View {
                 crosswalk(center: center, scale: scale)
 
                 Image(systemName: "figure.stand")
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.system(size: 26, weight: .bold))
                     .foregroundColor(.blue)
                     .position(listenerPoint(center: center, scale: scale))
 
                 ForEach(vehicles) { vehicle in
                     Image(systemName: vehicle.type.symbol)
-                        .font(.system(size: 14))
+                        .font(.system(size: 20))
                         .foregroundColor(vehicle.type.isEV ? .green : .orange)
                         .position(diagramPoint(for: vehicle, center: center, scale: scale))
                 }
             }
         }
-        .frame(height: 260)
+        .frame(minHeight: 340)
         .accessibilityElement()
         // Static on purpose. If this label reported the live phase, VoiceOver would hand over
         // the very thing the listener is meant to work out.

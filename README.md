@@ -22,19 +22,30 @@ layout and nothing else.
 #### Physical sizing
 
 A tactile map only works if a street is the *same width under a finger* regardless of device. So every
-width is a millimetre measurement on the glass, converted using the screen's pixel density, and the
-map's scale is anchored to the lane width: **4 mm on the glass is one real 3.3 m traffic lane.**
+width is a millimetre measurement on the glass, converted using the screen's pixel density.
 
 | Element | Physical width | On a 460 ppi phone |
 |---|---|---|
-| One traffic lane | 4.0 mm | 24.1 pt |
-| 2-lane residential street | 8.0 mm | 48 pt |
-| 4-lane arterial | 16.0 mm | 97 pt |
-| Sidewalk (fixed) | 4.0 mm | 24.1 pt |
+| Road (every road) | 4.0 mm | 24.1 pt |
+| Sidewalk | 4.0 mm | 24.1 pt |
 | Crosswalk stripe | 2.8 mm | 16.9 pt |
 
+Two different things come off that 4 mm constant, and they are worth keeping apart:
+
+- **Line width.** Every road is drawn 4 mm wide whatever its lane count. 4 mm is a *perceptual*
+  constant — roughly the narrowest line a fingertip can reliably follow — not a measurement of asphalt.
+  Scaling it by lane count sounds more faithful but is self-defeating: a four-lane road becomes 16 mm,
+  wider than a fingertip, so it stops being a line you can trace and turns into a plane whose edges you
+  cannot feel. It also buries the sidewalk beside it under the paint.
+- **Map scale.** 4 mm on the glass represents one real 3.3 m lane, and that is what converts metres to
+  points. So the *spacing* of the network — how far apart two streets run, how wide a junction is, how
+  far a crossing reaches — stays true to the ground even though the lines are a constant width.
+
+A useful consequence: because crossings keep their real length, a crossing drawn across a 4 mm road line
+shows the true distance you would have to walk to get over it.
+
 Lane counts come from OpenStreetMap's `lanes` tag where it exists (205 of 715 streets) and from the
-road's OSM class otherwise. Every street is at least one lane wide so nothing is too thin to trace.
+road's OSM class otherwise. They no longer affect the drawn width, but are carried on every road.
 
 Because the scale is physical, the whole map is about **67 screens wide** — which is why it pans.
 There is deliberately **no zoom**: a variable scale would make the millimetre measurements untrue.
@@ -145,8 +156,15 @@ per-vertex coordinate conversion; that headroom is what keeps a fast drag from d
 dropped sample is how a finger skips a 4 mm line without ever feeling it.
 
 The hit radius grows with finger speed, because a fast drag samples further apart and would otherwise
-step straight over a line. Crossings are hit-tested ahead of sidewalks, and sidewalks ahead of roads, so
-the widest feature does not swallow the narrower ones on top of it.
+step straight over a line.
+
+**Whichever line the finger is genuinely closest to wins.** Strict priority by type — crossing, then
+sidewalk, then road — sounds right, since a crossing is painted on top of the road it spans. But with
+681 crossings clustered around the junctions, a crossing's catch radius then claims every road near it,
+and a finger tracing a road feels crossing ticks while plainly looking at a road. Type priority now only
+settles it when two lines are within a few points of each other, which is exactly the case where the
+crossing really is on top of the road. That change alone took wrong-surface feedback on roads from 9%
+of the drawn area to 2%.
 
 ## Foundation — TactileMapKit
 

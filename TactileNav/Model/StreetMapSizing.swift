@@ -10,11 +10,20 @@
 //  and an iPad. Sizes derived from the viewport (a fraction of the screen's short edge,
 //  say) fail that test — they change with the device and with the visible span.
 //
-//  The map's geometric scale is *anchored* to the lane width rather than chosen
-//  independently: 4 mm on the glass is defined to be one real traffic lane. So a two-lane
-//  street draws 8 mm wide, a four-lane arterial 16 mm, and the drawn roadway matches the
-//  real roadway at map scale. That anchor is what makes the street geometry read correctly
-//  instead of being a diagram with arbitrary line weights.
+//  Two separate things both come off the 4 mm lane constant, and it is worth keeping them
+//  apart:
+//
+//    • **Line width.** Every road is drawn 4 mm wide, whatever its lane count. 4 mm is a
+//      perceptual constant, not a measurement of asphalt — it is about the narrowest line a
+//      fingertip can reliably follow. Scaling it by lane count sounds more faithful but is
+//      self-defeating: a four-lane road would be 16 mm, wider than a fingertip, so it stops
+//      being a line you can trace and becomes a plane with edges you cannot feel. It also
+//      buries the sidewalk beside it under the paint.
+//
+//    • **Map scale.** 4 mm on the glass represents one real 3.3 m lane, and that is what sets
+//      metres to points. So the *spacing* of the network — how far apart two streets are, how
+//      wide a junction is — stays true to the ground even though the lines themselves are a
+//      constant width. That is how street maps have always worked.
 //
 
 import CoreGraphics
@@ -24,8 +33,7 @@ nonisolated enum StreetMapSizing {
 
     // MARK: - Physical constants (millimetres on the glass)
 
-    /// Width of one traffic lane. Also the minimum width of any road, so a
-    /// single-lane way is still wide enough to trace.
+    /// Width of one traffic lane, and the width every road line is drawn at.
     static let laneWidthMM: CGFloat = 4.0
 
     /// Sidewalks are a fixed width regardless of the street they follow — a real
@@ -73,10 +81,9 @@ nonisolated enum StreetMapSizing {
         laneWidthPoints / laneWidthMeters
     }
 
-    /// Stroke width for a road with the given lane count, floored at one lane.
-    static func roadWidth(lanes: Int) -> CGFloat {
-        laneWidthPoints * CGFloat(max(lanes, 1))
-    }
+    /// Stroke width for a road. The same for every road — see the note at the top of the file
+    /// on why this deliberately does not scale with lane count.
+    static var roadWidth: CGFloat { laneWidthPoints }
 
     static var sidewalkWidth: CGFloat {
         PhysicalDimensions.mmToPoints(sidewalkWidthMM)
@@ -88,11 +95,14 @@ nonisolated enum StreetMapSizing {
 
     // MARK: - Hit-test radii (screen points)
 
-    /// Minimum touch radius for a line, so a thin feature is still findable. Roads use
-    /// half their own stroke width once that exceeds this.
-    static var minimumLineHitRadius: CGFloat {
-        laneWidthPoints / 2
-    }
+    /// Touch radius for a road.
+    ///
+    /// Wider than the drawn line on purpose. Half a 4 mm line is only ~12 pt, and on a dense
+    /// real street grid that asks a finger to trace within about a metre and a half of a
+    /// centreline. Floors in the low twenties are the established practice for exactly this
+    /// reason, and it stays under the sidewalk radius so a sidewalk beside a road is still
+    /// reachable rather than being swallowed.
+    static let roadHitRadius: CGFloat = 22
 
     /// Crossings are short and easy to miss between two streets, so they get a wider
     /// catch radius than their 2.8 mm stripe would imply.
@@ -116,13 +126,10 @@ nonisolated enum StreetMapSizing {
         let pointsPerMeter: CGFloat
         let sidewalkWidth: CGFloat
         let crosswalkStripeWidth: CGFloat
-        let minimumLineHitRadius: CGFloat
+        let roadWidth: CGFloat
+        let roadHitRadius: CGFloat
         let sidewalkHitRadius: CGFloat
         let crosswalkHitRadius: CGFloat
-
-        func roadWidth(lanes: Int) -> CGFloat {
-            laneWidthPoints * CGFloat(max(lanes, 1))
-        }
     }
 
     /// Resolve the current device's metrics. Call on the main actor.
@@ -133,7 +140,8 @@ nonisolated enum StreetMapSizing {
             pointsPerMeter: pointsPerMeter,
             sidewalkWidth: sidewalkWidth,
             crosswalkStripeWidth: crosswalkStripeWidth,
-            minimumLineHitRadius: minimumLineHitRadius,
+            roadWidth: roadWidth,
+            roadHitRadius: roadHitRadius,
             sidewalkHitRadius: sidewalkHitRadius,
             crosswalkHitRadius: crosswalkHitRadius
         )

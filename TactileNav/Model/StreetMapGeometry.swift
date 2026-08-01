@@ -35,6 +35,16 @@ nonisolated enum StreetSurface {
         case .road: return .road
         }
     }
+
+    /// Breaks a tie when two lines are effectively under the finger together. A crossing is
+    /// painted on top of the road, and a sidewalk sits beside it, so that is the order.
+    var hitPriority: Int {
+        switch self {
+        case .crosswalk: return 2
+        case .sidewalk: return 1
+        case .road: return 0
+        }
+    }
 }
 
 // MARK: - A drawable, touchable feature
@@ -91,11 +101,18 @@ nonisolated struct StreetMap {
 
     // MARK: Lookup
 
+    /// How close two lines must be before type priority, rather than distance, decides.
+    private static let tieBreakMargin: CGFloat = 6
+
     /// The feature under a content-space point, or nil for empty space.
     ///
-    /// Priority is crossing, then sidewalk, then road: a crossing sits on top of the road
-    /// it spans, and a sidewalk runs alongside one, so without an order the wider road
-    /// would always win and the narrower features would be unreachable.
+    /// **Nearest line wins.** Strict priority by type — crossing, then sidewalk, then road —
+    /// sounds right because a crossing is painted on top of the road it spans, but it means a
+    /// crossing's catch radius claims every road near it. With hundreds of crossings around
+    /// the junctions, a finger tracing a road would feel crossing ticks a good part of the
+    /// time while plainly looking at a road. So whichever line the finger is genuinely closest
+    /// to wins, and type priority only settles it when two are within a few points of each
+    /// other — which is exactly where a crossing really is on top of the road.
     ///
     /// The radius grows with finger speed. A fast drag samples further apart, so a fixed
     /// radius lets the finger step over a line between two samples and feel nothing.
@@ -103,21 +120,24 @@ nonisolated struct StreetMap {
         let bonus = min(velocity / hitConfig.velocityDivisor, hitConfig.velocityBonusMax)
 
         var best: (feature: StreetFeature, distance: CGFloat)?
-        for surface in [StreetSurface.crosswalk, .sidewalk, .road] {
-            for featureIndex in index.candidates(near: point, radius: bonus) {
-                let feature = features[featureIndex]
-                guard feature.surface == surface else { continue }
-                guard feature.touchBounds.insetBy(dx: -bonus, dy: -bonus).contains(point) else { continue }
-                let distance = distanceToPolyline(point, feature.points)
-                guard distance <= feature.hitRadius + bonus else { continue }
-                if best == nil || distance < best!.distance {
-                    best = (feature, distance)
-                }
+        for featureIndex in index.candidates(near: point, radius: bonus) {
+            let feature = features[featureIndex]
+            guard feature.touchBounds.insetBy(dx: -bonus, dy: -bonus).contains(point) else { continue }
+            let distance = distanceToPolyline(point, feature.points)
+            guard distance <= feature.hitRadius + bonus else { continue }
+
+            guard let current = best else {
+                best = (feature, distance)
+                continue
             }
-            // A hit at a higher priority wins outright; don't fall through to wider roads.
-            if let best { return best.feature }
+            if distance < current.distance - Self.tieBreakMargin {
+                best = (feature, distance)
+            } else if abs(distance - current.distance) <= Self.tieBreakMargin,
+                      feature.surface.hitPriority > current.feature.surface.hitPriority {
+                best = (feature, distance)
+            }
         }
-        return nil
+        return best?.feature
     }
 
     /// Features whose ink could land inside `rect`, for tile drawing.
@@ -197,7 +217,7 @@ nonisolated struct StreetMap {
         }
 
         // Pad by the widest stroke so no ink is clipped at the content edge.
-        let pad = metrics.roadWidth(lanes: 6) / 2
+        let pad = metrics.roadWidth
         let origin = CGPoint(x: minX - pad, y: minY - pad)
         let contentSize = CGSize(width: maxX - minX + pad * 2, height: maxY - minY + pad * 2)
 
@@ -208,7 +228,7 @@ nonisolated struct StreetMap {
             let lanes = Int(raw.element.properties.custom["lanes"] ?? "") ?? 1
             let stroke: CGFloat
             switch raw.surface {
-            case .road: stroke = metrics.roadWidth(lanes: lanes)
+            case .road: stroke = metrics.roadWidth
             case .sidewalk: stroke = metrics.sidewalkWidth
             case .crosswalk: stroke = metrics.crosswalkStripeWidth
             }
@@ -251,7 +271,7 @@ nonisolated struct StreetMap {
 
             let hitRadius: CGFloat
             switch item.surface {
-            case .road: hitRadius = max(item.stroke / 2, metrics.minimumLineHitRadius)
+            case .road: hitRadius = max(item.stroke / 2, metrics.roadHitRadius)
             case .sidewalk: hitRadius = max(item.stroke / 2, metrics.sidewalkHitRadius)
             case .crosswalk: hitRadius = max(item.stroke / 2, metrics.crosswalkHitRadius)
             }

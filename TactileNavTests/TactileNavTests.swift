@@ -64,21 +64,58 @@ struct CongressSquareMapTests {
 
     // MARK: - Physical sizing
 
-    @Test func roadWidthScalesWithLaneCountFromTheLaneConstant() throws {
+    @Test func everyRoadIsDrawnOneLaneWideWhateverItsLaneCount() throws {
         let map = try loadMap()
         let lane = map.metrics.laneWidthPoints
 
+        // 4 mm is the width a fingertip can follow, not a measurement of asphalt. Scaling it
+        // by lane count would make a four-lane road 16 mm — wider than a fingertip, so no
+        // longer a line you can trace, and wide enough to bury the sidewalk beside it.
         for feature in map.features where feature.surface == .road {
-            // Each road is a whole number of lanes wide, floored at one.
-            let lanes = max(feature.lanes, 1)
-            #expect(abs(feature.strokeWidth - lane * CGFloat(lanes)) < 0.01,
-                    "\(feature.id): \(feature.strokeWidth) is not \(lanes) lanes")
-            #expect(feature.strokeWidth >= lane)
+            #expect(abs(feature.strokeWidth - lane) < 0.01,
+                    "\(feature.id) is \(feature.strokeWidth) pt, not one lane")
         }
-
-        // A multi-lane arterial must be visibly wider than a two-lane side street.
         let widths = Set(map.features.filter { $0.surface == .road }.map(\.strokeWidth))
-        #expect(widths.count > 1, "every road is the same width")
+        #expect(widths.count == 1, "roads should all be the same width")
+
+        // Lane count is still carried, for anything that wants it.
+        #expect(map.features.contains { $0.surface == .road && $0.lanes >= 4 })
+    }
+
+    @Test func aFingerOnARoadFeelsTheRoad() throws {
+        let map = try loadMap()
+        var samples = 0, wrong = 0, silent = 0
+
+        // Sample across the drawn width of every road — what a finger actually traces. A
+        // sidewalk or crossing winning here means the user feels the soft sidewalk buzz, or a
+        // tick, while looking at a road: the "it doesn't buzz" complaint.
+        for road in map.features where road.surface == .road {
+            let length = polylineLength(road.points)
+            guard length > 4 else { continue }
+            for step in stride(from: 0.0, through: length, by: max(length / 6, 20)) {
+                guard let point = pointAlongPolyline(road.points, distance: step),
+                      let next = pointAlongPolyline(road.points, distance: step + 1) else { continue }
+                let delta = CGPoint(x: next.x - point.x, y: next.y - point.y)
+                let magnitude = max(hypot(delta.x, delta.y), 0.001)
+                let normal = CGPoint(x: -delta.y / magnitude, y: delta.x / magnitude)
+                for across in stride(from: -0.45, through: 0.45, by: 0.15) {
+                    let sample = CGPoint(x: point.x + normal.x * road.strokeWidth * across,
+                                         y: point.y + normal.y * road.strokeWidth * across)
+                    samples += 1
+                    guard let hit = map.feature(at: sample, velocity: 0) else { silent += 1; continue }
+                    if hit.surface != .road { wrong += 1 }
+                }
+            }
+        }
+        #expect(silent == 0, "\(silent) of \(samples) points on a road gave no feedback at all")
+
+        // A few percent is expected and correct: at the very edge of a road beside a junction,
+        // the painted crossing genuinely is the nearer line, and saying so is the right answer.
+        // What this guards against is that number climbing back into double figures, which is
+        // what it was when a crossing's catch radius outranked the road it sat on.
+        let wrongShare = Double(wrong) / Double(samples)
+        #expect(wrongShare < 0.03,
+                "\(wrong) of \(samples) points on a road felt like something else")
     }
 
     @Test func mapScaleIsAnchoredToOneRealLane() throws {
@@ -196,8 +233,10 @@ struct CongressSquareMapTests {
         // managed, so a stroke laid down as #023E8A does not come back as those exact bytes.
         #expect(tally.blue > total / 100, "almost no road was drawn (\(tally.blue) blue px)")
         #expect(tally.grey > total / 500, "almost no sidewalk was drawn (\(tally.grey) grey px)")
-        // Roads are several lanes wide here and sidewalks are one, so roads must dominate.
-        #expect(tally.blue > tally.grey)
+        // Both surfaces are present and distinguishable. Roads and sidewalks are drawn the
+        // same width now, and most streets carry a sidewalk on each side, so grey legitimately
+        // covers more area than blue — what matters is that neither has vanished.
+        #expect(tally.blue > total / 200)
         // Background still shows through — this is a street map, not a solid block of ink.
         #expect(tally.white > total / 3)
 

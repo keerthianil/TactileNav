@@ -175,6 +175,9 @@ final class PortlandStreetMapContainerView: UIView {
     var onFirstLayout: (() -> Void)?
     private var hasLaidOut = false
 
+    /// The navigation controller whose swipe-back was switched off, so it can be restored.
+    private(set) weak var suppressedPopNavigation: UINavigationController?
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = UIColor(cgColor: StreetMapSizing.backgroundColor)
@@ -191,9 +194,36 @@ final class PortlandStreetMapContainerView: UIView {
         super.layoutSubviews()
         canvas.frame = bounds
         scrollView.frame = bounds
+        suppressSwipeBack()
         guard !hasLaidOut, bounds.width > 0, bounds.height > 0 else { return }
         hasLaidOut = true
         onFirstLayout?()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil {
+            restoreSwipeBack()
+        } else {
+            suppressSwipeBack()
+        }
+    }
+
+    /// Turn off the one-finger swipe-back.
+    ///
+    /// Done from `didMoveToWindow` and every layout, not from `updateUIView`: the responder
+    /// chain only reaches a navigation controller once the view is actually in the hierarchy,
+    /// and SwiftUI may never call `updateUIView` again after that happens. Getting this wrong
+    /// leaves the swipe live, and a one-finger explore drag walks straight out of the map.
+    private func suppressSwipeBack() {
+        guard let nav = enclosingNavigationController else { return }
+        suppressedPopNavigation = nav
+        nav.interactivePopGestureRecognizer?.isEnabled = false
+    }
+
+    func restoreSwipeBack() {
+        suppressedPopNavigation?.interactivePopGestureRecognizer?.isEnabled = true
+        suppressedPopNavigation = nil
     }
 }
 
@@ -320,13 +350,6 @@ struct PortlandMapView: UIViewRepresentable {
         container.scrollView.onBackGesture = { [weak coordinator] in coordinator?.triggerBack() }
         container.scrollView.panActions = coordinator.makePanActions()
 
-        // Switch off the one-finger interactive pop so exploring near the left edge cannot
-        // navigate back. Restored when the view goes away.
-        if let nav = container.enclosingNavigationController {
-            nav.interactivePopGestureRecognizer?.isEnabled = false
-            coordinator.disabledPopNavigation = nav
-        }
-
         coordinator.startLoggingIfNeeded()
         coordinator.centerOnInitialLocationIfNeeded()
     }
@@ -334,7 +357,7 @@ struct PortlandMapView: UIViewRepresentable {
     static func dismantleUIView(_ container: PortlandStreetMapContainerView, coordinator: Coordinator) {
         coordinator.feedback.stopAll()
         coordinator.endLogging()
-        coordinator.disabledPopNavigation?.interactivePopGestureRecognizer?.isEnabled = true
+        container.restoreSwipeBack()
         NotificationCenter.default.removeObserver(coordinator)
     }
 
@@ -349,7 +372,6 @@ struct PortlandMapView: UIViewRepresentable {
 
         weak var container: PortlandStreetMapContainerView?
         var touchIndicator: PortlandTouchIndicatorView?
-        weak var disabledPopNavigation: UINavigationController?
 
         private var scrollView: PortlandStreetScrollView? { container?.scrollView }
 
