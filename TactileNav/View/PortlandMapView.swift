@@ -101,6 +101,16 @@ final class PortlandStreetScrollView: UIScrollView {
     var onBackGesture: (() -> Void)?
     /// Actions offered on the VoiceOver Actions rotor (swipe up/down, then double-tap).
     var panActions: [(String, () -> Void)] = []
+    /// Called whenever the scroll position changes, so the canvas can redraw the new window.
+    var onOffsetChange: ((CGPoint) -> Void)?
+
+    /// UIScrollView lays out on every scroll, which makes this a more dependable place to
+    /// push the offset than the delegate — it fires for programmatic changes and cannot be
+    /// missed if something else takes over as delegate.
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        onOffsetChange?(contentOffset)
+    }
 
     func applyAccessibility() {
         if UIAccessibility.isVoiceOverRunning {
@@ -110,7 +120,7 @@ final class PortlandStreetScrollView: UIScrollView {
             accessibilityHint = "Drag one finger to explore streets. "
                 + "Drag two fingers to pan the map. "
                 + "Swipe up or down for pan and recentre actions. "
-                + "Three finger swipe right, or two finger scrub, to go back."
+                + "Three finger swipe right to go back."
             if #available(iOS 17.0, *) { accessibilityDirectTouchOptions = .silentOnTouch }
         } else {
             isAccessibilityElement = false
@@ -127,8 +137,9 @@ final class PortlandStreetScrollView: UIScrollView {
         set {}
     }
 
-    // VoiceOver three-finger swipe right → back. Kept as back rather than repurposed for
-    // paged panning, so the gesture means the same thing it does elsewhere in the app.
+    // VoiceOver three-finger swipe right → back. This and the Back button are the only two
+    // ways out: nothing a single finger can do navigates away, so exploring anywhere on the
+    // map — including hard against the left edge — is always safe.
     override func accessibilityScroll(_ direction: UIAccessibilityScrollDirection) -> Bool {
         if direction == .right {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.8)
@@ -137,13 +148,6 @@ final class PortlandStreetScrollView: UIScrollView {
             return true
         }
         return super.accessibilityScroll(direction)
-    }
-
-    // VoiceOver two-finger Z-scrub → back.
-    override func accessibilityPerformEscape() -> Bool {
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred(intensity: 0.8)
-        onBackGesture?()
-        return true
     }
 }
 
@@ -159,13 +163,24 @@ final class PortlandStreetMapContainerView: UIView {
     let canvas = PortlandStreetCanvasView(frame: .zero)
     let scrollView = PortlandStreetScrollView(frame: .zero)
     /// Empty, never drawn, exists only to give the scroll view something the size of the map.
+    ///
+    /// Non-interactive on purpose. If touches land on it, they belong to "content" as far as
+    /// the scroll view is concerned, and the scroll view will not steal them back to start a
+    /// pan — the map simply refuses to move.
     let spacer = UIView(frame: .zero)
+
+    /// Fired once the container has a real size, so the viewport can be centred. SwiftUI may
+    /// never call `updateUIView` again after the first layout pass, so centring cannot wait
+    /// there or the map opens stuck in the corner of the extract.
+    var onFirstLayout: (() -> Void)?
+    private var hasLaidOut = false
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = UIColor(cgColor: StreetMapSizing.backgroundColor)
         addSubview(canvas)
         scrollView.backgroundColor = .clear
+        spacer.isUserInteractionEnabled = false
         scrollView.addSubview(spacer)
         addSubview(scrollView)
     }
@@ -176,16 +191,33 @@ final class PortlandStreetMapContainerView: UIView {
         super.layoutSubviews()
         canvas.frame = bounds
         scrollView.frame = bounds
+        guard !hasLaidOut, bounds.width > 0, bounds.height > 0 else { return }
+        hasLaidOut = true
+        onFirstLayout?()
     }
+}
+
+/// Lets the screen drive the map without owning it — the SwiftUI equivalent of holding a
+/// reference to the scroll view.
+final class StreetMapCommands {
+    var recenter: (() -> Void)?
 }
 
 struct PortlandMapView: UIViewRepresentable {
 
     let map: StreetMap
+    var commands: StreetMapCommands?
     var onBackGesture: (() -> Void)?
 
     func makeUIView(context: Context) -> PortlandStreetMapContainerView {
-        let coordinator = context.coordinator
+        makeContainer(coordinator: context.coordinator)
+    }
+
+    /// Builds and wires the whole hierarchy.
+    ///
+    /// Split out from `makeUIView` because `Context` cannot be constructed outside SwiftUI,
+    /// and the gesture and scrolling configuration here is exactly the part worth testing.
+    func makeContainer(coordinator: Coordinator) -> PortlandStreetMapContainerView {
         let container = PortlandStreetMapContainerView(frame: .zero)
         let scrollView = container.scrollView
 
@@ -205,15 +237,21 @@ struct PortlandMapView: UIViewRepresentable {
         scrollView.panGestureRecognizer.minimumNumberOfTouches = 2
         scrollView.panGestureRecognizer.maximumNumberOfTouches = 2
 
-        // A one-finger explore drag must reach the canvas immediately and must never be
-        // cancelled part-way through, which would strand haptics with no touch-up.
+        // A one-finger explore drag must reach the recognizers immediately, with no delay
+        // waiting to see whether a scroll is starting.
         scrollView.delaysContentTouches = false
-        scrollView.canCancelContentTouches = false
 
         container.canvas.map = map
         container.spacer.frame = CGRect(origin: .zero, size: map.contentSize)
         scrollView.contentSize = map.contentSize
         coordinator.container = container
+        container.onFirstLayout = { [weak coordinator] in
+            coordinator?.centerOnInitialLocationIfNeeded()
+        }
+        scrollView.onOffsetChange = { [weak container] offset in
+            container?.canvas.contentOffset = offset
+        }
+        commands?.recenter = { [weak coordinator] in coordinator?.recenter() }
 
         // The indicator rides on the canvas, which does not scroll, so it is positioned in
         // view coordinates and needs no offset correction.
@@ -438,12 +476,19 @@ struct PortlandMapView: UIViewRepresentable {
                 ("Pan south", { [weak self] in self?.step(dx: 0, dy: 0.5) }),
                 ("Pan east", { [weak self] in self?.step(dx: 0.5, dy: 0) }),
                 ("Pan west", { [weak self] in self?.step(dx: -0.5, dy: 0) }),
-                ("Recentre on Congress Square", { [weak self] in
-                    guard let self else { return }
-                    self.center(on: self.parent.map.initialCenter, animated: true)
-                    self.announceViewportCenter(prefix: "Recentred")
-                }),
+                ("Recenter on Congress Square", { [weak self] in self?.recenter() }),
             ]
+        }
+
+        /// Jump back to Congress Square.
+        ///
+        /// The map is about 67 screens wide, so it is genuinely possible to pan away and lose
+        /// the thread of where you are. This is the equivalent of the "back to my location"
+        /// button on a visual map: one known place you can always return to.
+        func recenter() {
+            center(on: parent.map.initialCenter, animated: true)
+            feedback.playTap()
+            announceViewportCenter(prefix: "Recentered")
         }
 
         private func step(dx: CGFloat, dy: CGFloat) {

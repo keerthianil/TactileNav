@@ -23,11 +23,25 @@ struct PortlandMapScreen: View {
 
     @State private var phase: LoadPhase = .loading
     @State private var hasAppeared = false
+    @State private var commands = StreetMapCommands()
 
     var body: some View {
         content
             .navigationTitle("Congress Square")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if case .ready = phase {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            commands.recenter?()
+                        } label: {
+                            Label("Recenter", systemImage: "scope")
+                        }
+                        .accessibilityLabel("Recenter on Congress Square")
+                        .accessibilityHint("Returns the map to Congress Square if you have panned away")
+                    }
+                }
+            }
             .onAppear {
                 guard !hasAppeared else { return }
                 hasAppeared = true
@@ -44,7 +58,7 @@ struct PortlandMapScreen: View {
                 .accessibilityLabel("Loading the Congress Square map")
 
         case .ready(let map):
-            PortlandMapView(map: map, onBackGesture: { dismiss() })
+            PortlandMapView(map: map, commands: commands, onBackGesture: { dismiss() })
                 .ignoresSafeArea(edges: .bottom)
 
         case .failed:
