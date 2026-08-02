@@ -27,25 +27,6 @@ import TactileMapCore
 import TactileMapLogging
 import UIKit
 
-// MARK: - UIKit helpers
-
-extension UIView {
-    /// Walk the responder chain to the enclosing navigation controller, so the interactive
-    /// edge-swipe pop can be switched off while the map is open. Without that, a one-finger
-    /// explore drag started near the left edge navigates back instead of exploring.
-    var enclosingNavigationController: UINavigationController? {
-        var responder: UIResponder? = next
-        while let current = responder {
-            if let nav = current as? UINavigationController { return nav }
-            if let controller = current as? UIViewController, let nav = controller.navigationController {
-                return nav
-            }
-            responder = current.next
-        }
-        return nil
-    }
-}
-
 // MARK: - Touch indicator
 
 /// A follow dot under the finger. Purely a sighted-observer aid — it is never an
@@ -111,6 +92,12 @@ final class PortlandStreetScrollView: UIScrollView {
     // responder chain, and gesture recognizers on that view do not fire dependably — so a
     // recognizer-based explore works with VoiceOver off and goes completely dead with it on,
     // which is the worst possible failure for this app. Raw touches behave the same either way.
+    //
+    // **Every point below is already in map content coordinates.** A scroll view scrolls by
+    // moving its own `bounds.origin`, and `contentOffset` *is* that origin, so a point in the
+    // scroll view's coordinate space has the scroll position baked into it. Adding
+    // `contentOffset` on top — the obvious-looking conversion — puts the finger tens of
+    // thousands of points off the map, and nothing is ever under it.
 
     var onExploreBegan: ((CGPoint) -> Void)?
     var onExploreMoved: ((CGPoint) -> Void)?
@@ -244,10 +231,8 @@ final class PortlandStreetMapContainerView: UIView {
     var onFirstLayout: (() -> Void)?
     private var hasLaidOut = false
 
-    /// The navigation controller whose swipe-back was switched off, so it can be restored.
-    private(set) weak var suppressedPopNavigation: UINavigationController?
-    private var originalPopDelegate: UIGestureRecognizerDelegate?
-    private let popBlocker = SwipeBackBlocker()
+    /// Holds the one-finger swipe-back off while the map is open.
+    let swipeBack = SwipeBackSuppression()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -277,52 +262,27 @@ final class PortlandStreetMapContainerView: UIView {
             restoreSwipeBack()
         } else {
             suppressSwipeBack()
+            // SwiftUI finishes attaching the navigation controller after this callback, so
+            // the first attempt can find nothing to switch off. One more pass on the next
+            // runloop turn catches it.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.window != nil else { return }
+                self.suppressSwipeBack()
+            }
         }
     }
 
-    /// Turn off the one-finger swipe-back.
-    ///
-    /// Two mechanisms, because one is not enough. Clearing `isEnabled` is the obvious move but
-    /// does not stick: SwiftUI re-enables the recognizer on its own as the navigation stack
-    /// updates, and the swipe quietly comes back. Owning the recognizer's *delegate* and
-    /// refusing to let it begin is what actually holds, so both are applied and re-applied on
-    /// every layout.
-    ///
-    /// This runs from `didMoveToWindow` and `layoutSubviews`, never from `updateUIView`: the
+    /// Runs from `didMoveToWindow` and `layoutSubviews`, never from `updateUIView`: the
     /// responder chain only reaches a navigation controller once the view is in the hierarchy,
     /// and SwiftUI may never call `updateUIView` again after that point.
     private func suppressSwipeBack() {
-        guard let nav = enclosingNavigationController,
-              let pop = nav.interactivePopGestureRecognizer else { return }
-
-        if suppressedPopNavigation !== nav {
-            suppressedPopNavigation = nav
-            originalPopDelegate = pop.delegate
-        }
-        pop.delegate = popBlocker
-        pop.isEnabled = false
+        swipeBack.apply(from: self)
     }
 
     /// Hand the swipe back when the map goes away, so the rest of the app behaves normally.
     func restoreSwipeBack() {
-        guard let nav = suppressedPopNavigation,
-              let pop = nav.interactivePopGestureRecognizer else { return }
-        pop.delegate = originalPopDelegate
-        pop.isEnabled = true
-        suppressedPopNavigation = nil
-        originalPopDelegate = nil
+        swipeBack.restore()
     }
-}
-
-/// Refuses to let the navigation controller's swipe-back gesture start.
-///
-/// On this screen a one-finger drag is exploration and must never navigate. Back is the
-/// three-finger swipe and the Back button, and nothing else.
-final class SwipeBackBlocker: NSObject, UIGestureRecognizerDelegate {
-    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool { false }
-
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
-                           shouldReceive touch: UITouch) -> Bool { false }
 }
 
 /// Lets the screen drive the map without owning it — the SwiftUI equivalent of holding a
@@ -448,15 +408,21 @@ struct PortlandMapView: UIViewRepresentable {
 
         private var scrollView: PortlandStreetScrollView? { container?.scrollView }
 
-        /// A point in the scroll view's own coordinates → the same point on the map.
-        private func contentPoint(_ pointInScrollView: CGPoint) -> CGPoint {
-            guard let scrollView else { return pointInScrollView }
-            return CGPoint(x: pointInScrollView.x + scrollView.contentOffset.x,
-                           y: pointInScrollView.y + scrollView.contentOffset.y)
+        /// A point on the map → where it currently sits on screen.
+        ///
+        /// The only conversion needed anywhere in exploration, and it runs this way round:
+        /// touches arrive in content coordinates already (see the scroll view), and the follow
+        /// dot rides on the canvas, which does not scroll.
+        private func viewPoint(_ contentPoint: CGPoint) -> CGPoint {
+            guard let scrollView else { return contentPoint }
+            return CGPoint(x: contentPoint.x - scrollView.contentOffset.x,
+                           y: contentPoint.y - scrollView.contentOffset.y)
         }
 
         private var currentFeatureID: String?
-        private var currentFeature: StreetFeature?
+        /// The surface currently under the finger. Readable so a test can drive the real
+        /// touch path and check what it resolved to, rather than re-deriving it.
+        private(set) var currentFeature: StreetFeature?
         private var lastPoint: CGPoint?
         private var lastMoveTime: CFTimeInterval = 0
         private var lastHitTestTime: CFTimeInterval = 0
@@ -483,14 +449,21 @@ struct PortlandMapView: UIViewRepresentable {
             loggingStarted = true
             sessionStart = Date()
             let map = parent.map
-            // Recorded so a trace can be interpreted later: the same drag covers a different
-            // number of streets on devices with different pixel densities, because the map is
-            // sized in physical millimetres rather than points.
+            // Everything a trace needs to be interpreted after the fact.
+            //
+            // The two sizing numbers are recorded separately and both matter. Points per metre
+            // is what converts a logged position back to ground distance. Lane width is the
+            // physical width of the line the finger was following, and it is *not* derived
+            // from the scale — so the same drag covers a different number of streets on
+            // devices of different pixel density, and a trace cannot be read without both.
             logger.startSession(metadata: [
                 "map": "CongressSquare",
-                "featureCount": "\(map.features.count)",
+                "surfaces": "roads",
+                "streetCount": "\(map.features.count)",
                 "pointsPerMeter": String(format: "%.3f", map.metrics.pointsPerMeter),
                 "laneWidthPoints": String(format: "%.2f", map.metrics.laneWidthPoints),
+                "laneWidthMM": String(format: "%.1f", StreetMapSizing.laneWidthMM),
+                "blockSpacingMM": String(format: "%.1f", StreetMapSizing.blockSpacingMM),
                 "contentSize": "\(Int(map.contentSize.width))x\(Int(map.contentSize.height))",
                 "voiceOver": UIAccessibility.isVoiceOverRunning ? "on" : "off",
             ])
@@ -502,18 +475,30 @@ struct PortlandMapView: UIViewRepresentable {
             logger.endSession()
         }
 
-        /// Touch events carry the canvas-space point so a trace can be replayed against the
-        /// map, plus the surface type so a run can be split by what was under the finger.
+        /// Touch events carry the content-space point, so a trace can be replayed against the
+        /// map, and the street under the finger — or `Background` for the space between
+        /// streets, which is what makes on-street time measurable from a trace.
+        ///
+        /// The point is in content coordinates, not screen coordinates: the map is far larger
+        /// than the screen, so a screen point means nothing once the map has been panned.
         private func logTouch(_ type: TouchEventType, at point: CGPoint, feature: StreetFeature?) {
             guard loggingStarted else { return }
+            let scale = parent.map.metrics.pointsPerMeter
             _ = logger.logEvent(TouchEvent(
                 timestamp: Date(),
                 sessionElapsed: Date().timeIntervalSince(sessionStart),
                 eventType: type,
                 elementName: feature?.name ?? "Background",
-                elementType: feature?.surface.elementType,
+                elementType: feature == nil ? nil : .road,
                 touchPoint: point,
-                custom: ["gesture": "explore"]))
+                custom: [
+                    "gesture": "explore",
+                    "onStreet": feature == nil ? "0" : "1",
+                    // Metres from the map's north-west corner, so a trace can be compared
+                    // across devices — the point scale differs with pixel density.
+                    "metersX": String(format: "%.1f", point.x / scale),
+                    "metersY": String(format: "%.1f", point.y / scale),
+                ]))
         }
 
         /// Pan is logged where it settles rather than every frame: what matters for
@@ -658,40 +643,40 @@ struct PortlandMapView: UIViewRepresentable {
             scrollView.onExploreTapped = { [weak self] point in self?.exploreTapped(at: point) }
         }
 
-        private func exploreBegan(at pointInView: CGPoint) {
+        private func exploreBegan(at point: CGPoint) {
             startLoggingIfNeeded()
             isExploring = true
             panSettleWork?.cancel()
-            lastPoint = pointInView
+            // A finger on the glass outranks the entry summary still playing over it.
+            feedback.beginExploring()
+            lastPoint = point
             lastMoveTime = CACurrentMediaTime()
             lastHitTestTime = 0
             currentFeatureID = nil
 
-            let point = contentPoint(pointInView)
             updateExploration(at: point, velocity: 0)
             logTouch(.touchDown, at: point, feature: currentFeature)
-            touchIndicator?.show(at: pointInView)
+            touchIndicator?.show(at: viewPoint(point))
         }
 
-        private func exploreMoved(to pointInView: CGPoint) {
+        private func exploreMoved(to point: CGPoint) {
             let now = CACurrentMediaTime()
-            let speed = velocity(to: pointInView, now: now)
-            lastPoint = pointInView
+            let speed = velocity(to: point, now: now)
+            lastPoint = point
             lastMoveTime = now
 
-            let point = contentPoint(pointInView)
             // Hit-test at a bounded rate; the indicator still follows every frame.
             if now - lastHitTestTime >= parent.map.hitConfig.updateThreshold {
                 lastHitTestTime = now
                 updateExploration(at: point, velocity: speed)
             }
             logTouch(.touchMove, at: point, feature: currentFeature)
-            touchIndicator?.show(at: pointInView)
+            touchIndicator?.show(at: viewPoint(point))
         }
 
         private func exploreEnded() {
             if let last = lastPoint {
-                logTouch(.touchUp, at: contentPoint(last), feature: currentFeature)
+                logTouch(.touchUp, at: last, feature: currentFeature)
             }
             isExploring = false
             feedback.stopAll()
@@ -703,8 +688,8 @@ struct PortlandMapView: UIViewRepresentable {
 
         /// A quick, still touch speaks what is under it straight away, without waiting for the
         /// dwell a drag uses — the user has already committed.
-        private func exploreTapped(at pointInView: CGPoint) {
-            guard let feature = parent.map.feature(at: contentPoint(pointInView), velocity: 0) else { return }
+        private func exploreTapped(at point: CGPoint) {
+            guard let feature = parent.map.feature(at: point, velocity: 0) else { return }
             feedback.playTap()
             feedback.announceImmediately(feature.announcement)
         }
@@ -736,8 +721,8 @@ struct PortlandMapView: UIViewRepresentable {
 
         // MARK: Exploration
 
-        /// Haptics change the instant the surface changes; speech is dwell-gated inside the
-        /// feedback controller. That split is what lets a fast sweep feel every surface it
+        /// Haptics change the instant the street changes; speech is dwell-gated inside the
+        /// feedback controller. That split is what lets a fast sweep feel every street it
         /// crosses while only naming the one the finger settles on.
         private func updateExploration(at point: CGPoint, velocity: CGFloat) {
             let feature = parent.map.feature(at: point, velocity: velocity)
@@ -747,9 +732,7 @@ struct PortlandMapView: UIViewRepresentable {
             currentFeatureID = feature?.id
 
             if let feature {
-                feedback.enter(surface: feature.surface,
-                               identifier: feature.id,
-                               announcement: feature.announcement)
+                feedback.enter(identifier: feature.id, announcement: feature.announcement)
             } else {
                 // Empty space is silent: no haptic, nothing spoken.
                 feedback.leaveAll()
