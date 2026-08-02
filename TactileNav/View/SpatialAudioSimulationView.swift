@@ -44,6 +44,14 @@ struct SpatialAudioSimulationView: View {
                 .frame(maxHeight: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(.separator)))
+
+            // Stated on screen, not only in the accessibility hint: the diagram behaves the
+            // same with VoiceOver off, and someone testing it needs to know to try that.
+            Text("Drag one finger across the diagram to feel the roadway, sidewalks and "
+                 + "crossings. Works with VoiceOver on or off.")
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
             statusView
             controls
         }

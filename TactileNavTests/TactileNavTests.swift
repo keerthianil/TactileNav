@@ -833,20 +833,20 @@ struct IntersectionLayoutTests {
         #expect(map.bands.filter { $0.surface == .sidewalk }.count == 8)
         // A signalised four-way has a crossing on every arm.
         #expect(map.bands.filter { $0.surface == .crossing }.count == 4)
-        // Four corners, four ramps — a corner is shared by two crossings, so this is not
-        // two ramps per crossing.
-        #expect(map.dots.count == 4)
     }
 
     @Test func everyWidthIsAPhysicalMillimetreMeasurement() {
         let map = layout()
         let road = try? #require(map.bands.first { $0.surface == .road })
         let walk = try? #require(map.bands.first { $0.surface == .sidewalk })
+        let cross = try? #require(map.bands.first { $0.surface == .crossing })
 
         #expect(abs((road?.width ?? 0)
                     - PhysicalDimensions.mmToPoints(IntersectionLayout.roadWidthMM)) < 0.01)
         #expect(abs((walk?.width ?? 0)
                     - PhysicalDimensions.mmToPoints(IntersectionLayout.sidewalkWidthMM)) < 0.01)
+        #expect(abs((cross?.width ?? 0)
+                    - PhysicalDimensions.mmToPoints(IntersectionLayout.crossingWidthMM)) < 0.01)
 
         // The roadway is the widest thing here on purpose: it is the one surface that has to
         // be recognised instantly, and it is three times a street line on the wider map.
@@ -857,16 +857,25 @@ struct IntersectionLayoutTests {
     ///
     /// A crossing that overlaps the roadway it is supposed to run alongside puts the corner
     /// ramps in the traffic, and a sidewalk buried under the roadway is simply unreachable.
-    @Test func theSidewalkSquareClearsTheRoadway() {
+    /// The sidewalk sits behind a kerb, not on the roadway, and the offset that puts it there
+    /// is derived from the parts rather than picked. This is the assertion that proves the
+    /// derivation still adds up — half the roadway, the crossing, the kerb, half the sidewalk.
+    @Test func theSidewalkSitsOneKerbBackFromTheRoadway() {
         let map = layout()
         let roadHalf = IntersectionLayout.roadWidthMM / 2
         let sidewalkNearEdge = IntersectionLayout.sidewalkOffsetMM
             - IntersectionLayout.sidewalkWidthMM / 2
-        let crossingNearEdge = IntersectionLayout.sidewalkOffsetMM
-            - IntersectionLayout.crossingWidthMM / 2
+        let crossingOuterEdge = roadHalf + IntersectionLayout.crossingWidthMM
 
-        #expect(sidewalkNearEdge > roadHalf)
-        #expect(crossingNearEdge > roadHalf, "a crossing overlaps the roadway beside it")
+        #expect(sidewalkNearEdge > roadHalf, "the sidewalk overlaps the roadway")
+        #expect(abs(sidewalkNearEdge - crossingOuterEdge - IntersectionLayout.kerbGapMM) < 0.001,
+                "the kerb gap has drifted")
+
+        // 11.8 mm on the glass. Far enough to be a separate line under a finger, close enough
+        // that the junction still reads as one thing rather than four streets and a square.
+        #expect(abs(IntersectionLayout.sidewalkOffsetMM - 11.8) < 0.001)
+        #expect(IntersectionLayout.sidewalkOffsetMM < roadHalf * 2.5,
+                "the sidewalks have drifted away from the junction")
 
         // And it holds in points, on this device, once converted.
         let walk = map.bands.first { $0.surface == .sidewalk }
@@ -883,13 +892,8 @@ struct IntersectionLayoutTests {
             let length = hypot(band.to.x - band.from.x, band.to.y - band.from.y)
             #expect(abs(length - corner * 2) < 0.01, "\(band.id) does not reach both corners")
 
-            // Both ends land on a kerb ramp.
-            for end in [band.from, band.to] {
-                #expect(map.dots.contains { hypot($0.center.x - end.x, $0.center.y - end.y) < 0.01 },
-                        "\(band.id) has an end with no ramp on it")
-            }
-
-            // And its middle is over a roadway — that is what makes it a crossing.
+            // Its middle is over a roadway — that is what makes it a crossing, and it is also
+            // what puts the painted bars on dark blue rather than on the background.
             let mid = CGPoint(x: (band.from.x + band.to.x) / 2, y: (band.from.y + band.to.y) / 2)
             let overRoad = map.bands.contains { road in
                 road.surface == .road
@@ -908,12 +912,8 @@ struct IntersectionLayoutTests {
         // The middle of the space between things says nothing, which is how a gap reads.
         #expect(map.hit(CGPoint(x: 4, y: 4)) == nil)
 
-        // A kerb ramp beats the crossing it sits on the end of.
-        let ramp = map.dots[0]
-        #expect(map.hit(ramp.center)?.surface == .kerbRamp)
-
-        // Sweeping the whole view has to turn up all four, or one of them is drawn but
-        // unreachable — which is the failure a user would report as "I can't find the kerb".
+        // Sweeping the whole view has to turn up all three, or one of them is drawn but
+        // unreachable — the failure a user would report as "I can't find the crossing".
         var found: Set<String> = []
         for x in stride(from: 0.0, to: size.width, by: 2) {
             for y in stride(from: 0.0, to: size.height, by: 2) {
@@ -922,7 +922,33 @@ struct IntersectionLayoutTests {
                 }
             }
         }
-        #expect(found.count == 4, "only found \(found.sorted())")
+        #expect(found.count == 3, "only found \(found.sorted())")
+    }
+
+    /// The diagram has to respond to a finger with VoiceOver *off* as well as on.
+    ///
+    /// Exploration runs on raw touches rather than a gesture recognizer precisely so the two
+    /// are the same code path. This drives that path directly — which is what the touch
+    /// handlers do — and checks it resolves the surface either way.
+    @Test func exploringWorksWithVoiceOverOffAsWellAsOn() {
+        let view = IntersectionTouchView(frame: CGRect(origin: .zero, size: size))
+        view.streetNames = ("Congress Street", "High Street")
+        view.layoutIfNeeded()
+
+        let centre = CGPoint(x: size.width / 2, y: size.height / 2)
+        view.explore(at: centre)
+        #expect(view.currentSurface == .road, "the roadway gave no feedback")
+
+        let offset = PhysicalDimensions.mmToPoints(IntersectionLayout.sidewalkOffsetMM)
+        view.explore(at: CGPoint(x: centre.x - offset - offset, y: centre.y - offset))
+        #expect(view.currentSurface == .sidewalk, "the sidewalk gave no feedback")
+
+        view.explore(at: CGPoint(x: centre.x, y: centre.y - offset))
+        #expect(view.currentSurface == .crossing, "the crossing gave no feedback")
+
+        // Lifting off has to stop everything, or the buzz runs on after the finger is gone.
+        view.stopFeedback()
+        #expect(view.currentSurface == nil)
     }
 
     @Test func everySurfaceNamesItselfAndItsStreet() {
@@ -936,14 +962,12 @@ struct IntersectionLayoutTests {
             #expect(band.name.contains("crossing"))
             #expect(band.name.contains("across "))
         }
-        for dot in map.dots { #expect(dot.name.contains("Kerb ramp")) }
-        #expect(map.dots.contains { $0.name.contains("north west") })
         #expect(map.bands.contains { $0.surface == .road && $0.name == "Congress Street" })
         #expect(map.bands.contains { $0.surface == .road && $0.name == "High Street" })
     }
 
     /// Renders the junction and checks each surface actually put its colour down.
-    @Test func theCanvasDrawsAllFourSurfaces() throws {
+    @Test func theCanvasDrawsAllThreeSurfaces() throws {
         let canvas = IntersectionCanvasView(frame: CGRect(origin: .zero, size: size))
         canvas.layout = layout()
 
@@ -954,12 +978,12 @@ struct IntersectionLayoutTests {
 
         #expect(counts.blue > 0, "no roadway was drawn")
         #expect(counts.sidewalkGrey > 0, "no sidewalk was drawn")
-        #expect(counts.crossingGrey > 0, "no crossing surface was drawn")
-        #expect(counts.red > 0, "no kerb ramp was drawn")
-        // Bars counted only where the crossing surface is on both sides of them, so the white
-        // background cannot be mistaken for paint. This is the assertion that would have
-        // caught stripes drawn white-on-white and therefore invisible.
-        #expect(counts.whiteOnCrossing > 0, "no crossing stripes were drawn")
+        // Bars counted only where roadway is on both sides of them, so the white background
+        // cannot be mistaken for paint. This is the assertion that catches crossing markings
+        // drawn white-on-white and therefore invisible.
+        #expect(counts.whiteOnRoad > 0, "no crossing bars were drawn on the roadway")
+        // Nothing red left over from the kerb-ramp dots.
+        #expect(counts.red == 0, "\(counts.red) red px — a dot was drawn")
 
         try #require(image.pngData()).write(to: FileManager.default
             .urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -967,7 +991,7 @@ struct IntersectionLayoutTests {
     }
 
     private struct Counts {
-        var blue = 0, sidewalkGrey = 0, crossingGrey = 0, red = 0, whiteOnCrossing = 0
+        var blue = 0, sidewalkGrey = 0, red = 0, whiteOnRoad = 0
     }
 
     /// Classifies by colour family rather than exact bytes — the render pipeline is colour
@@ -988,10 +1012,7 @@ struct IntersectionLayoutTests {
         }
         func isBlue(_ c: (Int, Int, Int)) -> Bool { c.2 > c.0 + 40 && c.2 > c.1 + 20 }
         func isNeutral(_ c: (Int, Int, Int)) -> Bool { abs(c.0 - c.1) < 14 && abs(c.1 - c.2) < 14 }
-        // Two distinct greys, and they have to stay distinct or a crossing and a sidewalk
-        // look like the same thing where they meet at a corner.
         func isSidewalk(_ c: (Int, Int, Int)) -> Bool { isNeutral(c) && (140...185).contains(c.0) }
-        func isCrossing(_ c: (Int, Int, Int)) -> Bool { isNeutral(c) && (80...135).contains(c.0) }
 
         var counts = Counts()
         for y in 0..<height {
@@ -1003,12 +1024,10 @@ struct IntersectionLayoutTests {
                     counts.red += 1
                 } else if isSidewalk(c) {
                     counts.sidewalkGrey += 1
-                } else if isCrossing(c) {
-                    counts.crossingGrey += 1
                 } else if c.0 > 240, c.1 > 240, c.2 > 240 {
-                    let left = (0..<x).reversed().prefix(40).first { isCrossing(pixel($0, y)) } != nil
-                    let right = ((x + 1)..<width).prefix(40).first { isCrossing(pixel($0, y)) } != nil
-                    if left && right { counts.whiteOnCrossing += 1 }
+                    let left = (0..<x).reversed().prefix(40).first { isBlue(pixel($0, y)) } != nil
+                    let right = ((x + 1)..<width).prefix(40).first { isBlue(pixel($0, y)) } != nil
+                    if left && right { counts.whiteOnRoad += 1 }
                 }
             }
         }

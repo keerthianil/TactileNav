@@ -168,11 +168,14 @@ final class PortlandStreetScrollView: UIScrollView {
         onOffsetChange?(contentOffset)
     }
 
+    /// What VoiceOver says when focus lands on the map. Leads with the map's name.
+    var mapDescription = "Tactile street map"
+
     func applyAccessibility() {
         if UIAccessibility.isVoiceOverRunning {
             isAccessibilityElement = true
             accessibilityTraits = [.allowsDirectInteraction]
-            accessibilityLabel = "Tactile street map"
+            accessibilityLabel = mapDescription
             accessibilityHint = "Drag one finger to explore streets. "
                 + "Drag two fingers to pan the map. "
                 + "Swipe up or down for pan and recentre actions. "
@@ -182,6 +185,20 @@ final class PortlandStreetScrollView: UIScrollView {
             isAccessibilityElement = false
             accessibilityTraits = []
         }
+    }
+
+    /// Move VoiceOver focus onto the map and have it read the map's name.
+    ///
+    /// This is why the name is the *element's own label* rather than a detached string posted
+    /// as a `.screenChanged` announcement. A bare string is read into the void: focus still
+    /// lands wherever iOS decides, the string competes with the push transition and with the
+    /// navigation title, and it is routinely dropped — which is what made the map open without
+    /// ever saying which map it was. Focusing the element makes the name what VoiceOver reads,
+    /// and leaves the user on the thing they came to explore.
+    func announceAsScreenChange() {
+        guard UIAccessibility.isVoiceOverRunning else { return }
+        applyAccessibility()
+        UIAccessibility.post(notification: .screenChanged, argument: self)
     }
 
     override var accessibilityCustomActions: [UIAccessibilityCustomAction]? {
@@ -294,6 +311,8 @@ final class StreetMapCommands {
 struct PortlandMapView: UIViewRepresentable {
 
     let map: StreetMap
+    /// What VoiceOver reads when focus lands on the map — the map's name first.
+    var description = "Tactile street map"
     var commands: StreetMapCommands?
     var onBackGesture: (() -> Void)?
 
@@ -335,6 +354,7 @@ struct PortlandMapView: UIViewRepresentable {
         coordinator.container = container
         container.onFirstLayout = { [weak coordinator] in
             coordinator?.centerOnInitialLocationIfNeeded()
+            coordinator?.announceArrival()
         }
         scrollView.onOffsetChange = { [weak container] offset in
             container?.canvas.contentOffset = offset
@@ -367,6 +387,7 @@ struct PortlandMapView: UIViewRepresentable {
         scrollView.addGestureRecognizer(backPan)
 
         scrollView.onBackGesture = { [weak coordinator] in coordinator?.triggerBack() }
+        scrollView.mapDescription = description
         scrollView.applyAccessibility()
 
         NotificationCenter.default.addObserver(
@@ -379,6 +400,7 @@ struct PortlandMapView: UIViewRepresentable {
     func updateUIView(_ container: PortlandStreetMapContainerView, context: Context) {
         let coordinator = context.coordinator
         coordinator.parent = self
+        container.scrollView.mapDescription = description
         container.scrollView.applyAccessibility()
         container.scrollView.onBackGesture = { [weak coordinator] in coordinator?.triggerBack() }
         container.scrollView.panActions = coordinator.makePanActions()
@@ -429,6 +451,7 @@ struct PortlandMapView: UIViewRepresentable {
         private var isExploring = false
         private var backTriggered = false
         private var hasCentered = false
+        private var hasAnnouncedArrival = false
         private var panSettleWork: DispatchWorkItem?
 
         // MARK: Logging
@@ -521,6 +544,19 @@ struct PortlandMapView: UIViewRepresentable {
         }
 
         // MARK: Viewport
+
+        /// Hand VoiceOver the map once it is on screen and laid out.
+        ///
+        /// Deliberately late and deliberately delayed. Posting at the moment the map finishes
+        /// loading lands in the middle of the navigation push, and iOS drops screen-change
+        /// posts made during a transition — so the announcement simply never happened.
+        func announceArrival() {
+            guard !hasAnnouncedArrival else { return }
+            hasAnnouncedArrival = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                self?.scrollView?.announceAsScreenChange()
+            }
+        }
 
         func centerOnInitialLocationIfNeeded() {
             guard !hasCentered, let scrollView, scrollView.bounds.width > 0 else { return }

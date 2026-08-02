@@ -9,6 +9,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct PortlandMapScreen: View {
 
@@ -57,7 +58,10 @@ struct PortlandMapScreen: View {
                 .accessibilityLabel("Loading the Congress Square map")
 
         case .ready(let map):
-            PortlandMapView(map: map, commands: commands, onBackGesture: { dismiss() })
+            PortlandMapView(map: map,
+                            description: description(streetCount: map.features.count),
+                            commands: commands,
+                            onBackGesture: { dismiss() })
                 .ignoresSafeArea(edges: .bottom)
 
         case .failed:
@@ -84,14 +88,21 @@ struct PortlandMapScreen: View {
                     return
                 }
                 phase = .ready(result)
-                announceEntry(featureCount: result.features.count)
+                // With VoiceOver on, the map announces itself once it is on screen and
+                // focused — see `announceArrival`. With it off there is nothing to focus, so
+                // the same sentence is spoken outright.
+                if !UIAccessibility.isVoiceOverRunning {
+                    StreetFeedbackController.shared.announceScreenEntry(
+                        description(streetCount: result.features.count))
+                }
             }
         }
     }
 
-    private func announceEntry(featureCount: Int) {
-        StreetFeedbackController.shared.announceScreenEntry(
-            "Congress Square, downtown Portland. A street map of \(featureCount) streets. "
-            + "Drag one finger to explore, two fingers to pan the map.")
+    /// The map's name first, because that is the thing a user needs to hear on arrival and
+    /// the thing that was going missing.
+    private func description(streetCount: Int) -> String {
+        "Congress Square, downtown Portland. A tactile street map of \(streetCount) streets. "
+        + "Drag one finger to explore, two fingers to pan."
     }
 }

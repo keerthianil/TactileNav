@@ -4,7 +4,7 @@
 //
 //  The intersection you can put a finger on.
 //
-//  Four surfaces, four signatures, so a finger can tell where it is standing without being
+//  Three surfaces, three signatures, so a finger can tell where it is standing without being
 //  told:
 //
 //    roadway    heavy continuous buzz    1.00 / 0.10   deep, unmistakable, and the one place
@@ -13,16 +13,18 @@
 //    crossing   sharp transient ticks    1.00 / 1.00   discrete taps read as painted markings
 //                                                      rather than smearing into the roadway
 //                                                      buzz right beside them
-//    kerb ramp  silence, then one tap                  the only element that goes quiet first;
-//                                                      a landmark you notice by the gap
+//    elsewhere  nothing                                silence is how a gap reads as a gap
 //
 //  Roadway versus sidewalk is the distinction that matters, and it is carried by sharpness
 //  rather than by intensity — a low-sharpness rumble and a high-sharpness vibration feel like
 //  different materials, where loud and quiet just feels like the same thing further away.
 //
-//  Exploration runs on raw touches, not a gesture recognizer: inside a direct-interaction
-//  accessibility element VoiceOver hands touches to the responder chain, and recognizers on
-//  that view do not fire dependably.
+//  **This works with VoiceOver off as well as on, and both need testing.** Exploration runs on
+//  raw touches rather than a gesture recognizer, which is what makes the two paths identical:
+//  inside a direct-interaction accessibility element VoiceOver hands touches straight to the
+//  responder chain, and recognizers on that view do not fire dependably. A recognizer-based
+//  version works with VoiceOver off and goes completely dead with it on, so a pass with
+//  VoiceOver off proves nothing on its own — and neither does a pass with it on.
 //
 
 import AVFoundation
@@ -36,12 +38,7 @@ import UIKit
 nonisolated enum IntersectionPalette {
     static let road = CGColor(red: 0x02 / 255, green: 0x3E / 255, blue: 0x8A / 255, alpha: 1)
     static let sidewalk = CGColor(red: 0x9E / 255, green: 0x9E / 255, blue: 0x9E / 255, alpha: 1)
-    /// The paved band a crossing is painted on. Darker than the sidewalk so the two are not
-    /// mistaken for each other where they meet at a corner.
-    static let crossingSurface = CGColor(gray: 0.42, alpha: 1)
     static let crossingStripe = CGColor(gray: 1, alpha: 1)
-    static let kerbRamp = CGColor(red: 0xE5 / 255, green: 0x1D / 255, blue: 0x4B / 255, alpha: 1)
-    static let dotBorder = CGColor(gray: 1, alpha: 1)
     static let background = CGColor(gray: 1, alpha: 1)
 }
 
@@ -57,13 +54,11 @@ final class IntersectionCanvasView: UIView {
         ctx.setFillColor(IntersectionPalette.background)
         ctx.fill(rect)
 
-        // Order matters, and it is the order paint goes down in the real world: roadway,
-        // then the sidewalk beside it, then the markings painted on the roadway, then the
-        // ramps that sit at the ends of those markings.
+        // Order matters, and it is the order paint goes down in the real world: roadway, then
+        // the sidewalk beside it, then the markings painted on the roadway.
         stroke(layout.bands.filter { $0.surface == .road }, IntersectionPalette.road, in: ctx)
         stroke(layout.bands.filter { $0.surface == .sidewalk }, IntersectionPalette.sidewalk, in: ctx)
         drawCrossings(layout.bands.filter { $0.surface == .crossing }, in: ctx)
-        drawRamps(layout.dots, in: ctx)
     }
 
     private func stroke(_ bands: [IntersectionBand], _ color: CGColor, in ctx: CGContext) {
@@ -78,56 +73,41 @@ final class IntersectionCanvasView: UIView {
         }
     }
 
-    /// A crossing: a paved band from kerb to kerb with white bars painted across it.
+    /// A crossing: white bars painted on the roadway, and only on the roadway.
     ///
-    /// The band underneath is not decoration. Half of a crossing here lies over the roadway
-    /// and half over the space beside it, and white paint is invisible against the white
-    /// background — so bars alone would make a crossing appear and disappear along its own
-    /// length. Real crossings are white on asphalt for exactly the same reason.
+    /// A crossing runs corner to corner, but its markings exist only over the asphalt — that
+    /// is true on the ground, and here it is also what makes them visible. Paint drawn along
+    /// the whole span would be white on a white background for the outer half of its length,
+    /// so a crossing would appear and disappear along itself. Confining the bars to the
+    /// roadway puts every one of them on dark blue.
     ///
     /// The bars run *across* the direction you walk and repeat *along* it, which is what a
     /// zebra is. Getting it the other way round gives a solid patch that reads as a notch cut
     /// out of the road.
     private func drawCrossings(_ bands: [IntersectionBand], in ctx: CGContext) {
-        let stripe = PhysicalDimensions.mmToPoints(IntersectionLayout.crossingStripeWidthMM)
-        let count = IntersectionLayout.crossingStripeCount
+        let bar = PhysicalDimensions.mmToPoints(IntersectionLayout.crossingBarLengthMM)
+        let count = IntersectionLayout.crossingBarCount
+        // Each crossing meets exactly one roadway, square on and centred on its midpoint, so
+        // the painted span is simply the width of that roadway.
+        let painted = PhysicalDimensions.mmToPoints(IntersectionLayout.roadWidthMM)
 
+        ctx.setFillColor(IntersectionPalette.crossingStripe)
         for band in bands {
             let dx = band.to.x - band.from.x
             let dy = band.to.y - band.from.y
-            let length = max(hypot(dx, dy), 0.001)
             let mid = CGPoint(x: (band.from.x + band.to.x) / 2, y: (band.from.y + band.to.y) / 2)
 
             ctx.saveGState()
             ctx.translateBy(x: mid.x, y: mid.y)
             ctx.rotate(by: atan2(dy, dx))
 
-            ctx.setFillColor(IntersectionPalette.crossingSurface)
-            ctx.fill(CGRect(x: -length / 2, y: -band.width / 2, width: length, height: band.width))
-
-            ctx.setFillColor(IntersectionPalette.crossingStripe)
-            // Bars evenly spaced along the walk, inset so none sits half off the end.
-            let pitch = length / CGFloat(count + 1)
-            for index in 1...count {
-                let along = -length / 2 + pitch * CGFloat(index)
-                ctx.fill(CGRect(x: along - stripe / 2, y: -band.width / 2,
-                                width: stripe, height: band.width))
+            let pitch = painted / CGFloat(count)
+            for index in 0..<count {
+                let along = (CGFloat(index) - CGFloat(count - 1) / 2) * pitch
+                ctx.fill(CGRect(x: along - bar / 2, y: -band.width / 2,
+                                width: bar, height: band.width))
             }
             ctx.restoreGState()
-        }
-    }
-
-    private func drawRamps(_ dots: [IntersectionDot], in ctx: CGContext) {
-        for dot in dots {
-            let radius = dot.diameter / 2
-            let box = CGRect(x: dot.center.x - radius, y: dot.center.y - radius,
-                             width: dot.diameter, height: dot.diameter)
-            ctx.setFillColor(IntersectionPalette.kerbRamp)
-            ctx.fillEllipse(in: box)
-            // A white ring, so a ramp still reads as a ramp where it sits on the roadway.
-            ctx.setStrokeColor(IntersectionPalette.dotBorder)
-            ctx.setLineWidth(max(PhysicalDimensions.mmToPoints(0.5), 1))
-            ctx.strokeEllipse(in: box)
         }
     }
 }
@@ -152,19 +132,20 @@ final class IntersectionFeedbackController {
         intensity: 1.0, sharpness: 1.0,
         mode: .burst(pulseCount: 1, onDuration: 0.05, offDuration: 0.12))
 
+    /// What the finger is on, or nil for the space between things. Readable so a test can
+    /// drive the touch path and check what it resolved to.
+    private(set) var currentSurface: IntersectionSurface?
+
     func enter(id: String, surface: IntersectionSurface, name: String, speaking: Bool) {
         guard id != activeID else { return }
         activeID = id
         haptics.stopAll()
 
+        currentSurface = surface
         switch surface {
         case .road: haptics.start(pattern: .heavyBuzzContinuous)
         case .sidewalk: haptics.start(pattern: .streetContinuous)
         case .crossing: haptics.start(pattern: Self.crossingTick)
-        case .kerbRamp:
-            // Deliberately no continuous pattern. Everything stops and a single tap fires, so
-            // a ramp is found by the silence as much as by the tap.
-            haptics.playSingleTap()
         }
 
         guard speaking else { return }
@@ -192,6 +173,7 @@ final class IntersectionFeedbackController {
 
     func leave() {
         activeID = nil
+        currentSurface = nil
         haptics.stopAll()
     }
 
@@ -267,8 +249,8 @@ final class IntersectionTouchView: UIView {
         isAccessibilityElement = true
         accessibilityTraits = [.allowsDirectInteraction]
         accessibilityLabel = "Intersection diagram"
-        accessibilityHint = "Drag one finger to feel the roadway, sidewalks, crossings "
-            + "and kerb ramps."
+        accessibilityHint = "Drag one finger to feel the roadway, the sidewalks and the "
+            + "crossings."
         if #available(iOS 17.0, *) { accessibilityDirectTouchOptions = .silentOnTouch }
     }
 
@@ -297,6 +279,17 @@ final class IntersectionTouchView: UIView {
         trackingTouch = nil
         feedback.leave()
     }
+
+    /// The surface currently under the finger. Exposed so a test can drive `explore(at:)`
+    /// and check the result, with VoiceOver off as well as on.
+    var currentSurface: IntersectionSurface? { feedback.currentSurface }
+
+    /// Resolve and act on a point, in this view's coordinates.
+    ///
+    /// Called straight from the raw touch handlers, and directly from tests — there is no
+    /// gesture recognizer in between, which is exactly why the behaviour is identical with
+    /// VoiceOver on and off.
+    func explore(at point: CGPoint) { update(at: point) }
 
     private func update(at point: CGPoint) {
         guard let layout else { return }

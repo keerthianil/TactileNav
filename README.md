@@ -19,8 +19,8 @@ scale would make that untrue.
 The extract covers roughly 3.7 × 2.4 km of downtown Portland, from Marginal Way to the Commercial
 Street waterfront. It is **roads and nothing else**. The data also carries sidewalks and crossings and
 they are deliberately dropped: at city scale they crowd every junction with lines a few millimetres
-apart, which reads as noise under a finger rather than as a street network. Sidewalks, crossings and
-kerb ramps belong to the intersection view, where there is room to tell them apart.
+apart, which reads as noise under a finger rather than as a street network. Sidewalks and crossings
+belong to the intersection view, where there is room to tell them apart.
 
 ### Sizing
 
@@ -88,15 +88,18 @@ important. The junction it names is real, and the audio runs on the real bearing
 |---|---|---|
 | Roadway | 12 mm | Continuous buzz, 1.0 / 0.10 |
 | Sidewalk | 4 mm | Continuous buzz, 0.78 / 0.78 |
-| Crossing | 5 mm | Sharp transient ticks, 1.0 / 1.00 |
-| Kerb ramp | 5 mm dot | Everything stops, then one tap |
+| Crossing | 2.8 mm | Sharp transient ticks, 1.0 / 1.00 |
+| Between them | — | Nothing |
 
 Roadway versus sidewalk is the distinction that matters, and it is carried by **sharpness** rather than
 intensity — a low-sharpness rumble and a high-sharpness vibration feel like different materials, where
 loud and quiet just feels like the same thing further away.
 
-The sidewalks form a square around the junction and the four crossings are the sides of that square,
-each bridging two corners and spanning the roadway between them. A kerb ramp sits at each corner.
+The sidewalks sit one kerb back from the roadway — 11.8 mm from the centre, derived as half the roadway
+plus the crossing plus the kerb plus half the sidewalk — and form a square around the junction. The four
+crossings are the sides of that square, each bridging two corners and spanning the roadway between them.
+Crossing bars are painted only where the crossing lies over the roadway, which is both true on the
+ground and what keeps white paint off a white background.
 
 ## Gestures
 
@@ -125,6 +128,25 @@ completely dead with it on.
 Each map is a single accessibility element with `.allowsDirectInteraction` and, on iOS 17+,
 `.silentOnTouch`, re-applied whenever VoiceOver is toggled. Speech goes out as a high-priority
 `.announcement` under VoiceOver and through `AVSpeechSynthesizer` otherwise.
+
+Arriving on the street map, VoiceOver focus is moved onto the map itself and reads the map's own label,
+which leads with the name — "Congress Square, downtown Portland…". A detached string posted as a
+screen-change announcement is unreliable here: it competes with the push transition and the navigation
+title, and is routinely dropped, which is how the map came to open without saying which map it was.
+
+### Testing
+
+**Both states need testing, and a pass in one proves nothing about the other.** Exploration runs on raw
+touches specifically so the two paths are the same code, but that is the claim under test, not a
+guarantee — a gesture-recognizer version works with VoiceOver off and is completely dead with it on.
+
+- **VoiceOver off** — drag one finger across each map and confirm it buzzes continuously, that surfaces
+  are distinguishable, and that speech names what is under the finger.
+- **VoiceOver on** — the same, plus: the map announces its name on arrival, the Actions rotor offers
+  pan and recentre, and a three-finger swipe right goes back.
+- **Both** — a one-finger swipe from anywhere, including the left edge, must never navigate back.
+
+Haptics need a physical device either way; the simulator has nothing to vibrate.
 
 ## Foundation
 
@@ -163,7 +185,7 @@ screen, so a screen point means nothing once the map has been panned.
 Open `TactileNav.xcodeproj` and run. iOS 16+.
 
 Haptics need a physical device — the simulator has nothing to vibrate. So does any real check of
-VoiceOver behaviour.
+VoiceOver behaviour. See **VoiceOver → Testing** above for what to exercise in each state.
 
 ```bash
 xcodebuild test -project TactileNav.xcodeproj -scheme TactileNav -destination 'platform=iOS Simulator,name=iPhone 17 Pro'

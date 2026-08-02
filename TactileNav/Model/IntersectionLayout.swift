@@ -7,9 +7,8 @@
 //  This is the close-up counterpart to the street map. The map is a whole neighbourhood, so
 //  it can only afford one kind of line — everything is a road, drawn 4 mm wide, and sidewalks
 //  and crossings would crowd every junction into noise. Here there is one junction and a whole
-//  screen to spend on it, so the parts a pedestrian actually has to tell apart get room: a
-//  wide roadway, a sidewalk set back behind the kerb, a marked crossing, and the kerb ramps at
-//  each end of it.
+//  screen to spend on it, so the three parts a pedestrian actually has to tell apart get room:
+//  a wide roadway, a sidewalk set back behind the kerb, and a marked crossing between them.
 //
 //  The layout is schematic — a plus, axis-aligned — rather than a projection of the real
 //  bearings. Two reasons. A finger tracing a leg wants a straight line it can follow without
@@ -35,23 +34,19 @@ nonisolated enum IntersectionSurface {
     case sidewalk
     /// The marked crossing over a roadway.
     case crossing
-    /// The kerb ramp at either end of a crossing — where you wait, and where you arrive.
-    case kerbRamp
 
     var elementType: TactileElementType {
         switch self {
         case .road: return .road
         case .sidewalk: return .street
         case .crossing: return .crosswalk
-        case .kerbRamp: return .landmark
         }
     }
 
-    /// Resolves an overlap. A crossing is painted on top of a road, and a ramp sits at the end
-    /// of a crossing, so a tie goes to the smaller, harder-to-find thing.
+    /// Resolves an overlap. A crossing is painted over a roadway, so a tie goes to the
+    /// crossing — the thinner, harder-to-find thing.
     var priority: Int {
         switch self {
-        case .kerbRamp: return 3
         case .crossing: return 2
         case .sidewalk: return 1
         case .road: return 0
@@ -73,55 +68,48 @@ nonisolated struct IntersectionBand {
     let hitRadius: CGFloat
 }
 
-nonisolated struct IntersectionDot {
-    let id: String
-    let name: String
-    let center: CGPoint
-    let diameter: CGFloat
-    let hitRadius: CGFloat
-}
-
 // MARK: - Layout
 
 nonisolated struct IntersectionLayout {
 
     // MARK: Physical constants (millimetres on the glass)
 
-    /// The roadway. Three times the width of a street line on the map — this is the one
+    /// The roadway. Three times the width of a street line on the wider map — this is the one
     /// surface a pedestrian has to recognise instantly, and at this zoom there is room for it.
     static let roadWidthMM: CGFloat = 12.0
     static let sidewalkWidthMM: CGFloat = 4.0
-    /// Width of one painted bar, across the direction you walk.
-    static let crossingStripeWidthMM: CGFloat = 2.8
-    static let crossingStripeCount = 3
-    /// How wide the crossing is — the band you stay inside while crossing.
-    ///
-    /// Only slightly wider than the sidewalk it continues. Much wider and the crossings stop
-    /// reading as part of the same line and start reading as four blocks laid over the
-    /// junction, which is the opposite of the shape a walker needs to see.
-    static let crossingWidthMM: CGFloat = 5.0
-    static let kerbRampDiameterMM: CGFloat = 5.0
+    /// A crossing is a thin line, the same weight as the paint on the ground.
+    static let crossingWidthMM: CGFloat = 2.8
+    /// Length of one painted bar along the direction you walk.
+    static let crossingBarLengthMM: CGFloat = 1.4
+    static let crossingBarCount = 3
+    /// Kerb: bare ground between the edge of the roadway and the near edge of the sidewalk.
+    static let kerbGapMM: CGFloat = 1.0
 
     /// Distance from the centre to a sidewalk's centreline, and to the crossings.
     ///
+    /// Derived, not chosen, so the pieces cannot drift into each other if one of them is
+    /// retuned: half the roadway, then the width of the crossing that runs along this line,
+    /// then the kerb, then half the sidewalk itself. It works out at 11.8 mm.
+    ///
     /// The sidewalks form a square around the junction and the four crossings are the sides of
     /// that square — a crossing is collinear with the sidewalk it continues, bridging the gap
-    /// from one corner to the next. That is how a real junction reads to someone walking it:
-    /// you follow the sidewalk, the kerb drops, you cross, and you are back on the sidewalk.
-    ///
-    /// Wide enough that a crossing clears the roadway it spans with room to spare.
-    static let sidewalkOffsetMM: CGFloat = 18.0
+    /// from one corner to the next. That is how a junction reads to someone walking it: follow
+    /// the sidewalk, the kerb drops, cross, and you are back on the sidewalk.
+    static var sidewalkOffsetMM: CGFloat {
+        roadWidthMM / 2 + crossingWidthMM + kerbGapMM + sidewalkWidthMM / 2
+    }
 
-    // MARK: Touch floors (points)
+    // MARK: Touch floor (points)
 
-    /// Below about this, a line is drawn but cannot reliably be found by a moving finger.
+    /// Below about this, a line is drawn but cannot reliably be found by a moving finger. The
+    /// crossings in particular are thinner than this on purpose — they are painted lines, and
+    /// widening the drawing to make them catchable would misrepresent the ground.
     static let minimumHitRadius: CGFloat = 18
-    static let dotHitRadius: CGFloat = 22
 
     // MARK: Contents
 
     let bands: [IntersectionBand]
-    let dots: [IntersectionDot]
     let size: CGSize
     let center: CGPoint
     /// The streets this junction is made of, for what gets spoken.
@@ -149,7 +137,6 @@ nonisolated struct IntersectionLayout {
         let reach = max(size.width, size.height)
 
         var bands: [IntersectionBand] = []
-        var dots: [IntersectionDot] = []
 
         func band(_ id: String, _ surface: IntersectionSurface, _ name: String,
                   _ from: CGPoint, _ to: CGPoint, _ width: CGFloat) {
@@ -217,27 +204,7 @@ nonisolated struct IntersectionLayout {
                  crossing.from, crossing.to, crossingWidth)
         }
 
-        // --- Kerb ramps, one at each of the four corners.
-        //
-        // A corner is shared by two crossings, so there are four ramps and not eight — which
-        // is also how it works on the ground: you stand on one ramp and choose which of the
-        // two crossings to take.
-        let corners: [(String, CGPoint)] = [
-            ("north-west", CGPoint(x: center.x - corner, y: center.y - corner)),
-            ("north-east", CGPoint(x: center.x + corner, y: center.y - corner)),
-            ("south-west", CGPoint(x: center.x - corner, y: center.y + corner)),
-            ("south-east", CGPoint(x: center.x + corner, y: center.y + corner)),
-        ]
-        for (name, point) in corners {
-            dots.append(IntersectionDot(
-                id: "ramp-\(name)",
-                name: "Kerb ramp, \(name.replacingOccurrences(of: "-", with: " ")) corner",
-                center: point,
-                diameter: mm(kerbRampDiameterMM),
-                hitRadius: dotHitRadius))
-        }
-
-        return IntersectionLayout(bands: bands, dots: dots, size: size, center: center,
+        return IntersectionLayout(bands: bands, size: size, center: center,
                                   alongName: alongName, acrossName: acrossName)
     }
 
@@ -246,31 +213,23 @@ nonisolated struct IntersectionLayout {
     /// What is under a point, or nil for the space between things.
     ///
     /// Nearest thing wins, with `priority` breaking a near-tie — a crossing really is painted
-    /// on top of the roadway, and a ramp really does sit at the end of a crossing, so when two
-    /// are equally close the smaller one is the honest answer.
+    /// over the roadway, so when the two are equally close the crossing is the honest answer.
     func hit(_ point: CGPoint) -> (id: String, surface: IntersectionSurface, name: String)? {
         var best: (id: String, surface: IntersectionSurface, name: String, distance: CGFloat)?
 
-        func consider(_ id: String, _ surface: IntersectionSurface, _ name: String, _ distance: CGFloat) {
-            guard let current = best else {
-                best = (id, surface, name, distance)
-                return
-            }
-            if distance < current.distance - Self.tieBreak {
-                best = (id, surface, name, distance)
-            } else if abs(distance - current.distance) <= Self.tieBreak,
-                      surface.priority > current.surface.priority {
-                best = (id, surface, name, distance)
-            }
-        }
-
-        for dot in dots {
-            let distance = hypot(point.x - dot.center.x, point.y - dot.center.y)
-            if distance <= dot.hitRadius { consider(dot.id, .kerbRamp, dot.name, distance) }
-        }
         for band in bands {
             let distance = distanceToSegment(point, band.from, band.to)
-            if distance <= band.hitRadius { consider(band.id, band.surface, band.name, distance) }
+            guard distance <= band.hitRadius else { continue }
+            guard let current = best else {
+                best = (band.id, band.surface, band.name, distance)
+                continue
+            }
+            if distance < current.distance - Self.tieBreak {
+                best = (band.id, band.surface, band.name, distance)
+            } else if abs(distance - current.distance) <= Self.tieBreak,
+                      band.surface.priority > current.surface.priority {
+                best = (band.id, band.surface, band.name, distance)
+            }
         }
         return best.map { ($0.id, $0.surface, $0.name) }
     }
