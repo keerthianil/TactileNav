@@ -4,17 +4,17 @@
 //
 //  Haptics and speech for the Congress Square street map.
 //
-//  Three surfaces, three signatures, and silence off them:
+//  One surface, one signature, and silence off it:
 //
-//    road       heavy continuous buzz     intensity 1.0   sharpness 0.10
-//    sidewalk   softer continuous buzz    intensity 0.78  sharpness 0.78
-//    crosswalk  sharp transient tick      intensity 1.0   sharpness 1.00, one tap / 0.17 s
-//    empty      nothing at all
+//    road    heavy continuous buzz    intensity 1.0, sharpness 0.10, held until the finger
+//            leaves — a deep rumble rather than a bright vibration, because a low sharpness
+//            spreads across more of the fingertip and is easier to stay on top of.
+//    empty   nothing at all
 //
-//  The distinction that matters most is road vs. sidewalk: same shape, different texture, so
-//  a finger can tell the roadway from the walkway without being told. The crosswalk tick is
-//  deliberately transient rather than a short continuous pulse — a tap reads as a discrete
-//  marking, where a pulse blurs into the road buzz beside it.
+//  The buzz is one 100-second continuous event on an advanced player, started when the finger
+//  enters a road and stopped when it leaves. It is deliberately *not* restarted per touch
+//  sample: retriggering at 60 Hz turns a steady rumble into a stutter, and the gap between
+//  players is audible as a break in the line.
 //
 //  Speech is dwell-gated and haptics are not. See `TactileSpeechChannel` for why.
 //
@@ -27,63 +27,39 @@ import UIKit
 
 // MARK: - The element handed to the policy
 
-/// The minimum a feedback policy needs to know about a surface under the finger.
+/// The minimum a feedback policy needs to know about the road under the finger.
 ///
 /// The shared policy dispatches on `elementType` and speaks `properties.name`, so this
-/// carries those and nothing else. `name` is the *spoken* form rather than the raw street
-/// name: for a road they are the same thing, and for a sidewalk or crossing the spoken form
-/// is the one that identifies it.
+/// carries those and nothing else.
 struct StreetSurfaceElement: TactileMapElement {
     let id: String
-    let elementType: TactileElementType
+    let elementType: TactileElementType = .road
     let properties: TactileProperties
 
     /// Not used for feedback decisions; the geometry lives in `StreetMap` in content points.
     var geometry: TactileGeometry { .point(TactileCoordinate(x: 0, y: 0)) }
 
-    init(id: String, surface: StreetSurface, announcement: String) {
+    init(id: String, announcement: String) {
         self.id = id
-        self.elementType = surface.elementType
         self.properties = TactileProperties(name: announcement)
     }
 }
 
-// MARK: - Haptic patterns
-
-extension HapticPattern {
-    /// A single sharp tap every 0.17 s, looped.
-    ///
-    /// The shared `crosswalkTick` preset hits the same cadence with short *continuous*
-    /// pulses. A transient tap is crisper and cannot smear into a steady vibration, which
-    /// matters here because a crossing is usually felt with a road buzzing right beside it.
-    static let crosswalkTransientTick = HapticPattern(
-        intensity: 1.0,
-        sharpness: 1.0,
-        mode: .burst(pulseCount: 1, onDuration: 0.05, offDuration: 0.12)
-    )
-}
-
 // MARK: - Policy
 
-/// Maps the three street surfaces onto their haptic signatures and spoken names.
+/// Gives a road its buzz and its name.
 ///
 /// Only `onEnter` is overridden; everything else — stopping, tap handling — is inherited.
 @MainActor
 final class StreetFeedbackPolicy: OutdoorFeedbackPolicy {
 
     override func onEnter(element: any TactileMapElement, touchType: TouchType) {
-        switch element.elementType {
-        case .road:
-            hapticEngine.start(pattern: .heavyBuzzContinuous)
-        case .street:
-            hapticEngine.start(pattern: .streetContinuous)
-        case .crosswalk:
-            hapticEngine.start(pattern: .crosswalkTransientTick)
-        default:
+        guard element.elementType == .road else {
             super.onEnter(element: element, touchType: touchType)
             return
         }
-        // Every surface names itself; the inherited policy only speaks for some types.
+        hapticEngine.start(pattern: .heavyBuzzContinuous)
+        // The inherited policy only speaks for some types, and a road has to name itself.
         audioEngine.speak(element.properties.name)
     }
 }
@@ -128,6 +104,15 @@ final class TactileSpeechChannel: NSObject, SpatialAudioEngine {
     /// the first street a finger happens to land on.
     func suppressExploration(for duration: TimeInterval) {
         suppressedUntil = CACurrentMediaTime() + duration
+    }
+
+    /// Drop the hold immediately.
+    ///
+    /// The entry summary is a courtesy; a finger on the glass is an instruction. Someone who
+    /// starts exploring straight away has heard as much of the intro as they wanted, and
+    /// making them wait it out reads as the map simply not responding.
+    func endSuppression() {
+        suppressedUntil = 0
     }
 
     private var isSuppressed: Bool { CACurrentMediaTime() < suppressedUntil }
@@ -179,6 +164,10 @@ final class TactileSpeechChannel: NSObject, SpatialAudioEngine {
         pendingSpeech = nil
         if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
     }
+
+    /// Whether an utterance is waiting out its dwell. Readable so a test can tell a
+    /// suppressed channel (which drops requests) from a live one (which schedules them).
+    var hasSpeechPending: Bool { pendingSpeech != nil }
 
     /// Cancel anything queued but let whatever is mid-sentence finish. Used when a finger
     /// lifts: cutting the current street name off at that moment is just rude.
@@ -249,14 +238,15 @@ final class StreetFeedbackController {
         }
     }
 
-    /// A finger has entered a new surface. Called only on an actual change, so there is no
-    /// repeat to guard against here.
-    func enter(surface: StreetSurface, identifier: String, announcement: String) {
+    /// A finger has entered a road. Called only on an actual change of road, so the buzz is
+    /// never restarted while a finger stays on one street — which is what keeps it a steady
+    /// rumble rather than a stutter.
+    func enter(identifier: String, announcement: String) {
         guard identifier != activeIdentifier else { return }
         activeIdentifier = identifier
         haptics.stopAll()
         policy.onEnter(
-            element: StreetSurfaceElement(id: identifier, surface: surface, announcement: announcement),
+            element: StreetSurfaceElement(id: identifier, announcement: announcement),
             touchType: .direct)
     }
 
@@ -273,6 +263,11 @@ final class StreetFeedbackController {
         activeIdentifier = nil
         haptics.stopAll()
         speech.cancelPending()
+    }
+
+    /// A finger has arrived on the map. Ends the screen-entry hold — see `endSuppression`.
+    func beginExploring() {
+        speech.endSuppression()
     }
 
     func playTap() {

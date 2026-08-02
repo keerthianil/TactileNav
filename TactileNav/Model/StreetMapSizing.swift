@@ -10,20 +10,24 @@
 //  and an iPad. Sizes derived from the viewport (a fraction of the screen's short edge,
 //  say) fail that test — they change with the device and with the visible span.
 //
-//  Two separate things both come off the 4 mm lane constant, and it is worth keeping them
-//  apart:
+//  Line width and map scale are two independent numbers, and the important thing is that they
+//  stay independent:
 //
 //    • **Line width.** Every road is drawn 4 mm wide, whatever its lane count. 4 mm is a
 //      perceptual constant, not a measurement of asphalt — it is about the narrowest line a
 //      fingertip can reliably follow. Scaling it by lane count sounds more faithful but is
 //      self-defeating: a four-lane road would be 16 mm, wider than a fingertip, so it stops
-//      being a line you can trace and becomes a plane with edges you cannot feel. It also
-//      buries the sidewalk beside it under the paint.
+//      being a line you can trace and becomes a plane with edges you cannot feel.
 //
-//    • **Map scale.** 4 mm on the glass represents one real 3.3 m lane, and that is what sets
-//      metres to points. So the *spacing* of the network — how far apart two streets are, how
-//      wide a junction is — stays true to the ground even though the lines themselves are a
-//      constant width. That is how street maps have always worked.
+//    • **Map scale.** How much ground fits on the glass. Set from block spacing, not from the
+//      lane width. Deriving it from the lane width — "4 mm on the glass is one real 3.3 m
+//      lane" — sounds principled but makes the drawing life-size: the whole extract becomes
+//      about 67 screens across and roughly 55 m of street fits on a phone, so the viewport
+//      holds two streets and a junction and the grid can never be seen at all. A map you have
+//      to pan for a minute to reach the next corner is not a map of a neighbourhood.
+//
+//  Every road map resolves this the same way: schematic line weight, separate scale. Both
+//  numbers here are still physical millimetres, so both are the same size on every device.
 //
 
 import CoreGraphics
@@ -36,32 +40,21 @@ nonisolated enum StreetMapSizing {
     /// Width of one traffic lane, and the width every road line is drawn at.
     static let laneWidthMM: CGFloat = 4.0
 
-    /// Sidewalks are a fixed width regardless of the street they follow — a real
-    /// sidewalk is narrower than a lane, but below ~4 mm a line is easy to slip off.
-    static let sidewalkWidthMM: CGFloat = 4.0
-
-    /// Width of a single crosswalk stripe.
-    static let crosswalkStripeWidthMM: CGFloat = 2.8
-
-    /// Number of zebra bars painted on a crossing.
-    static let crosswalkBarCount = 3
-
-    // A crossing is drawn as a compact mark *sized to the map's own line weights*, not to the
-    // real roadway. A crossing way in the data runs the full width of the street — four lanes
-    // is about four times the width of the 4 mm line the street is drawn as — so drawing it at
-    // true length gives a band sprawling far past the road on both sides. Everything else here
-    // is a schematic line, and the crossing has to read as part of the same drawing.
-
-    /// Length of a crossing mark along the walking direction, as a multiple of a road's width.
-    static let crosswalkLengthInRoadWidths: CGFloat = 1.7
-
-    /// Width of a crossing mark across the walking direction, as a multiple of a road's width.
-    static let crosswalkWidthInRoadWidths: CGFloat = 0.8
+    /// How far apart two parallel streets should sit on the glass.
+    ///
+    /// This is the map's scale, expressed the way it is actually judged: by how far a finger
+    /// has to travel from one street to the next. 40 mm is a little under a hand span, so a
+    /// block can be crossed in one movement and a junction and its neighbours are on screen
+    /// together — which is what makes a grid feel like a grid rather than a corridor.
+    static let blockSpacingMM: CGFloat = 40.0
 
     // MARK: - Real-world reference
 
-    /// Standard urban travel lane. The single number tying millimetres to metres.
+    /// Standard urban travel lane.
     static let laneWidthMeters: CGFloat = 3.3
+
+    /// A typical downtown Portland block, and the ground `blockSpacingMM` represents.
+    static let blockLengthMeters: CGFloat = 120.0
 
     // MARK: - Derived scale
 
@@ -72,43 +65,26 @@ nonisolated enum StreetMapSizing {
 
     /// Screen points per real-world metre.
     ///
-    /// Derived, never chosen: `laneWidthPoints / laneWidthMeters`. On a 460 ppi phone this
-    /// is ≈ 7.3 pt/m, on an iPad ≈ 6.3 — the physical size is constant, the point count
-    /// varies with pixel density.
+    /// Derived from block spacing, not from the lane width — see the note at the top of the
+    /// file. Both terms are physical, so the scale is the same on every device; only the
+    /// point count changes with pixel density.
     static var pointsPerMeter: CGFloat {
-        laneWidthPoints / laneWidthMeters
+        PhysicalDimensions.mmToPoints(blockSpacingMM) / blockLengthMeters
     }
 
     /// Stroke width for a road. The same for every road — see the note at the top of the file
     /// on why this deliberately does not scale with lane count.
     static var roadWidth: CGFloat { laneWidthPoints }
 
-    static var sidewalkWidth: CGFloat {
-        PhysicalDimensions.mmToPoints(sidewalkWidthMM)
-    }
-
-    static var crosswalkStripeWidth: CGFloat {
-        PhysicalDimensions.mmToPoints(crosswalkStripeWidthMM)
-    }
-
-    // MARK: - Hit-test radii (screen points)
+    // MARK: - Hit-test radius (screen points)
 
     /// Touch radius for a road.
     ///
     /// Wider than the drawn line on purpose. Half a 4 mm line is only ~12 pt, and on a dense
     /// real street grid that asks a finger to trace within about a metre and a half of a
     /// centreline. Floors in the low twenties are the established practice for exactly this
-    /// reason, and it stays under the sidewalk radius so a sidewalk beside a road is still
-    /// reachable rather than being swallowed.
+    /// reason.
     static let roadHitRadius: CGFloat = 22
-
-    /// Crossings are short and easy to miss between two streets, so they get a wider
-    /// catch radius than their 2.8 mm stripe would imply.
-    static let crosswalkHitRadius: CGFloat = 34
-
-    /// Sidewalks sit close to the roadway; a floor of 26 pt keeps them reachable without
-    /// swallowing the road beside them.
-    static let sidewalkHitRadius: CGFloat = 26
 
     // MARK: - Resolved metrics
 
@@ -122,12 +98,8 @@ nonisolated enum StreetMapSizing {
     struct Metrics: Sendable {
         let laneWidthPoints: CGFloat
         let pointsPerMeter: CGFloat
-        let sidewalkWidth: CGFloat
-        let crosswalkStripeWidth: CGFloat
         let roadWidth: CGFloat
         let roadHitRadius: CGFloat
-        let sidewalkHitRadius: CGFloat
-        let crosswalkHitRadius: CGFloat
     }
 
     /// Resolve the current device's metrics. Call on the main actor.
@@ -136,25 +108,14 @@ nonisolated enum StreetMapSizing {
         Metrics(
             laneWidthPoints: laneWidthPoints,
             pointsPerMeter: pointsPerMeter,
-            sidewalkWidth: sidewalkWidth,
-            crosswalkStripeWidth: crosswalkStripeWidth,
             roadWidth: roadWidth,
-            roadHitRadius: roadHitRadius,
-            sidewalkHitRadius: sidewalkHitRadius,
-            crosswalkHitRadius: crosswalkHitRadius
+            roadHitRadius: roadHitRadius
         )
     }
 
     // MARK: - Palette
 
     static let roadColor = CGColor(red: 0x02 / 255, green: 0x3E / 255, blue: 0x8A / 255, alpha: 1)
-    static let sidewalkColor = CGColor(red: 0x9E / 255, green: 0x9E / 255, blue: 0x9E / 255, alpha: 1)
-    /// The crossing surface. Crossings are drawn as a band with white bars painted on it,
-    /// exactly as a real one reads: white paint on darker roadway. White bars alone would be
-    /// invisible against the white background and would erase the road where they overlapped
-    /// it — so the band is what makes a crossing findable at all.
-    static let crosswalkSurfaceColor = CGColor(gray: 0.42, alpha: 1)
-    static let crosswalkColor = CGColor(gray: 1, alpha: 1)
     static let backgroundColor = CGColor(gray: 1, alpha: 1)
 
     /// Labels are drawn along road centrelines, so they always sit on the dark road colour.
@@ -162,7 +123,6 @@ nonisolated enum StreetMapSizing {
     static let labelColor = CGColor(gray: 1, alpha: 1)
 
     /// Street-name label size. Fixed points, not scaled with the map — this is a visual aid
-    /// for sighted and low-vision users, not a tactile element. Roads are ~24 pt per lane
-    /// wide here, so a 13 pt label sits comfortably inside even a single-lane way.
+    /// for sighted and low-vision users, not a tactile element.
     static let labelFontSize: CGFloat = 13
 }

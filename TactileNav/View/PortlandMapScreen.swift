@@ -2,11 +2,10 @@
 //  PortlandMapScreen.swift
 //  TactileNav
 //
-//  The Congress Square screen: a pannable street-only tactile map of downtown Portland.
+//  The Congress Square screen: a pannable tactile map of the streets of downtown Portland.
 //
-//  Loading happens off the main thread — the extract is ~2,000 elements, and projecting it
-//  and building the spatial index would drop frames on the way in. All feedback stops when
-//  the screen goes away.
+//  Loading happens off the main thread — projecting the extract and building the spatial
+//  index would drop frames on the way in. All feedback stops when the screen goes away.
 //
 
 import SwiftUI
@@ -92,7 +91,7 @@ struct PortlandMapScreen: View {
 
     private func announceEntry(featureCount: Int) {
         StreetFeedbackController.shared.announceScreenEntry(
-            "Congress Square, downtown Portland. A street map of \(featureCount) streets, "
-            + "sidewalks and crossings. Drag one finger to explore, two fingers to pan the map.")
+            "Congress Square, downtown Portland. A street map of \(featureCount) streets. "
+            + "Drag one finger to explore, two fingers to pan the map.")
     }
 }

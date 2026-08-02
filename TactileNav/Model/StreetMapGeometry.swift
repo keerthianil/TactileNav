@@ -19,46 +19,24 @@ import Foundation
 import TactileMapCore
 import TactileMapView
 
-// MARK: - Surface types
+// MARK: - A drawable, touchable road
 
-/// The three surfaces this map draws. Each has its own haptic signature and its own
-/// spoken form, and they are hit-tested in this order of priority.
-nonisolated enum StreetSurface {
-    case crosswalk
-    case sidewalk
-    case road
-
-    var elementType: TactileElementType {
-        switch self {
-        case .crosswalk: return .crosswalk
-        case .sidewalk: return .street
-        case .road: return .road
-        }
-    }
-
-    /// Breaks a tie when two lines are effectively under the finger together. A crossing is
-    /// painted on top of the road, and a sidewalk sits beside it, so that is the order.
-    var hitPriority: Int {
-        switch self {
-        case .crosswalk: return 2
-        case .sidewalk: return 1
-        case .road: return 0
-        }
-    }
-}
-
-// MARK: - A drawable, touchable feature
-
+/// One road, drawn and felt.
+///
+/// The map is roads and nothing else. Sidewalks and crossings exist in the extract and are
+/// deliberately dropped: at city scale they crowd every junction with lines a few millimetres
+/// apart, which reads as noise under a finger rather than as a street network. They belong to
+/// the intersection view, where there is room for them at a scale where they can be told
+/// apart. Here, one surface means one haptic and no ambiguity about what is under the finger.
 nonisolated struct StreetFeature {
     let id: String
     let name: String
-    let surface: StreetSurface
     /// Polyline in content points.
     let points: [CGPoint]
     let strokeWidth: CGFloat
     let hitRadius: CGFloat
     let lanes: Int
-    /// What VoiceOver says when a finger lands here.
+    /// What is spoken when a finger lands here.
     let announcement: String
     /// Bounding box already grown by the larger of the stroke half-width and hit radius.
     let touchBounds: CGRect
@@ -101,21 +79,11 @@ nonisolated struct StreetMap {
 
     // MARK: Lookup
 
-    /// How close two lines must be before type priority, rather than distance, decides.
-    private static let tieBreakMargin: CGFloat = 6
-
-    /// The feature under a content-space point, or nil for empty space.
+    /// The road under a content-space point, or nil for empty space.
     ///
-    /// **Nearest line wins.** Strict priority by type — crossing, then sidewalk, then road —
-    /// sounds right because a crossing is painted on top of the road it spans, but it means a
-    /// crossing's catch radius claims every road near it. With hundreds of crossings around
-    /// the junctions, a finger tracing a road would feel crossing ticks a good part of the
-    /// time while plainly looking at a road. So whichever line the finger is genuinely closest
-    /// to wins, and type priority only settles it when two are within a few points of each
-    /// other — which is exactly where a crossing really is on top of the road.
-    ///
-    /// The radius grows with finger speed. A fast drag samples further apart, so a fixed
-    /// radius lets the finger step over a line between two samples and feel nothing.
+    /// Nearest centreline wins. The radius grows with finger speed: a fast drag samples
+    /// further apart, so a fixed radius lets the finger step over a line between two samples
+    /// and feel nothing.
     func feature(at point: CGPoint, velocity: CGFloat) -> StreetFeature? {
         let bonus = min(velocity / hitConfig.velocityDivisor, hitConfig.velocityBonusMax)
 
@@ -125,15 +93,7 @@ nonisolated struct StreetMap {
             guard feature.touchBounds.insetBy(dx: -bonus, dy: -bonus).contains(point) else { continue }
             let distance = distanceToPolyline(point, feature.points)
             guard distance <= feature.hitRadius + bonus else { continue }
-
-            guard let current = best else {
-                best = (feature, distance)
-                continue
-            }
-            if distance < current.distance - Self.tieBreakMargin {
-                best = (feature, distance)
-            } else if abs(distance - current.distance) <= Self.tieBreakMargin,
-                      feature.surface.hitPriority > current.feature.surface.hitPriority {
+            if best == nil || distance < best!.distance {
                 best = (feature, distance)
             }
         }
@@ -158,7 +118,6 @@ nonisolated struct StreetMap {
         var best: (name: String, distance: CGFloat)?
         for featureIndex in index.candidates(near: point, radius: limit) {
             let feature = features[featureIndex]
-            guard feature.surface == .road else { continue }
             let distance = distanceToPolyline(point, feature.points)
             guard distance <= limit else { continue }
             if best == nil || distance < best!.distance {
@@ -191,8 +150,9 @@ nonisolated struct StreetMap {
         var maxX = -CGFloat.greatestFiniteMagnitude
         var maxY = -CGFloat.greatestFiniteMagnitude
 
-        for element in document.features {
-            guard let surface = surface(for: element.elementType) else { continue }
+        // Roads only. The extract also carries sidewalks and crossings; they are dropped here
+        // rather than filtered later so nothing downstream has to know they ever existed.
+        for element in document.features where element.elementType == .road {
             guard case .lineString(let coordinates) = element.geometry, coordinates.count >= 2 else { continue }
             let points = coordinates.map {
                 CGPoint(x: CGFloat($0.x) * scale, y: CGFloat($0.y) * scale)
@@ -201,7 +161,7 @@ nonisolated struct StreetMap {
                 minX = min(minX, point.x); maxX = max(maxX, point.x)
                 minY = min(minY, point.y); maxY = max(maxY, point.y)
             }
-            raws.append(ProjectedElement(element: element, surface: surface, points: points))
+            raws.append(ProjectedElement(element: element, points: points))
         }
 
         guard !raws.isEmpty else {
@@ -221,73 +181,29 @@ nonisolated struct StreetMap {
         let origin = CGPoint(x: minX - pad, y: minY - pad)
         let contentSize = CGSize(width: maxX - minX + pad * 2, height: maxY - minY + pad * 2)
 
-        // Pass 1: geometry, so sidewalks and crossings can be related to roads in pass 2.
-        var placed: [PlacedElement] = []
+        // Every road is one stroke width and one hit radius, so there is nothing to resolve
+        // per element beyond shifting it into the content box.
+        let stroke = metrics.roadWidth
+        let hitRadius = max(stroke / 2, metrics.roadHitRadius)
+
+        var features: [StreetFeature] = []
+        features.reserveCapacity(raws.count)
+
         for raw in raws {
-            let shifted = raw.points.map { CGPoint(x: $0.x - origin.x, y: $0.y - origin.y) }
-            let lanes = Int(raw.element.properties.custom["lanes"] ?? "") ?? 1
-            let stroke: CGFloat
-            switch raw.surface {
-            case .road: stroke = metrics.roadWidth
-            case .sidewalk: stroke = metrics.sidewalkWidth
-            case .crosswalk: stroke = metrics.crosswalkStripeWidth
-            }
-            placed.append(PlacedElement(
+            let points = raw.points.map { CGPoint(x: $0.x - origin.x, y: $0.y - origin.y) }
+            let box = boundingBox(points)
+            features.append(StreetFeature(
                 id: raw.element.id,
                 name: raw.element.properties.name,
-                surface: raw.surface,
-                points: shifted,
-                lanes: lanes,
-                stroke: stroke
-            ))
-        }
-
-        // Road-only grid, used to name the street a sidewalk follows or a crossing spans.
-        let roadEntries: [UniformGrid.Entry] = placed.enumerated().compactMap { offset, item in
-            guard item.surface == .road else { return nil }
-            return UniformGrid.Entry(index: offset, bounds: boundingBox(item.points))
-        }
-        let roadGrid = UniformGrid(cellSize: 256, entries: roadEntries)
-
-        // Pass 2: features with their spoken forms.
-        var features: [StreetFeature] = []
-        features.reserveCapacity(placed.count)
-
-        for item in placed {
-            let announcement: String
-            switch item.surface {
-            case .road:
-                // Bare street name — the surface itself is conveyed by the haptic.
-                announcement = item.name
-            case .sidewalk:
-                announcement = sidewalkAnnouncement(
-                    declaredName: item.name, points: item.points,
-                    placed: placed, roadGrid: roadGrid, metrics: metrics)
-            case .crosswalk:
-                announcement = crosswalkAnnouncement(
-                    declaredName: item.name, points: item.points,
-                    placed: placed, roadGrid: roadGrid, metrics: metrics)
-            }
-
-            let hitRadius: CGFloat
-            switch item.surface {
-            case .road: hitRadius = max(item.stroke / 2, metrics.roadHitRadius)
-            case .sidewalk: hitRadius = max(item.stroke / 2, metrics.sidewalkHitRadius)
-            case .crosswalk: hitRadius = max(item.stroke / 2, metrics.crosswalkHitRadius)
-            }
-
-            let box = boundingBox(item.points)
-            features.append(StreetFeature(
-                id: item.id,
-                name: item.name,
-                surface: item.surface,
-                points: item.points,
-                strokeWidth: item.stroke,
+                points: points,
+                strokeWidth: stroke,
                 hitRadius: hitRadius,
-                lanes: item.lanes,
-                announcement: announcement,
+                lanes: Int(raw.element.properties.custom["lanes"] ?? "") ?? 1,
+                // The bare street name. There is only one kind of thing on this map, so
+                // saying what it is adds nothing a finger has not already been told.
+                announcement: raw.element.properties.name,
                 touchBounds: box.insetBy(dx: -hitRadius, dy: -hitRadius),
-                drawBounds: box.insetBy(dx: -item.stroke, dy: -item.stroke)
+                drawBounds: box.insetBy(dx: -stroke, dy: -stroke)
             ))
         }
 
@@ -321,112 +237,6 @@ nonisolated struct StreetMap {
         )
     }
 
-    private static func surface(for type: TactileElementType) -> StreetSurface? {
-        switch type {
-        case .road: return .road
-        case .street: return .sidewalk
-        case .crosswalk: return .crosswalk
-        default: return nil
-        }
-    }
-
-    // MARK: Spoken forms
-    //
-    // A road says its bare name — the haptic already tells the finger it is a roadway.
-    //
-    // Sidewalks and crossings are different: this map has hundreds of each, and a name on its
-    // own answers the wrong question. So they always *lead with the surface type* and then add
-    // the best identifier available — the street they run along, the street they cross, or
-    // their own name when OpenStreetMap gives them one (a few are named trails). Hearing
-    // "Eastern Promenade Trail" without the word crosswalk tells you nothing about what you
-    // are standing on.
-
-    private static func sidewalkAnnouncement(
-        declaredName: String,
-        points: [CGPoint],
-        placed: [PlacedElement],
-        roadGrid: UniformGrid,
-        metrics: StreetMapSizing.Metrics
-    ) -> String {
-        // A named path keeps its name, behind the surface type.
-        if declaredName != "Sidewalk", !declaredName.isEmpty {
-            return "Sidewalk, \(declaredName)"
-        }
-
-        let midpoint = polylineMidpoint(points)
-        guard let nearest = nearestRoad(to: midpoint, placed: placed, roadGrid: roadGrid,
-                                        limit: 40 * metrics.pointsPerMeter)
-        else { return "Sidewalk" }
-
-        let onRoad = closestPointOnPolyline(midpoint, placed[nearest].points)
-        let side = cardinal(from: onRoad, to: midpoint)
-        let name = placed[nearest].name
-        guard !side.isEmpty else { return "Sidewalk, \(name)" }
-        return "\(side) sidewalk, \(name)"
-    }
-
-    private static func crosswalkAnnouncement(
-        declaredName: String,
-        points: [CGPoint],
-        placed: [PlacedElement],
-        roadGrid: UniformGrid,
-        metrics: StreetMapSizing.Metrics
-    ) -> String {
-        if declaredName != "Crosswalk", !declaredName.isEmpty {
-            return "Crosswalk, \(declaredName)"
-        }
-        // The street being crossed is the one the crossing actually intersects.
-        let midpoint = polylineMidpoint(points)
-        if let crossed = crossedRoad(points: points, placed: placed, roadGrid: roadGrid)
-            ?? nearestRoad(to: midpoint, placed: placed, roadGrid: roadGrid,
-                           limit: 25 * metrics.pointsPerMeter) {
-            return "Crosswalk across \(placed[crossed].name)"
-        }
-        return "Crosswalk"
-    }
-
-    private static func nearestRoad(
-        to point: CGPoint,
-        placed: [PlacedElement],
-        roadGrid: UniformGrid,
-        limit: CGFloat
-    ) -> Int? {
-        var best: (index: Int, distance: CGFloat)?
-        for candidate in roadGrid.candidates(near: point, radius: limit) {
-            let distance = distanceToPolyline(point, placed[candidate].points)
-            guard distance <= limit else { continue }
-            if best == nil || distance < best!.distance { best = (candidate, distance) }
-        }
-        return best?.index
-    }
-
-    private static func crossedRoad(
-        points: [CGPoint],
-        placed: [PlacedElement],
-        roadGrid: UniformGrid
-    ) -> Int? {
-        let box = boundingBox(points)
-        for candidate in roadGrid.candidates(intersecting: box) {
-            let roadPoints = placed[candidate].points
-            for (a, b) in zip(points, points.dropFirst()) {
-                for (c, d) in zip(roadPoints, roadPoints.dropFirst()) {
-                    if segmentsIntersect(a, b, c, d) { return candidate }
-                }
-            }
-        }
-        return nil
-    }
-
-    /// Cardinal direction of `to` relative to `from`, by dominant axis. Screen y grows
-    /// south because the document's y does, so a positive dy is south.
-    private static func cardinal(from: CGPoint, to: CGPoint) -> String {
-        let dx = to.x - from.x
-        let dy = to.y - from.y
-        guard abs(dx) > 0.5 || abs(dy) > 0.5 else { return "" }
-        if abs(dx) >= abs(dy) { return dx >= 0 ? "East" : "West" }
-        return dy >= 0 ? "South" : "North"
-    }
-
     // MARK: Labels
 
     /// Places at most one label per road element, on its longest straight run, and keeps
@@ -440,7 +250,7 @@ nonisolated struct StreetMap {
         }
 
         var candidates: [Candidate] = []
-        for feature in features where feature.surface == .road {
+        for feature in features {
             var best: (CGPoint, CGPoint, CGFloat)?
             for (a, b) in zip(feature.points, feature.points.dropFirst()) {
                 let length = hypot(b.x - a.x, b.y - a.y)
@@ -498,24 +308,12 @@ nonisolated struct StreetMap {
     }
 }
 
-// MARK: - Build-time intermediates
+// MARK: - Build-time intermediate
 
-/// An element projected into unshifted content points, before the content origin is known.
+/// A road projected into unshifted content points, before the content origin is known.
 nonisolated private struct ProjectedElement {
     let element: MapElement
-    let surface: StreetSurface
     let points: [CGPoint]
-}
-
-/// An element in final content points, with its stroke resolved but not yet its wording —
-/// sidewalks and crossings need every road placed before they can name their street.
-nonisolated private struct PlacedElement {
-    let id: String
-    let name: String
-    let surface: StreetSurface
-    let points: [CGPoint]
-    let lanes: Int
-    let stroke: CGFloat
 }
 
 // MARK: - Uniform grid

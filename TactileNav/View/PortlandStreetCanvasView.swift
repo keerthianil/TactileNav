@@ -10,9 +10,9 @@
 //  window the scroll view is currently showing, translated by the content offset.
 //
 //  That keeps every draw on the main thread with no shared mutable state, and the work per
-//  frame is small: the spatial index narrows ~2,000 polylines down to the few dozen whose ink
-//  can land in the viewport, and everything drawn is precomputed — points, stroke widths,
-//  colours and text runs all come ready-made from `StreetMap`.
+//  frame is small: the spatial index narrows the road network down to the few dozen polylines
+//  whose ink can land in the viewport, and everything drawn is precomputed — points, stroke
+//  widths and text runs all come ready-made from `StreetMap`.
 //
 
 import CoreText
@@ -62,24 +62,18 @@ final class PortlandStreetCanvasView: UIView {
         ctx.saveGState()
         ctx.translateBy(x: -contentOffset.x, y: -contentOffset.y)
 
-        let visible = map.features(in: window)
-
-        // Painting order matters: sidewalks sit under the roadway so a road's full width
-        // stays readable where the two overlap, and crossings sit on top of the road they
-        // span, the way a painted marking does.
-        stroke(visible.filter { $0.surface == .sidewalk },
-               color: StreetMapSizing.sidewalkColor, in: ctx)
-        stroke(visible.filter { $0.surface == .road },
-               color: StreetMapSizing.roadColor, in: ctx)
-        drawCrosswalks(visible.filter { $0.surface == .crosswalk }, metrics: map.metrics, in: ctx)
+        strokeRoads(map.features(in: window), in: ctx)
         drawLabels(map.labels(in: window), in: ctx)
 
         ctx.restoreGState()
     }
 
-    private func stroke(_ features: [StreetFeature], color: CGColor, in ctx: CGContext) {
+    /// Round caps and joins, so a road ends in a semicircle and turns without a notch. On a
+    /// map this dense the joins matter more than the caps: a mitred corner at a bend leaves a
+    /// spike of ink pointing away from the street.
+    private func strokeRoads(_ features: [StreetFeature], in ctx: CGContext) {
         guard !features.isEmpty else { return }
-        ctx.setStrokeColor(color)
+        ctx.setStrokeColor(StreetMapSizing.roadColor)
         ctx.setLineCap(.round)
         ctx.setLineJoin(.round)
         for feature in features where feature.points.count >= 2 {
@@ -89,58 +83,6 @@ final class PortlandStreetCanvasView: UIView {
             for point in feature.points.dropFirst() { ctx.addLine(to: point) }
             ctx.strokePath()
         }
-    }
-
-    /// A crossing: a small patch of roadway with zebra bars painted along it.
-    ///
-    /// Sized to the map's line weights rather than to the real street. A crossing way in the
-    /// data spans the whole roadway, which on a four-lane street is several times the width of
-    /// the 4 mm line that street is drawn as — at true length the crossing sprawls well past
-    /// the road on both sides and stops looking like part of the same drawing.
-    ///
-    /// The darker patch under the bars is what makes a crossing findable at all: white paint on
-    /// a white background is invisible, and drawn straight onto the road it just punches a hole
-    /// through it. Real crossings are white on asphalt for the same reason.
-    private func drawCrosswalks(_ features: [StreetFeature], metrics: StreetMapSizing.Metrics,
-                                in ctx: CGContext) {
-        guard !features.isEmpty else { return }
-
-        let length = metrics.roadWidth * StreetMapSizing.crosswalkLengthInRoadWidths
-        let width = metrics.roadWidth * StreetMapSizing.crosswalkWidthInRoadWidths
-        let count = StreetMapSizing.crosswalkBarCount
-        let barWidth = max(width / CGFloat(count * 2 + 1), 1.5)
-        let pitch = width / CGFloat(count)
-
-        for feature in features where feature.points.count >= 2 {
-            // Centre the mark on the crossing and align it with the way's local direction.
-            let centre = polylineMidpoint(feature.points)
-            let along = direction(of: feature.points)
-
-            ctx.saveGState()
-            ctx.translateBy(x: centre.x, y: centre.y)
-            ctx.rotate(by: atan2(along.y, along.x))
-
-            ctx.setFillColor(StreetMapSizing.crosswalkSurfaceColor)
-            ctx.fill(CGRect(x: -length / 2, y: -width / 2, width: length, height: width))
-
-            ctx.setFillColor(StreetMapSizing.crosswalkColor)
-            for bar in 0..<count {
-                // Bars run the length of the crossing — you walk along a bar to get across —
-                // and repeat sideways over its width.
-                let offset = (CGFloat(bar) - CGFloat(count - 1) / 2) * pitch
-                ctx.fill(CGRect(x: -length / 2, y: offset - barWidth / 2,
-                                width: length, height: barWidth))
-            }
-            ctx.restoreGState()
-        }
-    }
-
-    /// Unit vector along the middle of a polyline.
-    private func direction(of points: [CGPoint]) -> CGPoint {
-        let midIndex = max(points.count / 2, 1)
-        let a = points[midIndex - 1], b = points[midIndex]
-        let magnitude = max(hypot(b.x - a.x, b.y - a.y), 0.0001)
-        return CGPoint(x: (b.x - a.x) / magnitude, y: (b.y - a.y) / magnitude)
     }
 
     private func drawLabels(_ labels: [StreetLabel], in ctx: CGContext) {
