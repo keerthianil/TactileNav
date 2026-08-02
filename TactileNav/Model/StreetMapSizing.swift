@@ -86,6 +86,30 @@ nonisolated enum StreetMapSizing {
     /// reason.
     static let roadHitRadius: CGFloat = 22
 
+    // MARK: - Intersections
+
+    /// Side of the red intersection square, in millimetres on the glass.
+    static let intersectionBoxMM: CGFloat = 6.0
+
+    /// White outline around the box, so it reads as a marking sitting on the road rather than
+    /// a hole punched through it.
+    static let intersectionBorderMM: CGFloat = 0.5
+
+    /// Touch radius for an intersection. The box's half-width, floored so a small box is still
+    /// easy to land on. An intersection outranks the road under it, so this is the radius
+    /// inside which the junction — not the street — is what the finger feels.
+    static var intersectionBoxWidth: CGFloat { PhysicalDimensions.mmToPoints(intersectionBoxMM) }
+    static var intersectionHitRadius: CGFloat { max(intersectionBoxWidth / 2, 22) }
+
+    /// How close two road crossings must be to count as the same junction, in metres.
+    ///
+    /// Set just above the box's own footprint, so two crossing points whose 6 mm marks would
+    /// overlap on the glass collapse into one — an offset junction where a second cross street
+    /// meets a few metres along (Congress at Free and High, say) reads as a single findable
+    /// mark that names all of them, which is what a finger feels there anyway. Downtown blocks
+    /// are 80 m plus, so genuinely separate junctions are never merged.
+    static let intersectionClusterMeters: CGFloat = 25
+
     // MARK: - Resolved metrics
 
     /// Every device-dependent size, resolved once.
@@ -100,6 +124,9 @@ nonisolated enum StreetMapSizing {
         let pointsPerMeter: CGFloat
         let roadWidth: CGFloat
         let roadHitRadius: CGFloat
+        let intersectionBoxWidth: CGFloat
+        let intersectionHitRadius: CGFloat
+        let intersectionClusterPoints: CGFloat
     }
 
     /// Resolve the current device's metrics. Call on the main actor.
@@ -109,7 +136,10 @@ nonisolated enum StreetMapSizing {
             laneWidthPoints: laneWidthPoints,
             pointsPerMeter: pointsPerMeter,
             roadWidth: roadWidth,
-            roadHitRadius: roadHitRadius
+            roadHitRadius: roadHitRadius,
+            intersectionBoxWidth: intersectionBoxWidth,
+            intersectionHitRadius: intersectionHitRadius,
+            intersectionClusterPoints: intersectionClusterMeters * pointsPerMeter
         )
     }
 
@@ -117,6 +147,10 @@ nonisolated enum StreetMapSizing {
 
     static let roadColor = CGColor(red: 0x02 / 255, green: 0x3E / 255, blue: 0x8A / 255, alpha: 1)
     static let backgroundColor = CGColor(gray: 1, alpha: 1)
+
+    /// The intersection marker: NFB's red (#c1121f) with a white outline.
+    static let intersectionColor = CGColor(red: 0xC1 / 255, green: 0x12 / 255, blue: 0x1F / 255, alpha: 1)
+    static let intersectionBorderColor = CGColor(gray: 1, alpha: 1)
 
     /// Labels are drawn along road centrelines, so they always sit on the dark road colour.
     /// White gives roughly 8:1 contrast against it; a dark label would be near-illegible.

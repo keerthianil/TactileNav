@@ -441,10 +441,15 @@ struct PortlandMapView: UIViewRepresentable {
                            y: contentPoint.y - scrollView.contentOffset.y)
         }
 
-        private var currentFeatureID: String?
-        /// The surface currently under the finger. Readable so a test can drive the real
-        /// touch path and check what it resolved to, rather than re-deriving it.
-        private(set) var currentFeature: StreetFeature?
+        private var currentProbeID: String?
+        /// What is under the finger — a junction, a road, or nothing. Readable so a test can
+        /// drive the real touch path and check what it resolved to, rather than re-deriving it.
+        private(set) var currentProbe: MapProbe?
+        /// The road under the finger, when it is on a road rather than a junction.
+        var currentFeature: StreetFeature? {
+            if case .road(let road) = currentProbe { return road }
+            return nil
+        }
         private var lastPoint: CGPoint?
         private var lastMoveTime: CFTimeInterval = 0
         private var lastHitTestTime: CFTimeInterval = 0
@@ -499,24 +504,43 @@ struct PortlandMapView: UIViewRepresentable {
         }
 
         /// Touch events carry the content-space point, so a trace can be replayed against the
-        /// map, and the street under the finger — or `Background` for the space between
-        /// streets, which is what makes on-street time measurable from a trace.
+        /// map, and what the finger was on — a street, a junction, or `Background` for the
+        /// space between them, which is what makes on-street time measurable from a trace.
         ///
         /// The point is in content coordinates, not screen coordinates: the map is far larger
         /// than the screen, so a screen point means nothing once the map has been panned.
-        private func logTouch(_ type: TouchEventType, at point: CGPoint, feature: StreetFeature?) {
+        private func logTouch(_ type: TouchEventType, at point: CGPoint, probe: MapProbe?) {
             guard loggingStarted else { return }
             let scale = parent.map.metrics.pointsPerMeter
+
+            let name: String
+            let elementType: TactileElementType?
+            let kind: String
+            switch probe {
+            case .intersection(let junction):
+                name = junction.streetNames.joined(separator: " and ")
+                elementType = .intersection
+                kind = "intersection"
+            case .road(let road):
+                name = road.name
+                elementType = .road
+                kind = "road"
+            case nil:
+                name = "Background"
+                elementType = nil
+                kind = "background"
+            }
+
             _ = logger.logEvent(TouchEvent(
                 timestamp: Date(),
                 sessionElapsed: Date().timeIntervalSince(sessionStart),
                 eventType: type,
-                elementName: feature?.name ?? "Background",
-                elementType: feature == nil ? nil : .road,
+                elementName: name,
+                elementType: elementType,
                 touchPoint: point,
                 custom: [
                     "gesture": "explore",
-                    "onStreet": feature == nil ? "0" : "1",
+                    "on": kind,
                     // Metres from the map's north-west corner, so a trace can be compared
                     // across devices — the point scale differs with pixel density.
                     "metersX": String(format: "%.1f", point.x / scale),
@@ -688,10 +712,10 @@ struct PortlandMapView: UIViewRepresentable {
             lastPoint = point
             lastMoveTime = CACurrentMediaTime()
             lastHitTestTime = 0
-            currentFeatureID = nil
+            currentProbeID = nil
 
             updateExploration(at: point, velocity: 0)
-            logTouch(.touchDown, at: point, feature: currentFeature)
+            logTouch(.touchDown, at: point, probe: currentProbe)
             touchIndicator?.show(at: viewPoint(point))
         }
 
@@ -706,28 +730,34 @@ struct PortlandMapView: UIViewRepresentable {
                 lastHitTestTime = now
                 updateExploration(at: point, velocity: speed)
             }
-            logTouch(.touchMove, at: point, feature: currentFeature)
+            logTouch(.touchMove, at: point, probe: currentProbe)
             touchIndicator?.show(at: viewPoint(point))
         }
 
         private func exploreEnded() {
             if let last = lastPoint {
-                logTouch(.touchUp, at: last, feature: currentFeature)
+                logTouch(.touchUp, at: last, probe: currentProbe)
             }
             isExploring = false
             feedback.stopAll()
-            currentFeatureID = nil
-            currentFeature = nil
+            currentProbeID = nil
+            currentProbe = nil
             lastPoint = nil
             touchIndicator?.hide()
         }
 
         /// A quick, still touch speaks what is under it straight away, without waiting for the
-        /// dwell a drag uses — the user has already committed.
+        /// dwell a drag uses — the user has already committed. A junction still outranks the
+        /// road it sits on, the same as during a drag.
         private func exploreTapped(at point: CGPoint) {
-            guard let feature = parent.map.feature(at: point, velocity: 0) else { return }
+            let announcement: String
+            switch parent.map.probe(at: point, velocity: 0) {
+            case .intersection(let junction): announcement = junction.announcement
+            case .road(let road): announcement = road.announcement
+            case nil: return
+            }
             feedback.playTap()
-            feedback.announceImmediately(feature.announcement)
+            feedback.announceImmediately(announcement)
         }
 
         @objc func handleBackGesture() { triggerBack() }
@@ -757,19 +787,22 @@ struct PortlandMapView: UIViewRepresentable {
 
         // MARK: Exploration
 
-        /// Haptics change the instant the street changes; speech is dwell-gated inside the
-        /// feedback controller. That split is what lets a fast sweep feel every street it
-        /// crosses while only naming the one the finger settles on.
+        /// Haptics change the instant the thing under the finger changes; speech is dwell-gated
+        /// inside the feedback controller. That split is what lets a fast sweep feel every
+        /// street and junction it crosses while only naming the one the finger settles on.
         private func updateExploration(at point: CGPoint, velocity: CGFloat) {
-            let feature = parent.map.feature(at: point, velocity: velocity)
-            currentFeature = feature
+            let probe = parent.map.probe(at: point, velocity: velocity)
+            currentProbe = probe
 
-            guard feature?.id != currentFeatureID else { return }
-            currentFeatureID = feature?.id
+            guard probe?.id != currentProbeID else { return }
+            currentProbeID = probe?.id
 
-            if let feature {
-                feedback.enter(identifier: feature.id, announcement: feature.announcement)
-            } else {
+            switch probe {
+            case .intersection(let junction):
+                feedback.enterIntersection(identifier: junction.id, announcement: junction.announcement)
+            case .road(let road):
+                feedback.enter(identifier: road.id, announcement: road.announcement)
+            case nil:
                 // Empty space is silent: no haptic, nothing spoken.
                 feedback.leaveAll()
             }

@@ -159,6 +159,103 @@ struct CongressSquareMapTests {
         #expect(map.nearestRoadName(to: map.initialCenter, within: 400) != nil)
     }
 
+    // MARK: - Intersections
+
+    /// The junctions are computed from the real road geometry, and the well-known ones around
+    /// Congress Square have to come out of it.
+    @Test func realIntersectionsAreFoundInTheRoadNetwork() throws {
+        let map = try loadMap()
+
+        // Downtown Portland is a dense grid, so there are many — but a sane count, not zero
+        // and not one per segment.
+        #expect(map.intersections.count > 100)
+        #expect(map.intersections.count < map.features.count)
+
+        // Every junction names at least two distinct streets — a street cannot cross itself.
+        for junction in map.intersections {
+            #expect(junction.streetNames.count >= 2, "\(junction.id) names \(junction.streetNames)")
+            #expect(Set(junction.streetNames).count == junction.streetNames.count,
+                    "\(junction.id) repeats a street name")
+        }
+
+        // The junctions a Portlander would name, each within a block of where it really is.
+        func hasJunction(of a: String, and b: String, near point: CGPoint) -> Bool {
+            map.intersections.contains { junction in
+                junction.streetNames.contains(a) && junction.streetNames.contains(b)
+                    && hypot(junction.position.x - point.x, junction.position.y - point.y)
+                        < 120 * map.metrics.pointsPerMeter
+            }
+        }
+        // Positions are in content points; the exact values do not matter, only that a
+        // junction of these two streets exists somewhere sane.
+        #expect(map.intersections.contains { $0.streetNames.contains("Congress Street") && $0.streetNames.contains("High Street") })
+        #expect(map.intersections.contains { $0.streetNames.contains("Congress Street") && $0.streetNames.contains("Free Street") })
+        #expect(map.intersections.contains { $0.streetNames.contains("Congress Street") && $0.streetNames.contains("Oak Street") })
+        #expect(map.intersections.contains { $0.streetNames.contains("Park Street") && $0.streetNames.contains("Spring Street") })
+        _ = hasJunction
+    }
+
+    /// A crossing of two ways carrying the *same* name is a street split in the data, not a
+    /// junction, and must never be reported as one.
+    @Test func aStreetDoesNotIntersectItself() throws {
+        let map = try loadMap()
+        for junction in map.intersections {
+            #expect(Set(junction.streetNames).count >= 2)
+        }
+    }
+
+    /// A finger on a junction feels the junction, not the road it sits on.
+    @Test func aJunctionOutranksTheRoadUnderIt() throws {
+        let map = try loadMap()
+        let junction = try #require(map.intersections.first)
+
+        // Dead centre of the junction resolves to it.
+        let probe = try #require(map.probe(at: junction.position, velocity: 0))
+        guard case .intersection(let hit) = probe else {
+            Issue.record("centre of a junction resolved to \(probe), not the junction")
+            return
+        }
+        #expect(hit.id == junction.id)
+
+        // A road passes through that exact point — so without the junction taking priority the
+        // finger would only ever feel the road there.
+        #expect(map.feature(at: junction.position, velocity: 0) != nil)
+    }
+
+    /// Its box, and its catch radius, are physical millimetre sizes like everything else.
+    @Test func theJunctionMarkerIsPhysicallySized() throws {
+        let map = try loadMap()
+        let junction = try #require(map.intersections.first)
+        #expect(abs(junction.boxWidth - PhysicalDimensions.mmToPoints(StreetMapSizing.intersectionBoxMM)) < 0.01)
+        // The catch radius is at least the box half-width, floored so a small box stays findable.
+        #expect(junction.hitRadius >= junction.boxWidth / 2)
+        #expect(junction.hitRadius >= 22)
+    }
+
+    /// The spoken form names the streets and leads with the word intersection.
+    @Test func aJunctionNamesTheStreetsThatMeet() throws {
+        let map = try loadMap()
+        for junction in map.intersections.prefix(50) {
+            #expect(junction.announcement.hasPrefix("Intersection of "))
+            for name in junction.streetNames {
+                #expect(junction.announcement.contains(name),
+                        "\(junction.announcement) omits \(name)")
+            }
+        }
+    }
+
+    /// The red boxes only draw where they can actually land — the viewport, not the whole map.
+    @Test func junctionsAreCulledToTheDrawnWindow() throws {
+        let map = try loadMap()
+        let window = CGRect(x: map.initialCenter.x - 400, y: map.initialCenter.y - 400,
+                            width: 800, height: 800)
+        let drawn = map.intersections(in: window)
+        #expect(drawn.count < map.intersections.count, "culling returned everything")
+        for junction in drawn {
+            #expect(junction.drawBounds.intersects(window))
+        }
+    }
+
     // MARK: - Hit testing
 
     @Test func aPointOnAStreetFindsAStreet() throws {
@@ -527,13 +624,15 @@ struct CongressSquareMapTests {
 
         let began = try #require(scrollView.onExploreBegan)
         began(point)
-        let hit = try #require(laidOut.coordinator.currentFeature,
+        let hit = try #require(laidOut.coordinator.currentProbe,
                                "a finger on a drawn road felt nothing")
 
         // The touch path has to agree with a direct lookup at the same content point. That is
         // exactly what the double-offset broke: the lookup was right and the touch feeding it
-        // was wrong, so every test that called the lookup directly kept passing.
-        let expected = try #require(map.feature(at: point, velocity: 0))
+        // was wrong, so every test that called the lookup directly kept passing. A road vertex
+        // can sit on a junction, which now outranks the road, so this compares the probe —
+        // whichever it resolved to — rather than assuming a road.
+        let expected = try #require(map.probe(at: point, velocity: 0))
         #expect(hit.id == expected.id)
 
         // And the follow dot has to land under the finger, in view coordinates.

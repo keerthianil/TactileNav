@@ -16,6 +16,7 @@
 //
 
 import CoreText
+import TactileMapCore
 import UIKit
 
 final class PortlandStreetCanvasView: UIView {
@@ -63,9 +64,32 @@ final class PortlandStreetCanvasView: UIView {
         ctx.translateBy(x: -contentOffset.x, y: -contentOffset.y)
 
         strokeRoads(map.features(in: window), in: ctx)
+        // Junction markers sit on top of the road network, the way a painted marking does, and
+        // under the labels so a street name is never hidden behind a box.
+        drawIntersections(map.intersections(in: window), in: ctx)
         drawLabels(map.labels(in: window), in: ctx)
 
         ctx.restoreGState()
+    }
+
+    /// A red square at each junction, with a thin white outline.
+    ///
+    /// The outline is what keeps the box from reading as a hole cut in the road where it sits
+    /// on the dark blue — the same reason a real painted marking is edged against its asphalt.
+    private func drawIntersections(_ items: [Intersection], in ctx: CGContext) {
+        guard !items.isEmpty else { return }
+        let border = max(PhysicalDimensions.mmToPoints(StreetMapSizing.intersectionBorderMM), 1)
+        for junction in items {
+            let box = CGRect(x: junction.position.x - junction.boxWidth / 2,
+                             y: junction.position.y - junction.boxWidth / 2,
+                             width: junction.boxWidth, height: junction.boxWidth)
+            ctx.setFillColor(StreetMapSizing.intersectionColor)
+            ctx.fill(box)
+            ctx.setStrokeColor(StreetMapSizing.intersectionBorderColor)
+            ctx.setLineWidth(border)
+            // Stroke inside the fill so the white ring does not eat into the neighbouring road.
+            ctx.stroke(box.insetBy(dx: border / 2, dy: border / 2))
+        }
     }
 
     /// Round caps and joins, so a road ends in a semicircle and turns without a notch. On a

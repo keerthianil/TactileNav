@@ -218,6 +218,11 @@ final class StreetFeedbackController {
     private let policy: StreetFeedbackPolicy
     private var activeIdentifier: String?
 
+    /// The junction ding. Created on first use so the audio session is configured before its
+    /// engine starts — see `startIntersectionTone`.
+    private lazy var tone = ToneGenerator()
+    private var toneRunning = false
+
     private init() {
         policy = StreetFeedbackPolicy(hapticEngine: haptics, audioEngine: speech)
 
@@ -230,11 +235,15 @@ final class StreetFeedbackController {
             MainActor.assumeIsolated {
                 self?.stopAll()
                 self?.haptics.handleAppBackground()
+                self?.tone.handleAppBackground()
             }
         }
         center.addObserver(forName: UIApplication.willEnterForegroundNotification,
                            object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.haptics.handleAppForeground() }
+            MainActor.assumeIsolated {
+                self?.haptics.handleAppForeground()
+                self?.tone.handleAppForeground()
+            }
         }
     }
 
@@ -244,16 +253,35 @@ final class StreetFeedbackController {
     func enter(identifier: String, announcement: String) {
         guard identifier != activeIdentifier else { return }
         activeIdentifier = identifier
+        stopIntersectionTone()
         haptics.stopAll()
         policy.onEnter(
             element: StreetSurfaceElement(id: identifier, announcement: announcement),
             touchType: .direct)
     }
 
+    /// A finger has entered a junction. Three cues at once, matching the overview map in the
+    /// reference app: a pulsing haptic distinct from the steady road buzz, a repeating ding,
+    /// and the junction spoken once. Called only on a change of junction, so the ding is not
+    /// restarted every touch sample.
+    func enterIntersection(identifier: String, announcement: String) {
+        guard identifier != activeIdentifier else { return }
+        activeIdentifier = identifier
+        haptics.stopAll()
+        // Slow pulse, intensity 1.0 / sharpness 0.5, 0.15 s on / 0.10 s off, looped — the
+        // reference app's intersection signature, clearly not the road's continuous rumble.
+        haptics.start(pattern: .intersectionPulse)
+        startIntersectionTone()
+        // Through the same dwell-gated channel as street names, so panning past a run of
+        // junctions never stacks announcements or cuts one off mid-word.
+        speech.speak(announcement)
+    }
+
     /// The finger is over empty space — between the streets, inside a block. Silence, and no
     /// vibration, is the correct feedback: it is how a blank area reads as blank.
     func leaveAll() {
         activeIdentifier = nil
+        stopIntersectionTone()
         haptics.stopAll()
         speech.cancelPending()
     }
@@ -261,8 +289,39 @@ final class StreetFeedbackController {
     /// Finger lifted, or leaving the screen entirely.
     func stopAll() {
         activeIdentifier = nil
+        stopIntersectionTone()
         haptics.stopAll()
         speech.cancelPending()
+    }
+
+    // MARK: Junction ding
+
+    /// 1120 Hz, 0.16 s, repeating every 0.4 s while the finger stays on the junction — the
+    /// reference app's cadence. Left running until the finger moves onto a road, onto empty
+    /// space, or lifts.
+    private func startIntersectionTone() {
+        prepareToneSession()
+        toneRunning = true
+        tone.playRepeatingTone(frequency: 1120, duration: 0.16, interval: 0.4, count: 0, amplitude: 0.7)
+    }
+
+    private func stopIntersectionTone() {
+        guard toneRunning else { return }
+        toneRunning = false
+        tone.stop()
+    }
+
+    /// Route the ding through a mixable playback session so it is audible alongside VoiceOver
+    /// rather than silenced by it, and does not interrupt other audio.
+    ///
+    /// Re-asserted on every tone start rather than once: the Street Crossing Audio screen sets
+    /// its own session, so coming back to the map cannot be assumed to leave this one in
+    /// place. Both calls are idempotent, and a junction is entered rarely enough that the cost
+    /// is nothing.
+    private func prepareToneSession() {
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        try? session.setActive(true)
     }
 
     /// A finger has arrived on the map. Ends the screen-entry hold — see `endSuppression`.

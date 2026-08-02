@@ -17,10 +17,11 @@ fingers** to pan. There is no zoom: every width is a physical millimetre measure
 scale would make that untrue.
 
 The extract covers roughly 3.7 × 2.4 km of downtown Portland, from Marginal Way to the Commercial
-Street waterfront. It is **roads and nothing else**. The data also carries sidewalks and crossings and
-they are deliberately dropped: at city scale they crowd every junction with lines a few millimetres
-apart, which reads as noise under a finger rather than as a street network. Sidewalks and crossings
-belong to the intersection view, where there is room to tell them apart.
+Street waterfront. It is **roads plus the junctions where they cross** (see Intersections below). The
+data also carries sidewalks and crossings, and those are deliberately dropped: at city scale they crowd
+every junction with lines a few millimetres apart, which reads as noise under a finger rather than as a
+street network. Sidewalks and crossings belong to the intersection view, where there is room to tell
+them apart.
 
 ### Sizing
 
@@ -44,18 +45,35 @@ crossed in one movement and neighbouring junctions are on screen together.
 Both numbers are physical millimetres, so both are the same size on every device — only the point count
 changes with pixel density.
 
+### Intersections
+
+A **red square** marks every junction, the way the reference app does. The junctions are not in the
+source data — the extract is roads, sidewalks and crossings with no junction features — so they are
+**computed from the road geometry**: wherever two road ways with *different* names cross or touch, that
+is a junction, and crossing points within 25 m collapse into one mark that names all the streets
+meeting there. Two ways carrying the same name are one street split into pieces and are ignored. This
+yields the ~490 real junctions of downtown Portland; the well-known ones (Congress at High, at Free, at
+Oak…) come straight out of the OpenStreetMap geometry.
+
+A junction outranks the road it sits on: land on one and you feel the junction, not the street.
+
 ### Feedback
 
-| Under the finger | Haptic | Speech |
-|---|---|---|
-| Street | Continuous buzz, intensity 1.0, sharpness 0.10 | Street name |
-| Between streets | Nothing | Nothing |
+| Under the finger | Haptic | Sound | Speech |
+|---|---|---|---|
+| Street | Continuous buzz, 1.0 / 0.10 | — | Street name |
+| Intersection | Pulsing, 1.0 / 0.5, 0.15 s on / 0.10 s off | 1120 Hz ding every 0.4 s | "Intersection of A and B" |
+| Between them | Nothing | Nothing | Nothing |
 
-Silence off the streets is the point: it is how a blank block reads as blank.
+Silence off the streets is the point: it is how a blank block reads as blank. The intersection's three
+cues — a pulse clearly unlike the road's steady rumble, a repeating ding, and the streets named once —
+match the reference app one for one.
 
-Haptics change the instant the street changes; speech waits for a 0.2 s dwell and any newer request
-cancels the pending one. Sweep across six streets and you feel all six but hear only the one you stop
-on — announcing each would produce `"Congr—" "Hi—" "Fre—"`.
+Haptics change the instant the thing under the finger changes; speech waits for a 0.2 s dwell and any
+newer request cancels the pending one. Sweep across six streets and you feel all six but hear only the
+one you stop on — announcing each would produce `"Congr—" "Hi—" "Fre—"`. Junction speech runs through
+the same dwell-gated channel, so panning past a row of junctions never stacks or cuts off an
+announcement.
 
 ### Rendering
 
