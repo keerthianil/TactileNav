@@ -3,56 +3,6 @@ import Combine
 import CoreHaptics
 import TactileMapCore
 import TactileMapFeedback
-import TactileMapView
-
-// MARK: - Customizable Feedback Policy
-
-@MainActor
-final class CustomizableFeedbackPolicy: FeedbackPolicy, ObservableObject {
-
-    var selection: HapticFeedbackSelection = .defaults
-    private let hapticEngine: HapticEngine = CoreHapticsEngine()
-    private let audioEngine: SpatialAudioEngine = AVSpatialAudioEngine()
-
-    func onEnter(element: any TactileMapElement, touchType: TouchType) {
-        let mapType: MapElementType
-        switch element.elementType {
-        case .corridor:     mapType = .corridor
-        case .intersection: mapType = .intersection
-        case .landmark:     mapType = .landmark
-        default:
-            hapticEngine.playSingleTap()
-            audioEngine.speak(element.properties.name)
-            return
-        }
-        let pattern = hapticPattern(for: selection.pattern(for: mapType))
-        hapticEngine.start(pattern: pattern)
-        if element.elementType != .corridor {
-            audioEngine.speak(element.properties.name)
-        }
-    }
-
-    func onContinue(element: any TactileMapElement, touchType: TouchType) {}
-
-    func onExit(element: any TactileMapElement) { hapticEngine.stopAll() }
-
-    func onTap(element: any TactileMapElement, touchType: TouchType) {
-        hapticEngine.playSingleTap()
-        audioEngine.speak(element.properties.name)
-    }
-
-    func stopAll() { hapticEngine.stopAll(); audioEngine.stopAll() }
-
-    private func hapticPattern(for type: HapticPatternType) -> HapticPattern {
-        switch type {
-        case .lightContinuous:  return HapticPattern(intensity: 0.3, sharpness: 0.2, mode: .continuous(duration: 60))
-        case .mediumContinuous: return .corridorContinuous
-        case .sharpTransient:   return .singleTap
-        case .rhythmicPulse:    return .intersectionPulse
-        case .heavyBuzz:        return HapticPattern(intensity: 1.0, sharpness: 0.1, mode: .continuous(duration: 60))
-        }
-    }
-}
 
 // MARK: - Haptic Previewer (short previews for pattern picker buttons)
 
@@ -131,26 +81,20 @@ final class HapticPreviewer: ObservableObject {
 struct FeedbackCustomizationTesterView: View {
     @State private var selection = HapticFeedbackSelection.defaults
     @StateObject private var previewer = HapticPreviewer()
-    @StateObject private var policy = CustomizableFeedbackPolicy()
 
     var body: some View {
         List {
+            Section {
+                Text("Tap a pattern to feel it. Needs a device — the simulator has no haptics.")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
             patternSection(for: .corridor,     title: "Corridor")
             patternSection(for: .intersection, title: "Intersection")
             patternSection(for: .landmark,     title: "Landmark")
-
-            Section {
-                NavigationLink("Open Demo Map") {
-                    CustomizableMapView(policy: policy)
-                }
-                .font(.headline)
-            }
         }
         .navigationTitle("Haptic Tester")
         .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: selection.selections) { _ in
-            policy.selection = selection
-        }
     }
 
     @ViewBuilder
@@ -173,23 +117,5 @@ struct FeedbackCustomizationTesterView: View {
                 .foregroundColor(.primary)
             }
         }
-    }
-}
-
-// MARK: - Customizable Map View
-
-struct CustomizableMapView: View {
-    @ObservedObject var policy: CustomizableFeedbackPolicy
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        let doc = try! TactileMapDocument.load(from: "roux_portland", bundle: .main)
-        TactileMapView(
-            document: doc,
-            feedbackPolicy: policy,
-            onBackGesture: { dismiss() }
-        )
-        .ignoresSafeArea()
-        .onDisappear { policy.stopAll() }
     }
 }

@@ -12,7 +12,7 @@ struct ContentView: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Congress Square")
                                     .font(.headline)
-                                Text("Pannable tactile street map of downtown Portland at true lane scale")
+                                Text("Pannable tactile street map of downtown Portland")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -40,11 +40,6 @@ struct ContentView: View {
                         }
                     }
                     .accessibilityHint("Listen to traffic on all four legs of a real intersection and work out when it is safe to cross. Headphones needed")
-                }
-
-                Section("Roux Institute") {
-                    NavigationLink("Roux Institute Map",
-                                   destination: RTMRouxMapView())
                 }
 
                 Section("Tools") {

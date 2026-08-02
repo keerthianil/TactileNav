@@ -194,24 +194,19 @@ Haptics/audio require a physical iPhone — connect via USB, select the device, 
 
 ## TactileNav — which modules are used
 
-Both of TactileNav's maps render themselves rather than using `TactileMapView`, because each needs
-viewport movement that this package does not provide. They consume the rest of the stack.
+TactileNav renders its own maps rather than using `TactileMapView`, because it needs viewport
+movement this package does not provide. It consumes the rest of the stack.
 
-| Module | Congress Square | Roux Institute Map |
-|---|---|---|
-| **TactileMapCore** | `TactileMapDocument.load`, `MapElement` / `TactileGeometry` as the only geometry model, `TactileElementType` (`.road` / `.street` / `.crosswalk`), `PhysicalDimensions.mmToPoints`, `TactileMapDiagnostics` | `TactileMapDocument.load`, `PhysicalDimensions`, element types |
-| **TactileMapFeedback** | `CoreHapticsEngine`, `HapticPattern` presets + `.burst`, `OutdoorFeedbackPolicy` (subclassed), `SpatialAudioEngine` (conformed to for VoiceOver-gated speech) | `CoreHapticsEngine`, `AVSpatialAudioEngine`, `HapticPattern` presets |
-| **TactileMapLogging** | `CSVTouchLogger`, `TouchEvent` | `CSVTouchLogger` touch-session CSV files |
-| **TactileMapView** | `HitDetectionConfig` only — renders on a `CATiledLayer` canvas inside a `UIScrollView` | Not used — renders with `RTMLiveMapView` (custom `MKMapView` + Coordinator) |
+| Module | Used for |
+|---|---|
+| **TactileMapCore** | `TactileMapDocument.load`, `MapElement` / `TactileGeometry` as the only geometry model, `TactileElementType`, `PhysicalDimensions.mmToPoints`, `TactileMapDiagnostics` |
+| **TactileMapFeedback** | `CoreHapticsEngine`, `HapticPattern` presets + `.burst`, `OutdoorFeedbackPolicy` (subclassed), `SpatialAudioEngine` (conformed to for VoiceOver-gated speech) |
+| **TactileMapLogging** | `CSVTouchLogger`, `TouchEvent` |
+| **TactileMapView** | `HitDetectionConfig` tuning constants only |
 
-App-side behavior that is deliberately **not** in this package:
-
-- **Congress Square** — fixed-scale physical-millimetre sizing (one traffic lane = 4 mm on glass),
-  continuous two-finger panning with momentum over a `CATiledLayer` canvas larger than the
-  `CALayer` backing-store limit, and a dwell-gated announcement coordinator.
-- **Roux Institute Map** — finger-as-cursor explore (no location dot), page-turn panning at screen
-  edges, three functional zoom levels (1000 / 300 / 120 m), triple-tap zoom cycle, off-path haptic
-  tick, zoom-aware street widths, and a system-background tile overlay.
+App-side behaviour deliberately **not** in this package: physical-millimetre sizing at a fixed scale,
+continuous two-finger panning with momentum over a canvas larger than the `CALayer` backing-store
+limit, and a dwell-gated announcement coordinator.
 
 ---
 
@@ -221,7 +216,6 @@ App-side behavior that is deliberately **not** in this package:
 - **Spatial audio sounds the same from both sides** — Use headphones/AirPods on a physical device.
 - **Map is blank** — Check your JSON file is in Build Phases > Copy Bundle Resources.
 - **VoiceOver back gesture not working** — VoiceOver must be on, `onBackGesture` must be set, view must be in a `NavigationStack`.
-- **TactileNav map shows Apple labels** — the Roux map hides tiles with `RTMWhiteTileOverlay` + muted `MKStandardMapConfiguration`; see `RTMLiveMapView.swift`, not `TactileMapView`. Congress Square draws on a plain `CATiledLayer` canvas and has no basemap to hide.
 - **Haptics stop after a Siri interruption** — `CoreHapticsEngine` restores looping continuous *and* pulsing/burst patterns after an engine reset; make sure you are on a current build of this package.
 
 ## Project Structure

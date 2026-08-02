@@ -1,241 +1,184 @@
 # TactileNav
 
 An iOS accessibility app for blind and low-vision users, built at UNAR Labs / Northeastern University.
-Touch-explorable tactile street maps with haptic feedback and spatial audio — designed VoiceOver-first.
+Touch-explorable tactile maps with haptic feedback and spatial audio, designed VoiceOver-first.
 
-## Features
+Two screens:
 
-### Congress Square (downtown Portland, ME)
-
-A pannable, street-only tactile map of downtown Portland, drawn at **true physical lane scale**. You
-explore it by dragging one finger: each surface under the finger has its own vibration and speaks its
-own name. You move around the map by dragging two fingers.
-
-The map covers roughly **3.7 km east–west by 2.4 km north–south** — from the I-295 / Marginal Way edge
-down to the Commercial Street waterfront, and from Brighton Ave / St John St across to Franklin Street.
-Every street, sidewalk and crossing is real **OpenStreetMap (ODbL)** data: 715 streets, 612 sidewalks
-and 681 marked crossings. Nothing is hand-placed.
-
-There are no intersections, traffic, signals or crossing simulation in this view — it is the base street
-layout and nothing else.
-
-#### Physical sizing
-
-A tactile map only works if a street is the *same width under a finger* regardless of device. So every
-width is a millimetre measurement on the glass, converted using the screen's pixel density.
-
-| Element | Physical width | On a 460 ppi phone |
-|---|---|---|
-| Road (every road) | 4.0 mm | 24.1 pt |
-| Sidewalk | 4.0 mm | 24.1 pt |
-| Crosswalk stripe | 2.8 mm | 16.9 pt |
-
-Two different things come off that 4 mm constant, and they are worth keeping apart:
-
-- **Line width.** Every road is drawn 4 mm wide whatever its lane count. 4 mm is a *perceptual*
-  constant — roughly the narrowest line a fingertip can reliably follow — not a measurement of asphalt.
-  Scaling it by lane count sounds more faithful but is self-defeating: a four-lane road becomes 16 mm,
-  wider than a fingertip, so it stops being a line you can trace and turns into a plane whose edges you
-  cannot feel. It also buries the sidewalk beside it under the paint.
-- **Map scale.** 4 mm on the glass represents one real 3.3 m lane, and that is what converts metres to
-  points. So the *spacing* of the network — how far apart two streets run, how wide a junction is, how
-  far a crossing reaches — stays true to the ground even though the lines are a constant width.
-
-Crossings are the one thing drawn to the map's line weights rather than to the ground. A crossing way in
-the data spans the whole roadway, which on a four-lane street is several times the width of the 4 mm line
-that street is drawn as — at true length it sprawls well past the road on both sides and stops looking
-like part of the same drawing. Each crossing is a compact zebra mark: white bars on a darker patch, the
-way a real one is white paint on asphalt. The patch matters — white bars alone are invisible against the
-white background and punch a hole through the road where they cross it.
-
-Lane counts come from OpenStreetMap's `lanes` tag where it exists (205 of 715 streets) and from the
-road's OSM class otherwise. They no longer affect the drawn width, but are carried on every road.
-
-Because the scale is physical, the whole map is about **67 screens wide** — which is why it pans.
-There is deliberately **no zoom**: a variable scale would make the millimetre measurements untrue.
-
-#### Gestures
-
-Identical with VoiceOver on or off.
-
-| Gesture | Does |
+| Screen | What it is |
 |---|---|
-| One finger, press and drag | Explore — vibration and spoken name for whatever is under the finger |
-| One finger, single tap | Speak what is under the finger |
-| **Two fingers, drag** | Pan the map — continuous, with momentum, like any map |
-| Three-finger swipe right, or drag | Go back |
-| Back button | Go back |
-| VoiceOver Actions rotor (swipe up/down) | Pan north / south / east / west by half a screen, or recenter |
-| Recenter button (toolbar) | Jump back to Congress Square |
+| **Congress Square** | A pannable tactile street map of downtown Portland, Maine. Real OpenStreetMap data, roads only. |
+| **Street Crossing Audio** | One four-way junction: a tactile diagram of the intersection, plus simulated traffic to judge a signal by ear. |
 
-Panning is on **two** fingers because one finger is the exploration channel and cannot be shared.
-Three fingers is not available for continuous panning — VoiceOver reserves it and delivers it as a
-discrete scroll — so it stays on "go back", and the Actions rotor gives a step-at-a-time alternative
-for anyone who finds a two-finger drag difficult.
+## Congress Square
 
-**Nothing a single finger can do navigates away.** Back is the three-finger swipe and the Back button,
-nothing else. Suppressing the one-finger swipe-back takes two mechanisms, because clearing `isEnabled`
-alone does not hold — SwiftUI re-enables the recognizer as the navigation stack updates — so the map
-also takes over the recognizer's delegate and refuses to let it begin. The scroll view needs two touches
-to pan and accepts at most two, so a three-finger back drag cannot pan at the same time. Exploring hard
-against the left edge is safe.
+Drag **one finger** to explore — a street under the finger buzzes and says its name. Drag **two
+fingers** to pan. There is no zoom: every width is a physical millimetre measurement, and a variable
+scale would make that untrue.
 
-**Exploration runs on raw touches, not a gesture recognizer.** Inside a direct-interaction accessibility
-element VoiceOver hands touches straight to the responder chain, and gesture recognizers attached to that
-view do not fire dependably. A recognizer-driven explore therefore works with VoiceOver off and goes
-completely dead with it on — the worst possible failure for this app. `touchesBegan/Moved/Ended` behave
-identically either way.
+The extract covers roughly 3.7 × 2.4 km of downtown Portland, from Marginal Way to the Commercial
+Street waterfront. It is **roads and nothing else**. The data also carries sidewalks and crossings and
+they are deliberately dropped: at city scale they crowd every junction with lines a few millimetres
+apart, which reads as noise under a finger rather than as a street network. Sidewalks, crossings and
+kerb ramps belong to the intersection view, where there is room to tell them apart.
 
-Because the map is about 67 screens wide it is genuinely possible to pan away and lose your bearings,
-so there is a **Recenter** button in the toolbar — the equivalent of the "back to my location" control
-on a visual map. It is in the toolbar rather than floating on the map so VoiceOver can always reach it,
-and the same action is on the Actions rotor.
+### Sizing
 
-#### Haptics and speech
+Line width and map scale are two independent numbers, and keeping them independent is the whole trick.
 
-| Surface | Vibration | Spoken |
+| | Value | On a 460 ppi phone |
 |---|---|---|
-| Road | Heavy continuous buzz (intensity 1.0, sharpness 0.1) | `"Congress Street"` — bare name |
-| Sidewalk | Softer, sharper continuous buzz (0.78 / 0.78) | `"North sidewalk, Congress Street"` |
-| Crosswalk | Sharp transient tick every 0.17 s | `"Crosswalk across Congress Street"` |
-| Empty space | Nothing | Nothing |
+| Road line width | 4.0 mm | 24.1 pt |
+| Block spacing (the map's scale) | 40 mm per 120 m | ≈ 2.0 pt/m |
 
-A road says only its name — the vibration already tells you it is a roadway. Sidewalks and crossings
-lead with the surface type and then name the street they belong to, because there are hundreds of each
-and a name alone answers the wrong question.
+**Line width** is a perceptual constant — roughly the narrowest line a fingertip can reliably follow —
+not a measurement of asphalt. It does not scale with lane count: a four-lane road at 16 mm is wider than
+a fingertip, so it stops being a line you can trace and becomes a plane whose edges you cannot feel.
 
-**Announcements never overlap or get cut off.** Vibration changes the instant the surface changes, but
-speech waits for the finger to settle on one surface for 0.2 s, and any newer surface cancels the
-pending announcement. So sweeping quickly across six streets lets you *feel* all six while hearing
-exactly one complete name — the street you stopped on. On top of that, announcements are posted at high
-priority so a new name replaces the previous one cleanly, the screen-entry summary holds exploration
-speech until it has finished, and the after-panning orientation cue stays silent while a finger is
-exploring.
+**Map scale** comes from block spacing, *not* from the lane width. Deriving it from the lane width
+("4 mm is one 3.3 m lane") sounds principled but makes the drawing life-size: about 55 m of street fits
+on a phone, the whole extract becomes 67 screens across, and the viewport holds two streets and a
+junction with no grid to orient by. 40 mm per block is a little under a hand span, so a block can be
+crossed in one movement and neighbouring junctions are on screen together.
 
-After a pan settles, the map names the nearest street to the new centre, which is what makes a map this
-large navigable rather than disorienting.
+Both numbers are physical millimetres, so both are the same size on every device — only the point count
+changes with pixel density.
 
-### Street Crossing Audio — judging a four-way signal by ear
+### Feedback
 
-You stand on the corner of **Congress Street at High Street** — the same junction you can explore by
-touch on the map screen — about to cross Congress. Traffic runs on all four legs under a signal cycle,
-and the task is the one blind travellers actually perform: work out from sound alone when it is safe
-to step off.
+| Under the finger | Haptic | Speech |
+|---|---|---|
+| Street | Continuous buzz, intensity 1.0, sharpness 0.10 | Street name |
+| Between streets | Nothing | Nothing |
 
-The technique being demonstrated is the real one. You do not cross when it goes quiet; you cross with
-the **parallel surge** — the moment the traffic beside you, running the way you want to walk, pulls
-away from the line. Here that is High Street. Traffic sweeping left to right across your front is
-Congress Street and means wait.
+Silence off the streets is the point: it is how a blank block reads as blank.
 
-**Nothing is narrated.** There is deliberately no spoken commentary on what the traffic is doing —
-being told the answer is the opposite of the exercise. A **Reveal the current phase** button shows
-which street has the green whenever you want to check yourself, and every control is labelled for
-VoiceOver as usual. The bird's-eye diagram's accessibility label is deliberately static: if it
-reported the live phase, VoiceOver would hand over the very thing you are meant to work out.
+Haptics change the instant the street changes; speech waits for a 0.2 s dwell and any newer request
+cancels the pending one. Sweep across six streets and you feel all six but hear only the one you stop
+on — announcing each would produce `"Congr—" "Hi—" "Fre—"`.
 
-What makes the intersection readable by ear:
+### Rendering
 
-- **Real geometry.** The four legs use the true OpenStreetMap bearings of Congress and High (43°, 145°,
-  240°, 320°), so the crossing angle is the real one.
-- **Vehicles keep right.** One direction of Congress passes about 5 m in front of you and the other is
-  a full roadway away at about 11 m. Down a shared centreline everything would sound identical and the
-  intersection would carry no information at all.
-- **Greens open with a surge.** Two or three vehicles pull away together, because a surge is what a
-  listener recognises — one car alone is ambiguous.
-- **Turning vehicles.** During the walk phase some vehicles turn across the crosswalk. A turn lingers
-  near you instead of sweeping past and away, and that is the movement most likely to hit a pedestrian
-  who has already stepped off.
-- **Real Doppler.** Pitch is shifted live from each vehicle's modelled position (`f' = f·c/(c−v)`), not
-  a cosmetic number. Pan and volume carry direction and distance. Six vehicles can sound at once, each
-  with its own pitch shifter.
-- **Gas vs. electric.** An all-electric fleet is under 45 dBA at low speed, so the surge you would
-  normally step off with is barely there — the technique itself starts to fail. Headphones required.
-
-### Roux Institute Map & Tools
-
-The Roux Institute neighborhood map (real OSM data) and the feedback-tester / CSV-log tools are also
-present. Touch exploration on the Congress Square map is logged to CSV as well, and those logs appear in
-the Data Files screen.
-
-## Rendering
-
-The map is far larger than a `CALayer` can back (about 81,000 px wide at 3x), so the canvas is not the
-size of the map. It stays the size of the screen, sits below a transparent scroll view, and redraws the
-window that scrolling exposes. A uniform grid narrows ~2,000 polylines down to the few dozen whose ink
-can reach the viewport, and everything drawn — points, widths, colours, text runs — is precomputed once
-at load. The same grid backs hit-testing, so finding what is under a finger is arithmetic rather than a
-per-vertex coordinate conversion; that headroom is what keeps a fast drag from dropping samples, and a
-dropped sample is how a finger skips a 4 mm line without ever feeling it.
+The map is far larger than a `CALayer` can back, so the canvas is not the size of the map. It stays the
+size of the screen, sits below a transparent scroll view, and redraws the window that scrolling exposes.
+A uniform grid narrows the network down to the few polylines whose ink can reach the viewport, and
+everything drawn is precomputed at load. The same grid backs hit-testing, so finding what is under a
+finger is arithmetic rather than a per-vertex conversion — that headroom is what keeps a fast drag from
+dropping samples, and a dropped sample is how a finger skips a 4 mm line without ever feeling it.
 
 The hit radius grows with finger speed, because a fast drag samples further apart and would otherwise
 step straight over a line.
 
-**Whichever line the finger is genuinely closest to wins.** Strict priority by type — crossing, then
-sidewalk, then road — sounds right, since a crossing is painted on top of the road it spans. But with
-681 crossings clustered around the junctions, a crossing's catch radius then claims every road near it,
-and a finger tracing a road feels crossing ticks while plainly looking at a road. Type priority now only
-settles it when two lines are within a few points of each other, which is exactly the case where the
-crossing really is on top of the road. That change alone took wrong-surface feedback on roads from 9%
-of the drawn area to 2%.
+## Street Crossing Audio
 
-## Foundation — TactileMapKit
+A tactile diagram of Congress Street at High Street, with simulated traffic on all four legs under a
+signal cycle. The exercise is the one blind travellers actually perform: work out from sound alone when
+the parallel street gets its green, because that surge is the cue to step off. Nothing is narrated —
+being told the answer defeats it — and the diagram stops speaking while traffic is playing. The current
+phase is available on demand behind a button. **Headphones needed.**
 
-Built on the **TactileMapKit** Swift package, vendored at `Packages/TactileMapKit/`.
+An all-electric fleet is under 45 dBA at low speed, so the surge you would normally step off with is
+barely there and the technique itself starts to fail. That is what the fleet picker is for.
+
+The diagram is a schematic plus rather than a projection of the real bearings: a finger tracing a leg
+wants a straight line, and the four legs have to be the same length or the shorter ones read as less
+important. The junction it names is real, and the audio runs on the real bearings.
+
+| Element | Width | Haptic |
+|---|---|---|
+| Roadway | 12 mm | Continuous buzz, 1.0 / 0.10 |
+| Sidewalk | 4 mm | Continuous buzz, 0.78 / 0.78 |
+| Crossing | 5 mm | Sharp transient ticks, 1.0 / 1.00 |
+| Kerb ramp | 5 mm dot | Everything stops, then one tap |
+
+Roadway versus sidewalk is the distinction that matters, and it is carried by **sharpness** rather than
+intensity — a low-sharpness rumble and a high-sharpness vibration feel like different materials, where
+loud and quiet just feels like the same thing further away.
+
+The sidewalks form a square around the junction and the four crossings are the sides of that square,
+each bridging two corners and spanning the roadway between them. A kerb ramp sits at each corner.
+
+## Gestures
+
+Identical with VoiceOver on or off.
+
+| Gesture | Action |
+|---|---|
+| One finger, drag | Explore |
+| One finger, tap | Say what is under the finger |
+| Two fingers, drag | Pan the map |
+| Three fingers, swipe right | Back |
+| VoiceOver Actions rotor | Pan half a screen, or recentre |
+
+**One finger never navigates.** A navigation controller has two pop gestures — the familiar left-edge
+swipe and, since iOS 18, one that pops from a swipe anywhere on the view — and both are switched off
+while a tactile screen is open. The second is the one that matters: an explore drag *is* a full-screen
+swipe. Back is the Back button and the three-finger swipe, and nothing else.
+
+## VoiceOver
+
+Exploration runs on raw `touchesBegan`/`Moved`/`Ended`, not a gesture recognizer. Inside a
+direct-interaction accessibility element VoiceOver hands touches to the responder chain, and recognizers
+on that view do not fire dependably — a recognizer-based explore works with VoiceOver off and goes
+completely dead with it on.
+
+Each map is a single accessibility element with `.allowsDirectInteraction` and, on iOS 17+,
+`.silentOnTouch`, re-applied whenever VoiceOver is toggled. Speech goes out as a high-priority
+`.announcement` under VoiceOver and through `AVSpeechSynthesizer` otherwise.
+
+## Foundation
+
+Built on **TactileMapKit**, the shared tactile-mapping Swift package vendored at
+`Packages/TactileMapKit/`. The app supplies its own rendering, sizing and feedback policies on top.
 
 | Module | Used for |
 |---|---|
-| TactileMapCore | `TactileMapDocument.load`, `MapElement` / `TactileGeometry` as the only geometry model, `TactileElementType`, `PhysicalDimensions.mmToPoints` |
+| TactileMapCore | `TactileMapDocument.load`, `MapElement` / `TactileGeometry`, `TactileElementType`, `PhysicalDimensions.mmToPoints` |
 | TactileMapFeedback | `CoreHapticsEngine`, `HapticPattern` presets, `OutdoorFeedbackPolicy` (subclassed), `SpatialAudioEngine` |
 | TactileMapView | `HitDetectionConfig` tuning constants |
-| TactileMapLogging | `CSVTouchLogger` for touch-event logs |
+| TactileMapLogging | `CSVTouchLogger` |
 
-## Data files (`Model/`)
+## Data
 
-```
-congress_square.json    Real OSM (ODbL) street extract — streets, sidewalks, crossings (metres)
-roux_portland.json      Real OSM data for the Roux Institute map
-```
-
-`congress_square.json` is in local metres from the south-west corner of the bounding box, with y growing
-south, so the renderer needs no map projection at runtime. Regenerate it with:
-
-```bash
-python3 tools/fetch_congress_square.py
-```
-
-The script queries the OpenStreetMap Overpass API for the bounding box, keeps the public street network
-(no parking aisles or driveways), simplifies to 1 m tolerance, and writes the document deterministically
-— run it twice on unchanged data and you get byte-identical output. The bounding box and the opening
-viewport are recorded in the file's metadata, so the app reads them from data rather than hardcoding.
+`Model/congress_square.json` — an OpenStreetMap extract in local metres, generated by `tools/`.
+OpenStreetMap data is © OpenStreetMap contributors, licensed **ODbL**.
 
 ## Logging
 
-Touch exploration is logged to CSV via `CSVTouchLogger` and appears in the Data Files screen as
-`CongressSquare_<timestamp>.csv`. Each session records the feature count, the map's content size, and
-the device's `pointsPerMeter` and lane width in points — needed to interpret a trace later, since the
-same drag covers a different number of streets on devices with different pixel densities. Touch-down,
-touch-move (sampled at 100 ms) and touch-up rows carry the street name and surface type under the
-finger, or `Background`. Panning is recorded where it settles, with the new viewport centre in metres.
+Every session on the map writes a CSV via `CSVTouchLogger`, readable in the app under **Tools → Data
+Files** and through the Files app.
 
-## File structure
+Session metadata records the map, the street count, both sizing numbers (`laneWidthMM` and
+`blockSpacingMM`), the resolved `pointsPerMeter`, the content size, and whether VoiceOver was on. Both
+sizing numbers are needed: one converts a logged position back to ground distance, the other is the
+physical width of the line the finger was following, and they are independent.
+
+Each event carries the timestamp, elapsed session time, event type, the street under the finger (or
+`Background`), an `onStreet` flag, and the position in **content points and in metres from the map's
+north-west corner**. Content coordinates, not screen coordinates — the map is far larger than the
+screen, so a screen point means nothing once the map has been panned.
+
+## Build
+
+Open `TactileNav.xcodeproj` and run. iOS 16+.
+
+Haptics need a physical device — the simulator has nothing to vibrate. So does any real check of
+VoiceOver behaviour.
+
+```bash
+xcodebuild test -project TactileNav.xcodeproj -scheme TactileNav -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+```
+
+## Layout
 
 ```
 TactileNav/
-  Model/
-    StreetMapSizing.swift          Physical mm constants + the lane-anchored map scale
-    StreetMapGeometry.swift        Projection, spatial index, hit testing, spoken forms, labels
-    PortlandMapLoader.swift        Document load + off-main-thread projection
-    IntersectionCrossingModel.swift  Four-way signal cycle, traffic, lane geometry
-  View/
-    PortlandMapScreen.swift        Screen shell + async load
-    PortlandMapView.swift          Scroll view, gestures, VoiceOver, logging
-    PortlandStreetCanvasView.swift Viewport renderer
-    SpatialAudioSimulationView.swift  Crossing demo screen + bird's-eye diagram
-  Services/
-    StreetFeedbackPolicy.swift     Per-surface haptics + the single dwell-gated speech channel
-    TrafficAudioEngine.swift       Pooled real-Doppler vehicle voices
-Packages/
-  TactileMapKit/                   Vendored foundation package
-tools/
-  fetch_congress_square.py         OpenStreetMap → tactile map document
+  Model/    StreetMapGeometry, StreetMapSizing, IntersectionLayout,
+            IntersectionCrossingModel, PortlandMapLoader, congress_square.json
+  View/     PortlandMapScreen, PortlandMapView, PortlandStreetCanvasView,
+            IntersectionTactileView, SpatialAudioSimulationView,
+            SwipeBackSuppression, FeedbackCustomizationTesterView, FilesListView
+  Services/ StreetFeedbackPolicy, TrafficAudioEngine
+Packages/TactileMapKit/    vendored foundation package
+tools/                     map extraction and asset scripts
 ```
