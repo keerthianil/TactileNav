@@ -38,6 +38,14 @@ enum DemoIntersection {
     static let name = "Congress Street at High Street"
     static let shortName = "Congress at High"
 
+    /// The two streets, as the tactile diagram draws them.
+    ///
+    /// The diagram is a schematic plus, so "along" is simply the one drawn east–west and
+    /// "across" the one drawn north–south. Congress is the street being crossed, so it is the
+    /// one laid across the walker's path.
+    static let alongStreet = "Congress Street"
+    static let acrossStreet = "High Street"
+
     /// Congress Street, running east-north-east and west-south-west.
     static let congressBearings: (outbound: Double, inbound: Double) = (43, 240)
     /// High Street, running north-north-west and south-south-east.

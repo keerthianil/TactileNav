@@ -24,18 +24,26 @@ struct SpatialAudioSimulationView: View {
 
     @State private var running = false
     @State private var fleet: IntersectionCrossingModel.Fleet = .gasoline
-    @State private var vehicles: [SimulatedVehicle] = []
     @State private var phaseRevealed = false
     @State private var isWalkPhase = false
     @State private var nearestCents: Double = 0
     @State private var ticker: Timer?
     @State private var lastTick = CACurrentMediaTime()
+    /// When the readout was last republished. The audio runs at 60 Hz; the *view* must not.
+    @State private var lastReadoutTick = CACurrentMediaTime()
 
     var body: some View {
         VStack(spacing: 14) {
-            // The intersection is the demo, so it gets the room.
-            IntersectionDiagramView(vehicles: vehicles)
+            // The intersection is the demo, so it gets the room. It is a tactile diagram
+            // rather than an illustration: the same junction the traffic is running through,
+            // laid out so a finger can find the roadway, the sidewalks, the crossings and the
+            // kerb ramps. Silent while traffic plays — see `speaks`.
+            IntersectionTactileView(alongName: DemoIntersection.alongStreet,
+                                    acrossName: DemoIntersection.acrossStreet,
+                                    speaks: !running)
                 .frame(maxHeight: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(.separator)))
             statusView
             controls
         }
@@ -43,6 +51,9 @@ struct SpatialAudioSimulationView: View {
         .padding(.bottom, 12)
         .navigationTitle("Street Crossing Audio")
         .navigationBarTitleDisplayMode(.inline)
+        // The diagram above is explored with one finger, which is the same gesture that would
+        // otherwise pop this screen out from under it.
+        .disablesSwipeBack()
         .onAppear { audio.activate() }
         .onDisappear { stop() }
     }
@@ -59,7 +70,11 @@ struct SpatialAudioSimulationView: View {
                     Text(String(format: "%+.0f cents", nearestCents))
                         .font(.caption.monospacedDigit())
                         .foregroundColor(.secondary)
-                        .accessibilityLabel("Doppler shift of the nearest vehicle")
+                        // Hidden from VoiceOver on purpose. It is a sighted readout of a
+                        // number that changes several times a second, and the exercise is to
+                        // judge the traffic by ear — a voice reading out pitch shifts is both
+                        // a distraction and a partial answer.
+                        .accessibilityHidden(true)
                 }
             }
 
@@ -116,7 +131,6 @@ struct SpatialAudioSimulationView: View {
         audio.activate()
         model.reset()
         model.fleet = fleet
-        vehicles = []
         running = true
         lastTick = CACurrentMediaTime()
         ticker = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { _ in
@@ -129,7 +143,6 @@ struct SpatialAudioSimulationView: View {
         ticker = nil
         running = false
         audio.releaseAllVoices()
-        vehicles = []
         model.reset()
     }
 
@@ -177,112 +190,18 @@ struct SpatialAudioSimulationView: View {
             }
         }
 
-        vehicles = model.vehicles
-        nearestCents = nearestShift
-        isWalkPhase = model.currentPhase.isWalkPhase
-    }
-}
-
-// MARK: - Bird's-eye diagram
-
-/// The intersection seen from above, with the listener on the corner and live traffic.
-///
-/// Split out from the screen so it can be rendered and checked on its own — and because the
-/// screen's job is the run loop, not geometry.
-struct IntersectionDiagramView: View {
-
-    let vehicles: [SimulatedVehicle]
-
-    // MARK: - Intersection (bird's-eye)
-
-    var body: some View {
-        GeometryReader { geo in
-            let side = min(geo.size.width, geo.size.height)
-            let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
-            // Metres to points for the diagram only; the audio works in real metres.
-            let scale = side / CGFloat(IntersectionCrossingModel.legLengthM * 1.5)
-
-            ZStack {
-                RoundedRectangle(cornerRadius: 12).fill(Color(.systemGray6))
-
-                roadBand(bearing: DemoIntersection.congressBearings.outbound,
-                         center: center, scale: scale, length: side * 1.6)
-                roadBand(bearing: DemoIntersection.highBearings.outbound,
-                         center: center, scale: scale, length: side * 1.6)
-
-                ForEach(IntersectionLeg.allCases) { leg in
-                    crosswalk(on: leg, center: center, scale: scale)
-                }
-
-                Image(systemName: "figure.stand")
-                    .font(.system(size: 26, weight: .bold))
-                    .foregroundColor(.blue)
-                    .position(listenerPoint(center: center, scale: scale))
-
-                ForEach(vehicles) { vehicle in
-                    Image(systemName: vehicle.type.symbol)
-                        .font(.system(size: 20))
-                        .foregroundColor(vehicle.type.isEV ? .green : .orange)
-                        .position(diagramPoint(for: vehicle, center: center, scale: scale))
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+        // Republish the readout a few times a second rather than every frame. SwiftUI
+        // rebuilds this whole screen on each change, and under VoiceOver that means the
+        // accessibility tree is torn down and rebuilt 60 times a second — which reads as
+        // focus jumping around and speech cutting itself off mid-word.
+        if now - lastReadoutTick >= 0.25 {
+            lastReadoutTick = now
+            nearestCents = nearestShift
         }
-        .frame(minHeight: 340)
-        .accessibilityElement()
-        // Static on purpose. If this label reported the live phase, VoiceOver would hand over
-        // the very thing the listener is meant to work out.
-        .accessibilityLabel(
-            "Bird's eye view of \(DemoIntersection.name). You are standing on the corner about "
-            + "to cross Congress Street, facing along High Street. Traffic runs on all four legs.")
-    }
-
-    private func roadBand(bearing: Double, center: CGPoint, scale: CGFloat, length: CGFloat) -> some View {
-        Rectangle()
-            .fill(Color(.systemGray3))
-            .frame(width: CGFloat(DemoIntersection.roadHalfWidthM * 2) * scale, height: length)
-            .rotationEffect(.degrees(bearing))
-            .position(center)
-    }
-
-    /// A marked crossing on one leg. All four are drawn — a signalised four-way has a
-    /// crossing on every arm, and showing only the listener's made the junction look wrong.
-    ///
-    /// Bars run parallel to the traffic on the leg being crossed and step along the walking
-    /// direction, the way a painted zebra does.
-    private func crosswalk(on leg: IntersectionLeg, center: CGPoint, scale: CGFloat) -> some View {
-        let out = DemoIntersection.direction(leg.bearing)
-        let distance = CGFloat(DemoIntersection.roadHalfWidthM + 2.2) * scale
-        let mid = CGPoint(x: center.x + CGFloat(out.x) * distance,
-                          y: center.y - CGFloat(out.y) * distance)
-        let span = CGFloat(DemoIntersection.roadHalfWidthM * 2) * scale
-        return ForEach(0..<4, id: \.self) { index in
-            Rectangle()
-                .fill(.white)
-                .frame(width: 3, height: span)
-                .rotationEffect(.degrees(leg.bearing + 90))
-                .position(x: mid.x + CGFloat(index) * 7 * CGFloat(out.x) - 10 * CGFloat(out.x),
-                          y: mid.y - CGFloat(index) * 7 * CGFloat(out.y) + 10 * CGFloat(out.y))
+        // Only on an actual change. Writing the same value back still invalidates the view and
+        // re-evaluates its body, which at 60 Hz is the same churn the readout above avoids.
+        if isWalkPhase != model.currentPhase.isWalkPhase {
+            isWalkPhase = model.currentPhase.isWalkPhase
         }
-    }
-
-    private func listenerPoint(center: CGPoint, scale: CGFloat) -> CGPoint {
-        worldPoint(DemoIntersection.listenerPositionM, center: center, scale: scale)
-    }
-
-    /// World metres (+x east, +y north) to a point in the north-up diagram.
-    private func worldPoint(_ world: CGPoint, center: CGPoint, scale: CGFloat) -> CGPoint {
-        CGPoint(x: center.x + world.x * scale, y: center.y - world.y * scale)
-    }
-
-    /// Undo the listener-relative frame so the diagram stays north-up.
-    private func diagramPoint(for vehicle: SimulatedVehicle, center: CGPoint, scale: CGFloat) -> CGPoint {
-        let relative = vehicle.position(legLength: IntersectionCrossingModel.legLengthM)
-        let facing = DemoIntersection.listenerFacing * .pi / 180
-        let stand = DemoIntersection.listenerPositionM
-        let dx = Double(relative.x) * cos(facing) + Double(relative.y) * sin(facing)
-        let dy = -Double(relative.x) * sin(facing) + Double(relative.y) * cos(facing)
-        return worldPoint(CGPoint(x: Double(stand.x) + dx, y: Double(stand.y) + dy),
-                          center: center, scale: scale)
     }
 }
