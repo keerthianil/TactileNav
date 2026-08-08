@@ -86,7 +86,20 @@ The roadway is drawn at its *real* width here rather than a fixed one, because t
 crossings around it are at their real positions — a fixed width pushes the road's edge across the
 sidewalk beside it and the kerb, the most important line at a junction, stops existing.
 
-Back is the Back button, a three-finger swipe right, a double tap anywhere, or VoiceOver's escape.
+Drawing order is sidewalk, then roadway, then markings — the order things sit in on the ground.
+Pavement does not cross asphalt, so a sidewalk passing behind the roadway is correct, and near a
+junction the sidewalks of the next street along genuinely run into the roadway's footprint. Crossing
+markings are clipped to the roadway, so paint stops at the kerb and never lands on the pavement or the
+background. Painting along a crossing's whole length instead ran grey over the pavements it connects
+and merged neighbouring crossings into one blob at the corners.
+
+Each surface is stroked in a single pass per width rather than one piece at a time: overlapping strokes
+of the same colour otherwise leave a seam where two antialiased edges blend, which is what made a dozen
+sidewalk ways around a junction read as lumpy and doubled instead of as one pavement.
+
+**Back is a double tap anywhere, or a three-finger swipe right** (under VoiceOver, its escape and its
+three-finger scroll are the same two gestures). There is no back button and no one-finger swipe — one
+finger is exploration here, and every accidental exit came from that.
 
 ### Feedback
 

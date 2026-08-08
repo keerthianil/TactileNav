@@ -81,9 +81,10 @@ nonisolated struct IntersectionScene {
     static let sidewalkWidthMM: CGFloat = 4.0
     /// A crossing is a thin line, the weight of the paint on the ground.
     static let crossingWidthMM: CGFloat = 2.8
-    /// Length of one painted bar along the direction you walk.
-    static let crossingBarLengthMM: CGFloat = 1.4
-    static let crossingBarCount = 3
+    /// One painted bar, and the gap to the next. Bars repeat at this pitch for the whole
+    /// length of a crossing; only the ones lying on the roadway are drawn.
+    static let crossingBarLengthMM: CGFloat = 1.2
+    static let crossingBarPitchMM: CGFloat = 2.6
 
     /// How much ground the close-up covers, measured from the junction centre. Far enough to
     /// take in the corners and the crossings, close enough that a kerb is a finger's width.

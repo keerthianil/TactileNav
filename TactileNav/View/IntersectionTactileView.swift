@@ -38,10 +38,8 @@ import UIKit
 nonisolated enum IntersectionPalette {
     static let road = CGColor(red: 0x02 / 255, green: 0x3E / 255, blue: 0x8A / 255, alpha: 1)
     static let sidewalk = CGColor(red: 0x9E / 255, green: 0x9E / 255, blue: 0x9E / 255, alpha: 1)
+    /// Crossing paint. Always drawn on the roadway, so white always shows.
     static let crossingStripe = CGColor(gray: 1, alpha: 1)
-    /// The band a crossing's bars are painted on. Dark enough that white paint shows against
-    /// it whether the crossing lies over the roadway or over the background beside it.
-    static let crossingSurface = CGColor(gray: 0.42, alpha: 1)
     static let background = CGColor(gray: 1, alpha: 1)
 }
 
@@ -57,70 +55,99 @@ final class IntersectionCanvasView: UIView {
         ctx.setFillColor(IntersectionPalette.background)
         ctx.fill(rect)
 
-        // Paint goes down in the order it does on the ground: roadway, the sidewalk beside it,
-        // then the markings painted on top.
-        stroke(scene.pieces.filter { $0.surface == .road }, IntersectionPalette.road, in: ctx)
+        // Sidewalk first, then the roadway over it, then the markings painted on the roadway.
+        //
+        // Pavement does not cross asphalt, so the roadway covering the sidewalk is not a
+        // drawing trick — it is what is actually on top. Near a junction, sidewalks belonging
+        // to the next street along genuinely run into the roadway's footprint, and drawing
+        // them last put grey stripes straight across the blue. This order also keeps crossing
+        // paint off the pavement for free: the markings are clipped to the roadway, and the
+        // roadway is above the sidewalk, so the only grey left visible is off-road.
+        let roads = scene.pieces.filter { $0.surface == .road }
         stroke(scene.pieces.filter { $0.surface == .sidewalk }, IntersectionPalette.sidewalk, in: ctx)
-        drawCrossings(scene.pieces.filter { $0.surface == .crossing }, in: ctx)
+        stroke(roads, IntersectionPalette.road, in: ctx)
+        drawCrossings(scene.pieces.filter { $0.surface == .crossing }, over: roads, in: ctx)
     }
 
+    /// Strokes a set of pieces, one pass per width.
+    ///
+    /// All the pieces of a given width go into a single path and are rasterised together. Doing
+    /// them one at a time draws each over the last, and every overlap leaves a seam: the two
+    /// antialiased edges blend into a line that is visibly darker than either piece. Around a
+    /// junction, where a dozen sidewalk ways run alongside and across each other, that is what
+    /// made the grey look lumpy and doubled rather than like one continuous pavement.
     private func stroke(_ pieces: [IntersectionPiece], _ color: CGColor, in ctx: CGContext) {
+        guard !pieces.isEmpty else { return }
         ctx.setStrokeColor(color)
         ctx.setLineCap(.round)
         ctx.setLineJoin(.round)
-        for piece in pieces where piece.points.count >= 2 {
-            ctx.setLineWidth(piece.width)
+
+        let byWidth = Dictionary(grouping: pieces.filter { $0.points.count >= 2 }) { $0.width }
+        // Widest first, so a narrow way laid over a wide one stays visible.
+        for width in byWidth.keys.sorted(by: >) {
+            ctx.setLineWidth(width)
             ctx.beginPath()
-            ctx.move(to: piece.points[0])
-            for point in piece.points.dropFirst() { ctx.addLine(to: point) }
+            for piece in byWidth[width] ?? [] {
+                ctx.move(to: piece.points[0])
+                for point in piece.points.dropFirst() { ctx.addLine(to: point) }
+            }
             ctx.strokePath()
         }
     }
 
-    /// A crossing: a paved band with white bars painted across it.
+    /// A crossing: white bars painted across the roadway, and nowhere else.
     ///
-    /// The band matters. A real crossing here runs from kerb to kerb, so part of it lies over
-    /// the roadway and part over the ground beside it — white bars alone would appear and
-    /// disappear along the crossing's own length against the white background. Real crossings
-    /// are white on asphalt for exactly the same reason.
+    /// Clipped to the roadways so the paint stops exactly at the kerb. That is true of a real
+    /// crossing — markings exist on asphalt, not on the pavement or the grass beside it — and
+    /// it is also what stops the drawing falling apart. Painting a band along the crossing's
+    /// whole length instead put grey over the sidewalks it connects, merged neighbouring
+    /// crossings into one blob at the corners, and left bars stranded on the background where
+    /// the band happened not to reach.
     ///
     /// The bars run *across* the direction you walk and repeat *along* it, which is what a
     /// zebra is. The other way round gives a solid patch that reads as a notch in the road.
-    private func drawCrossings(_ pieces: [IntersectionPiece], in ctx: CGContext) {
+    private func drawCrossings(_ pieces: [IntersectionPiece], over roads: [IntersectionPiece],
+                               in ctx: CGContext) {
+        guard !pieces.isEmpty, !roads.isEmpty else { return }
+
         let bar = PhysicalDimensions.mmToPoints(IntersectionScene.crossingBarLengthMM)
-        let bandWidth = PhysicalDimensions.mmToPoints(IntersectionScene.crossingWidthMM) * 1.6
-        let count = IntersectionScene.crossingBarCount
+        let pitch = PhysicalDimensions.mmToPoints(IntersectionScene.crossingBarPitchMM)
+        let barWidth = PhysicalDimensions.mmToPoints(IntersectionScene.crossingWidthMM) * 1.9
+
+        // Clip to the roadways. Overlapping outlines union under the default winding rule, so
+        // the junction box itself is inside the region and a crossing may be painted across it.
+        let roadway = CGMutablePath()
+        for road in roads where road.points.count >= 2 {
+            let centreline = CGMutablePath()
+            centreline.addLines(between: road.points)
+            roadway.addPath(centreline.copy(strokingWithWidth: road.width, lineCap: .round,
+                                            lineJoin: .round, miterLimit: 10))
+        }
+
+        ctx.saveGState()
+        ctx.addPath(roadway)
+        ctx.clip()
+        ctx.setFillColor(IntersectionPalette.crossingStripe)
 
         for piece in pieces where piece.points.count >= 2 {
-            // Stroke the real polyline rather than a rectangle between its endpoints — a
-            // crossing that bends, and several here do, would otherwise be drawn in the wrong
-            // place at the wrong angle.
-            ctx.setStrokeColor(IntersectionPalette.crossingSurface)
-            ctx.setLineWidth(bandWidth)
-            ctx.setLineCap(.butt)
-            ctx.setLineJoin(.round)
-            ctx.beginPath()
-            ctx.move(to: piece.points[0])
-            for point in piece.points.dropFirst() { ctx.addLine(to: point) }
-            ctx.strokePath()
-
-            // Bars across the walking direction, evenly spaced along the crossing's length.
+            // Walk the real polyline rather than the line between its endpoints — several
+            // crossings here bend, and a straight approximation puts the bars off the road.
             let total = polylineLength(piece.points)
-            guard total > 0 else { continue }
-            ctx.setFillColor(IntersectionPalette.crossingStripe)
-            for index in 1...count {
-                let along = total * CGFloat(index) / CGFloat(count + 1)
+            guard total > pitch else { continue }
+            var along = pitch / 2
+            while along < total {
                 guard let at = pointAlongPolyline(piece.points, distance: along),
                       let ahead = pointAlongPolyline(piece.points, distance: min(along + 1, total))
-                else { continue }
-                let angle = atan2(ahead.y - at.y, ahead.x - at.x)
+                else { break }
                 ctx.saveGState()
                 ctx.translateBy(x: at.x, y: at.y)
-                ctx.rotate(by: angle)
-                ctx.fill(CGRect(x: -bar / 2, y: -bandWidth / 2, width: bar, height: bandWidth))
+                ctx.rotate(by: atan2(ahead.y - at.y, ahead.x - at.x))
+                ctx.fill(CGRect(x: -bar / 2, y: -barWidth / 2, width: bar, height: barWidth))
                 ctx.restoreGState()
+                along += pitch
             }
         }
+        ctx.restoreGState()
     }
 }
 
@@ -134,6 +161,15 @@ final class IntersectionCanvasView: UIView {
 /// judged.
 @MainActor
 final class IntersectionFeedbackController {
+
+    /// Shared, so leaving the screen can silence it from anywhere.
+    ///
+    /// The close-up owns its own speech, separate from the street map's. When it was owned by
+    /// the view, dismissing the screen left whatever it was saying running on over the map —
+    /// SwiftUI tears a representable down whenever it likes, which is not the moment the user
+    /// pressed back. One shared instance means `stopAll()` is reachable from the screen's own
+    /// dismissal path, which is the moment that actually matters.
+    static let shared = IntersectionFeedbackController()
 
     private let haptics = CoreHapticsEngine()
     private let speech = AVSpeechSynthesizer()
@@ -201,7 +237,7 @@ final class IntersectionFeedbackController {
 final class IntersectionTouchView: UIView {
 
     let canvas = IntersectionCanvasView()
-    private let feedback = IntersectionFeedbackController()
+    private let feedback = IntersectionFeedbackController.shared
 
     /// Whether entering a surface says its name.
     ///

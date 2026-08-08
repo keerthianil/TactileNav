@@ -286,12 +286,25 @@ final class StreetFeedbackController {
         speech.cancelPending()
     }
 
-    /// Finger lifted, or leaving the screen entirely.
+    /// Finger lifted. Haptics and the ding stop at once; whatever is mid-sentence is allowed
+    /// to finish, because cutting a street name off the instant a finger leaves is just rude.
     func stopAll() {
         activeIdentifier = nil
         stopIntersectionTone()
         haptics.stopAll()
         speech.cancelPending()
+    }
+
+    /// Leaving the screen. Everything stops, including a sentence already in flight.
+    ///
+    /// This is the distinction `stopAll` deliberately does not make, and missing it is what
+    /// left the map still naming a street over the top of the screen that replaced it. A
+    /// finger lifting and a screen going away want opposite things from the speech channel.
+    func silence() {
+        activeIdentifier = nil
+        stopIntersectionTone()
+        haptics.stopAll()
+        speech.stopAll()
     }
 
     // MARK: Junction ding

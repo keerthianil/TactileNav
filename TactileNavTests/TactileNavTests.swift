@@ -1078,6 +1078,87 @@ struct IntersectionSceneTests {
         #expect(view.currentSurface == nil)
     }
 
+    /// Crossing paint never lands anywhere but the roadway.
+    ///
+    /// This is the bug the close-up shipped with: crossings were painted along their whole
+    /// length, so a grey band ran over the sidewalks they connect, neighbouring crossings
+    /// merged into a blob at the corners, and bars ended up stranded on the background. The
+    /// markings are now clipped to the roadways, and this checks it across a spread of real
+    /// junctions rather than the one that happened to be looked at.
+    ///
+    /// Crossing paint is white and so is the background, so the two are told apart by
+    /// rendering the scene twice — with the crossings and without — and diffing. Whatever
+    /// changed is the paint, and every one of those pixels has to have been roadway before.
+    @Test func crossingPaintOnlyLandsOnTheRoadway() throws {
+        let map = try loadMap()
+        var checked = 0
+
+        for junction in map.intersections.prefix(120) {
+            let scene = IntersectionScene.build(junction: junction, map: map, size: size)
+            guard scene.pieces.contains(where: { $0.surface == .crossing }) else { continue }
+            checked += 1
+
+            let bare = IntersectionScene(
+                junction: scene.junction,
+                pieces: scene.pieces.filter { $0.surface != .crossing },
+                size: scene.size, center: scene.center, scale: scene.scale)
+
+            let painted = try Self.render(scene)
+            let unpainted = try Self.render(bare)
+            let stray = try Self.paintOffTheRoadway(painted: painted, unpainted: unpainted)
+            // A handful of pixels is the antialiased corner where a clipped bar meets the kerb.
+            // The bug this guards against painted a band along the *whole* length of every
+            // crossing, which measured in the thousands — three orders of magnitude away.
+            #expect(stray < 25, "\(junction.id): \(stray) px of crossing paint off the roadway")
+
+            if checked >= 8 { break }
+        }
+        #expect(checked > 0, "no junction in the extract has a crossing")
+    }
+
+    private static func render(_ scene: IntersectionScene) throws -> UIImage {
+        let canvas = IntersectionCanvasView(frame: CGRect(origin: .zero, size: scene.size))
+        canvas.scene = scene
+        return UIGraphicsImageRenderer(size: scene.size).image { _ in
+            canvas.draw(canvas.bounds)
+        }
+    }
+
+    /// Pixels the crossings changed that were not roadway underneath.
+    private static func paintOffTheRoadway(painted: UIImage, unpainted: UIImage) throws -> Int {
+        let a = try pixels(of: painted)
+        let b = try pixels(of: unpainted)
+        guard a.data.count == b.data.count else { return 0 }
+
+        // Any blue tint counts as roadway. A hard "is this the road colour" test rejects the
+        // antialiased rim of a road, where the pixel is a blue-white blend — and a bar that
+        // legitimately reaches the kerb always touches that rim.
+        func hasRoadwayUnder(_ c: (Int, Int, Int)) -> Bool { c.2 > c.0 + 10 }
+
+        var stray = 0
+        for index in stride(from: 0, to: a.data.count, by: 4) {
+            let before = (Int(b.data[index]), Int(b.data[index + 1]), Int(b.data[index + 2]))
+            let after = (Int(a.data[index]), Int(a.data[index + 1]), Int(a.data[index + 2]))
+            // Unchanged means the crossings did not paint here.
+            guard abs(before.0 - after.0) > 12 || abs(before.1 - after.1) > 12
+                    || abs(before.2 - after.2) > 12 else { continue }
+            if !hasRoadwayUnder(before) { stray += 1 }
+        }
+        return stray
+    }
+
+    private static func pixels(of image: UIImage) throws -> (data: [UInt8], width: Int, height: Int) {
+        let cgImage = try #require(image.cgImage)
+        let width = cgImage.width, height = cgImage.height
+        var data = [UInt8](repeating: 0, count: width * height * 4)
+        let context = try #require(CGContext(
+            data: &data, width: width, height: height, bitsPerComponent: 8,
+            bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return (data, width, height)
+    }
+
     @Test func theEntryAnnouncementNamesTheJunctionAndItsArms() throws {
         let map = try loadMap()
         let junction = try congressAtHigh(map)

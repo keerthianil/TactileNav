@@ -72,6 +72,39 @@ final class TactileNavUITests: XCTestCase {
         attach(app, named: "04-intersection-detail")
     }
 
+    /// Opening a junction, leaving, and opening one again has to land on the junction.
+    ///
+    /// It used to land on the home screen: the `navigationDestination` was registered inside a
+    /// conditional branch, so popping back deregistered it and SwiftUI emptied the stack.
+    @MainActor
+    func testAJunctionCanBeOpenedAgainAfterGoingBack() throws {
+        let app = launch()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Congress Square"))
+            .firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Congress Square"].waitForExistence(timeout: 20))
+
+        let map = app.scrollViews.firstMatch
+        XCTAssertTrue(map.waitForExistence(timeout: 5))
+        let middle = map.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+
+        for attempt in 1...2 {
+            middle.doubleTap()
+            XCTAssertTrue(app.navigationBars["Intersection"].waitForExistence(timeout: 10),
+                          "the junction did not open on attempt \(attempt)")
+
+            // Back is a double tap anywhere on the diagram — there is no back button. The
+            // diagram's label is the junction's name once it has built, so tap by position
+            // rather than by looking the element up.
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)).doubleTap()
+
+            XCTAssertTrue(app.navigationBars["Congress Square"].waitForExistence(timeout: 10),
+                          "did not return to the map on attempt \(attempt)")
+            // And specifically *not* all the way out to the home screen.
+            XCTAssertFalse(app.navigationBars["TactileNav"].exists,
+                           "attempt \(attempt) fell through to the home screen")
+        }
+    }
+
     @MainActor
     func testStreetCrossingAudioShowsTheIntersection() throws {
         let app = launch()

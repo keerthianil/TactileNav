@@ -34,6 +34,19 @@ struct PortlandMapScreen: View {
 
     var body: some View {
         content
+            // Attached here, unconditionally, and never inside the `switch` in `content`.
+            //
+            // A `navigationDestination` registered inside a conditional branch is only
+            // registered while that branch happens to be in the tree. Popping back re-evaluates
+            // the branch, SwiftUI finds no destination for the binding it is still holding, and
+            // resolves that by emptying the stack — which is why opening a junction a second
+            // time threw the user out to the home screen.
+            .navigationDestination(item: $openJunction) { selection in
+                if case .ready(let map) = phase,
+                   let junction = map.intersections.first(where: { $0.id == selection.id }) {
+                    IntersectionDetailScreen(junction: junction, map: map)
+                }
+            }
             .navigationTitle("Congress Square")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -54,7 +67,7 @@ struct PortlandMapScreen: View {
                 hasAppeared = true
                 load()
             }
-            .onDisappear { StreetFeedbackController.shared.stopAll() }
+            .onDisappear { StreetFeedbackController.shared.silence() }
     }
 
     @ViewBuilder
@@ -71,11 +84,6 @@ struct PortlandMapScreen: View {
                             onBackGesture: { dismiss() },
                             onIntersectionDoubleTap: { openJunction = OpenJunction(id: $0.id) })
                 .ignoresSafeArea(edges: .bottom)
-                .navigationDestination(item: $openJunction) { selection in
-                    if let junction = map.intersections.first(where: { $0.id == selection.id }) {
-                        IntersectionDetailScreen(junction: junction, map: map)
-                    }
-                }
 
         case .failed:
             VStack(spacing: 12) {

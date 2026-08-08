@@ -8,9 +8,10 @@
 //  and the sidewalks and crossings OpenStreetMap records at that corner. See
 //  `IntersectionScene`.
 //
-//  Ways back, matching the street map so the two screens behave the same: the Back button, a
-//  three-finger swipe right, a double tap anywhere on the diagram, and VoiceOver's escape.
-//  A one-finger swipe is exploration here as well and never navigates.
+//  Two ways back, and no others: a double tap anywhere, and a three-finger swipe right (plus
+//  VoiceOver's own escape and scroll, which are the same two gestures under VoiceOver). There
+//  is no navigation-bar back button and no one-finger swipe — one finger is exploration on this
+//  screen, and every accidental pop while reading the junction came from that.
 //
 
 import SwiftUI
@@ -23,53 +24,29 @@ struct IntersectionDetailScreen: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var hasAnnounced = false
+    /// Set the moment we start leaving, so a delayed announcement does not land on the map.
+    @State private var hasLeft = false
 
     var body: some View {
-        VStack(spacing: 12) {
-            // Double tap anywhere on the diagram also goes back, as it does in the
-            // reference app — the gesture that opened this screen closes it.
-            IntersectionTactileView(junction: junction, map: map, onDoubleTap: goBack)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(.separator)))
-
-            armsSummary
-        }
-        .padding(.horizontal)
-        .padding(.bottom, 12)
+        // The junction, and nothing else. Everything that was written underneath — the name,
+        // the arms, the gesture hints — is said on arrival instead, so the drawing gets the
+        // whole screen and there is nothing to read past to reach it.
+        IntersectionTactileView(junction: junction, map: map, onDoubleTap: goBack)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(.separator)))
+            .padding(.horizontal)
+            .padding(.bottom, 12)
         .navigationTitle("Intersection")
         .navigationBarTitleDisplayMode(.inline)
-        // A one-finger drag is exploration on this screen too.
+        // No back button: back is the double tap and the three-finger swipe, nothing else.
+        .navigationBarBackButtonHidden(true)
+        // And no one-finger swipe-back either — one finger is exploration here.
         .disablesSwipeBack()
         .background(BackGestures(onBack: goBack))
         .accessibilityAction(.escape) { goBack() }
         .onAppear(perform: announceOnce)
-        .onDisappear { StreetFeedbackController.shared.stopAll() }
-    }
-
-    /// The arms in writing, for anyone reading the screen rather than feeling it. Also the
-    /// thing a sighted researcher checks the geometry against.
-    private var armsSummary: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(junction.announcement)
-                .font(.headline)
-            ForEach(Array(junction.legs.enumerated()), id: \.offset) { _, arm in
-                Text("\(arm.streetName) — \(arm.compassLabel)")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
-            Text("Drag one finger to explore. Double tap or swipe three fingers right to go back. "
-                 + "Works with VoiceOver on or off.")
-                .font(.footnote)
-                .foregroundColor(.secondary)
-                .padding(.top, 2)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-        // Read as one block: the arms are a list of facts about one place, and swiping through
-        // them one line at a time is slower than hearing the sentence.
-        .accessibilityElement(children: .combine)
+        .onDisappear(perform: silence)
     }
 
     private func announceOnce() {
@@ -78,6 +55,9 @@ struct IntersectionDetailScreen: View {
         // Delayed past the push. iOS drops screen-change posts made during a transition, which
         // is how an entry announcement ends up never happening at all.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            // Only if we are still here. A quick double tap straight back out would otherwise
+            // fire this announcement over the map we have already returned to.
+            guard !hasLeft else { return }
             let text = IntersectionScene.entryAnnouncement(for: junction)
             if UIAccessibility.isVoiceOverRunning {
                 UIAccessibility.post(notification: .screenChanged, argument: text)
@@ -87,8 +67,19 @@ struct IntersectionDetailScreen: View {
         }
     }
 
+    /// Everything this screen can be making a noise with, stopped.
+    ///
+    /// Both controllers, because the close-up speaks through its own and the entry
+    /// announcement goes through the map's. Missing either one leaves speech running on over
+    /// the screen underneath.
+    private func silence() {
+        hasLeft = true
+        IntersectionFeedbackController.shared.stopAll()
+        StreetFeedbackController.shared.silence()
+    }
+
     private func goBack() {
-        StreetFeedbackController.shared.stopAll()
+        silence()
         dismiss()
     }
 }

@@ -35,10 +35,14 @@ struct SpatialAudioSimulationView: View {
     @State private var lastTick = CACurrentMediaTime()
     /// When the readout was last republished. The audio runs at 60 Hz; the *view* must not.
     @State private var lastReadoutTick = CACurrentMediaTime()
+    /// Vehicles as the diagram draws them. Republished a few times a second, not every frame.
+    @State private var shownVehicles: [SimulatedVehicle] = []
+    @State private var lastDiagramTick = CACurrentMediaTime()
 
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
+                CrossingOrientationDiagram(vehicles: shownVehicles)
                 whereYouAre
                 statusView
                 controls
@@ -207,6 +211,7 @@ struct SpatialAudioSimulationView: View {
         running = false
         audio.releaseAllVoices()
         model.reset()
+        shownVehicles = []
     }
 
     private func tick() {
@@ -265,6 +270,12 @@ struct SpatialAudioSimulationView: View {
         if now - lastReadoutTick >= 0.25 {
             lastReadoutTick = now
             nearestCents = nearestShift
+        }
+        // The diagram moves often enough to read as motion, but nowhere near 60 Hz — every
+        // republish rebuilds this screen, and under VoiceOver that is what makes focus jump.
+        if now - lastDiagramTick >= 0.1 {
+            lastDiagramTick = now
+            shownVehicles = model.vehicles
         }
         // Only on an actual change. Writing the same value back still invalidates the view and
         // re-evaluates its body, which at 60 Hz is the same churn the readout above avoids.
