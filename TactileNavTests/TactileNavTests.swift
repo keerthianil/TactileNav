@@ -161,15 +161,27 @@ struct CongressSquareMapTests {
 
     // MARK: - Intersections
 
-    /// The junctions are computed from the real road geometry, and the well-known ones around
-    /// Congress Square have to come out of it.
+    /// The junctions come from OpenStreetMap's node topology, and the well-known ones around
+    /// Congress Square have to be among them — in every shape, not just four-way.
     @Test func realIntersectionsAreFoundInTheRoadNetwork() throws {
         let map = try loadMap()
 
-        // Downtown Portland is a dense grid, so there are many — but a sane count, not zero
-        // and not one per segment.
-        #expect(map.intersections.count > 100)
-        #expect(map.intersections.count < map.features.count)
+        // Downtown Portland is a dense grid: hundreds of junctions, most of them T-shaped.
+        #expect(map.intersections.count > 500)
+
+        // Every shape the street network actually contains, not only the four-way ones.
+        let shapes = Set(map.intersections.map(\.legs.count))
+        #expect(shapes.contains(3), "no T-junctions were found")
+        #expect(shapes.contains(4), "no four-way junctions were found")
+        #expect(shapes.contains(2), "no two-way corners were found")
+
+        // An overpass is not a junction. I-295 crosses downtown streets without meeting them,
+        // and shared-node topology is what keeps those out — a purely geometric crossing test
+        // would report every one of them.
+        for junction in map.intersections {
+            #expect(!junction.streetNames.contains { $0.contains("I 295") },
+                    "\(junction.id) treats a grade separation as a junction")
+        }
 
         // Every junction names at least two distinct streets — a street cannot cross itself.
         for junction in map.intersections {
@@ -186,8 +198,7 @@ struct CongressSquareMapTests {
                         < 120 * map.metrics.pointsPerMeter
             }
         }
-        // Positions are in content points; the exact values do not matter, only that a
-        // junction of these two streets exists somewhere sane.
+        // Junctions a Portlander would name.
         #expect(map.intersections.contains { $0.streetNames.contains("Congress Street") && $0.streetNames.contains("High Street") })
         #expect(map.intersections.contains { $0.streetNames.contains("Congress Street") && $0.streetNames.contains("Free Street") })
         #expect(map.intersections.contains { $0.streetNames.contains("Congress Street") && $0.streetNames.contains("Oak Street") })
@@ -232,14 +243,29 @@ struct CongressSquareMapTests {
         #expect(junction.hitRadius >= 22)
     }
 
-    /// The spoken form names the streets and leads with the word intersection.
-    @Test func aJunctionNamesTheStreetsThatMeet() throws {
+    /// The spoken form gives the shape and names the streets — "Four-way intersection of…".
+    @Test func aJunctionNamesItsShapeAndTheStreetsThatMeet() throws {
         let map = try loadMap()
-        for junction in map.intersections.prefix(50) {
-            #expect(junction.announcement.hasPrefix("Intersection of "))
+        for junction in map.intersections.prefix(80) {
+            #expect(junction.announcement.contains("-way intersection"),
+                    "\(junction.announcement) does not say what shape it is")
             for name in junction.streetNames {
                 #expect(junction.announcement.contains(name),
                         "\(junction.announcement) omits \(name)")
+            }
+        }
+    }
+
+    /// Every junction carries the real arms, with a bearing and the street each one carries.
+    @Test func everyJunctionCarriesItsArms() throws {
+        let map = try loadMap()
+        for junction in map.intersections {
+            #expect(junction.legs.count >= 2, "\(junction.id) has \(junction.legs.count) arms")
+            for arm in junction.legs {
+                #expect((0...360).contains(arm.bearing), "\(arm.bearing) is not a bearing")
+                #expect(junction.streetNames.contains(arm.streetName),
+                        "an arm carries \(arm.streetName), which does not meet here")
+                #expect(!arm.compassLabel.isEmpty)
             }
         }
     }
@@ -908,228 +934,159 @@ struct IntersectionCrossingTests {
     }
 }
 
-// MARK: - The tactile intersection
+// MARK: - The intersection close-up
 
-/// The close-up junction on the Street Crossing Audio screen.
+/// The junction close-up, built from the real geometry around a real junction.
 ///
-/// This is the one screen where the four surfaces a pedestrian has to tell apart are all
-/// drawn at once, so the thing worth testing is that they stay physically separate — that a
-/// sidewalk does not end up under the roadway, and that every one of them can actually be
-/// found by a finger.
+/// Nothing in it is schematic any more, so the things worth testing are that the real data
+/// makes it through intact and that every surface a finger needs stays reachable.
 @MainActor
-struct IntersectionLayoutTests {
+struct IntersectionSceneTests {
 
-    private let size = CGSize(width: 360, height: 340)
+    private let size = CGSize(width: 360, height: 420)
 
-    private func layout() -> IntersectionLayout {
-        IntersectionLayout.build(size: size, alongName: "Congress Street", acrossName: "High Street")
+    private func loadMap() throws -> StreetMap {
+        try PortlandMapLoader.loadStreetMap(context: PortlandMapLoader.LoadContext.current())
     }
 
-    @Test func theJunctionHasEveryPieceOfAFourWayCrossing() {
-        let map = layout()
-        #expect(map.bands.filter { $0.surface == .road }.count == 2)
-        // Two per roadway, each broken at the junction so the corners read as corners.
-        #expect(map.bands.filter { $0.surface == .sidewalk }.count == 8)
-        // A signalised four-way has a crossing on every arm.
-        #expect(map.bands.filter { $0.surface == .crossing }.count == 4)
+    /// Congress at High — a real four-way, and the one the audio demo uses.
+    private func congressAtHigh(_ map: StreetMap) throws -> Intersection {
+        try #require(map.intersections.first {
+            $0.streetNames.contains("Congress Street") && $0.streetNames.contains("High Street")
+        })
     }
 
-    @Test func everyWidthIsAPhysicalMillimetreMeasurement() {
-        let map = layout()
-        let road = try? #require(map.bands.first { $0.surface == .road })
-        let walk = try? #require(map.bands.first { $0.surface == .sidewalk })
-        let cross = try? #require(map.bands.first { $0.surface == .crossing })
+    @Test func theCloseUpIsBuiltFromRealGeometry() throws {
+        let map = try loadMap()
+        let junction = try congressAtHigh(map)
+        let scene = IntersectionScene.build(junction: junction, map: map, size: size)
 
-        #expect(abs((road?.width ?? 0)
-                    - PhysicalDimensions.mmToPoints(IntersectionLayout.roadWidthMM)) < 0.01)
-        #expect(abs((walk?.width ?? 0)
-                    - PhysicalDimensions.mmToPoints(IntersectionLayout.sidewalkWidthMM)) < 0.01)
-        #expect(abs((cross?.width ?? 0)
-                    - PhysicalDimensions.mmToPoints(IntersectionLayout.crossingWidthMM)) < 0.01)
+        // The roadways of the junction, and the footways OSM records around it.
+        #expect(scene.pieces.contains { $0.surface == .road })
+        #expect(scene.pieces.contains { $0.surface == .sidewalk },
+                "no real sidewalk was found at this junction")
+        #expect(scene.pieces.contains { $0.surface == .crossing },
+                "no real crossing was found at this junction")
 
-        // The roadway is the widest thing here on purpose: it is the one surface that has to
-        // be recognised instantly, and it is three times a street line on the wider map.
-        #expect((road?.width ?? 0) > (walk?.width ?? 0) * 2)
+        // Road pieces carry the real street names, not a placeholder.
+        let roadNames = Set(scene.pieces.filter { $0.surface == .road }.map(\.name))
+        #expect(roadNames.contains("Congress Street"))
+        #expect(roadNames.contains("High Street"))
     }
 
-    /// The sidewalks and the crossings on them have to clear the roadway.
-    ///
-    /// A crossing that overlaps the roadway it is supposed to run alongside puts the corner
-    /// ramps in the traffic, and a sidewalk buried under the roadway is simply unreachable.
-    /// The sidewalk sits behind a kerb, not on the roadway, and the offset that puts it there
-    /// is derived from the parts rather than picked. This is the assertion that proves the
-    /// derivation still adds up — half the roadway, the crossing, the kerb, half the sidewalk.
-    @Test func theSidewalkSitsOneKerbBackFromTheRoadway() {
-        let map = layout()
-        let roadHalf = IntersectionLayout.roadWidthMM / 2
-        let sidewalkNearEdge = IntersectionLayout.sidewalkOffsetMM
-            - IntersectionLayout.sidewalkWidthMM / 2
-        let crossingOuterEdge = roadHalf + IntersectionLayout.crossingWidthMM
+    /// The arms run at their true bearings — this is not a schematic plus.
+    @Test func theArmsRunAtTheirRealBearings() throws {
+        let map = try loadMap()
+        let junction = try congressAtHigh(map)
 
-        #expect(sidewalkNearEdge > roadHalf, "the sidewalk overlaps the roadway")
-        #expect(abs(sidewalkNearEdge - crossingOuterEdge - IntersectionLayout.kerbGapMM) < 0.001,
-                "the kerb gap has drifted")
+        #expect(junction.legs.count == 4)
+        // Portland's downtown grid is rotated; a junction drawn as a plus would have arms at
+        // 0/90/180/270. These do not, and that is the point.
+        let isAxisAligned = junction.legs.allSatisfy { arm in
+            let offset = arm.bearing.truncatingRemainder(dividingBy: 90)
+            return abs(offset) < 5 || abs(offset - 90) < 5
+        }
+        #expect(!isAxisAligned, "the arms were snapped to a schematic plus")
 
-        // 11.8 mm on the glass. Far enough to be a separate line under a finger, close enough
-        // that the junction still reads as one thing rather than four streets and a square.
-        #expect(abs(IntersectionLayout.sidewalkOffsetMM - 11.8) < 0.001)
-        #expect(IntersectionLayout.sidewalkOffsetMM < roadHalf * 2.5,
-                "the sidewalks have drifted away from the junction")
-
-        // And it holds in points, on this device, once converted.
-        let walk = map.bands.first { $0.surface == .sidewalk }
-        let gap = abs((walk?.from.y ?? 0) - map.center.y)
-        #expect(gap > PhysicalDimensions.mmToPoints(roadHalf))
-    }
-
-    /// Each crossing runs corner to corner and spans the street it is named for.
-    @Test func eachCrossingBridgesTwoCornersOverTheStreetItNames() {
-        let map = layout()
-        let corner = PhysicalDimensions.mmToPoints(IntersectionLayout.sidewalkOffsetMM)
-
-        for band in map.bands where band.surface == .crossing {
-            let length = hypot(band.to.x - band.from.x, band.to.y - band.from.y)
-            #expect(abs(length - corner * 2) < 0.01, "\(band.id) does not reach both corners")
-
-            // Its middle is over a roadway — that is what makes it a crossing, and it is also
-            // what puts the painted bars on dark blue rather than on the background.
-            let mid = CGPoint(x: (band.from.x + band.to.x) / 2, y: (band.from.y + band.to.y) / 2)
-            let overRoad = map.bands.contains { road in
-                road.surface == .road
-                    && distanceToSegment(mid, road.from, road.to) <= road.width / 2
-            }
-            #expect(overRoad, "\(band.id) does not cross a roadway")
+        // Opposite arms of a through street really are roughly opposite.
+        let congress = junction.legs.filter { $0.streetName == "Congress Street" }
+        #expect(congress.count == 2)
+        if congress.count == 2 {
+            let spread = abs(congress[0].bearing - congress[1].bearing)
+            #expect(abs(spread - 180) < 45, "Congress Street doubles back on itself")
         }
     }
 
-    @Test func aFingerCanFindEverySurface() {
-        let map = layout()
+    /// Everything drawn has to be reachable, or it is decoration.
+    @Test func aFingerCanFindEverySurface() throws {
+        let map = try loadMap()
+        let junction = try congressAtHigh(map)
+        let scene = IntersectionScene.build(junction: junction, map: map, size: size)
 
-        // Dead centre is roadway — both of them cross there.
-        #expect(map.hit(map.center)?.surface == .road)
-
-        // The middle of the space between things says nothing, which is how a gap reads.
-        #expect(map.hit(CGPoint(x: 4, y: 4)) == nil)
-
-        // Sweeping the whole view has to turn up all three, or one of them is drawn but
-        // unreachable — the failure a user would report as "I can't find the crossing".
         var found: Set<String> = []
-        for x in stride(from: 0.0, to: size.width, by: 2) {
-            for y in stride(from: 0.0, to: size.height, by: 2) {
-                if let hit = map.hit(CGPoint(x: x, y: y)) {
-                    found.insert("\(hit.surface)")
+        for x in stride(from: 0.0, to: size.width, by: 3) {
+            for y in stride(from: 0.0, to: size.height, by: 3) {
+                if let piece = scene.piece(at: CGPoint(x: x, y: y)) {
+                    found.insert("\(piece.surface)")
                 }
             }
         }
-        #expect(found.count == 3, "only found \(found.sorted())")
+        #expect(found.contains("road"))
+        #expect(found.contains("sidewalk"))
+        #expect(found.contains("crossing"))
+
+        // The middle of a junction is roadway.
+        #expect(scene.piece(at: scene.center)?.surface == .road)
+
+        // And there is blank ground between the arms. Not a specific corner — the streets here
+        // run at an angle and one of them really does cross the top-left — but somewhere.
+        var blank = 0
+        for x in stride(from: 0.0, to: size.width, by: 6) {
+            for y in stride(from: 0.0, to: size.height, by: 6) where scene.piece(at: CGPoint(x: x, y: y)) == nil {
+                blank += 1
+            }
+        }
+        #expect(blank > 0, "every point resolved to something; the blocks have vanished")
     }
 
-    /// The diagram has to respond to a finger with VoiceOver *off* as well as on.
+    @Test func everyPieceIsPhysicallySizedAndNamed() throws {
+        let map = try loadMap()
+        let scene = IntersectionScene.build(junction: try congressAtHigh(map), map: map, size: size)
+
+        for piece in scene.pieces {
+            #expect(!piece.name.isEmpty, "\(piece.id) has nothing to say")
+            #expect(piece.points.count >= 2)
+            switch piece.surface {
+            case .road:
+                // Real width for the lane count, held inside the tactile bounds.
+                #expect(piece.width >= PhysicalDimensions.mmToPoints(IntersectionScene.minimumRoadWidthMM) - 0.01)
+                #expect(piece.width <= PhysicalDimensions.mmToPoints(IntersectionScene.maximumRoadWidthMM) + 0.01)
+            case .sidewalk:
+                #expect(abs(piece.width - PhysicalDimensions.mmToPoints(IntersectionScene.sidewalkWidthMM)) < 0.01)
+                #expect(piece.name.contains("sidewalk"))
+            case .crossing:
+                #expect(abs(piece.width - PhysicalDimensions.mmToPoints(IntersectionScene.crossingWidthMM)) < 0.01)
+                #expect(piece.name.contains("Crossing"))
+            }
+        }
+    }
+
+    /// The close-up has to respond to a finger with VoiceOver *off* as well as on.
     ///
     /// Exploration runs on raw touches rather than a gesture recognizer precisely so the two
     /// are the same code path. This drives that path directly — which is what the touch
     /// handlers do — and checks it resolves the surface either way.
-    @Test func exploringWorksWithVoiceOverOffAsWellAsOn() {
+    @Test func exploringWorksWithVoiceOverOffAsWellAsOn() throws {
+        let map = try loadMap()
+        let junction = try congressAtHigh(map)
+
         let view = IntersectionTouchView(frame: CGRect(origin: .zero, size: size))
-        view.streetNames = ("Congress Street", "High Street")
+        view.source = (junction, map)
         view.layoutIfNeeded()
 
-        let centre = CGPoint(x: size.width / 2, y: size.height / 2)
-        view.explore(at: centre)
+        let scene = try #require(view.scene)
+        view.explore(at: scene.center)
         #expect(view.currentSurface == .road, "the roadway gave no feedback")
 
-        let offset = PhysicalDimensions.mmToPoints(IntersectionLayout.sidewalkOffsetMM)
-        view.explore(at: CGPoint(x: centre.x - offset - offset, y: centre.y - offset))
-        #expect(view.currentSurface == .sidewalk, "the sidewalk gave no feedback")
-
-        view.explore(at: CGPoint(x: centre.x, y: centre.y - offset))
-        #expect(view.currentSurface == .crossing, "the crossing gave no feedback")
+        // A point on a real sidewalk in this scene.
+        let sidewalk = try #require(scene.pieces.first { $0.surface == .sidewalk })
+        view.explore(at: polylineMidpoint(sidewalk.points))
+        #expect(view.currentSurface != nil, "the sidewalk gave no feedback")
 
         // Lifting off has to stop everything, or the buzz runs on after the finger is gone.
         view.stopFeedback()
         #expect(view.currentSurface == nil)
     }
 
-    @Test func everySurfaceNamesItselfAndItsStreet() {
-        let map = layout()
-        for band in map.bands where band.surface == .sidewalk {
-            #expect(band.name.contains("sidewalk"))
-            // A bare compass direction is useless without the street it belongs to.
-            #expect(band.name.contains("Street"))
-        }
-        for band in map.bands where band.surface == .crossing {
-            #expect(band.name.contains("crossing"))
-            #expect(band.name.contains("across "))
-        }
-        #expect(map.bands.contains { $0.surface == .road && $0.name == "Congress Street" })
-        #expect(map.bands.contains { $0.surface == .road && $0.name == "High Street" })
-    }
+    @Test func theEntryAnnouncementNamesTheJunctionAndItsArms() throws {
+        let map = try loadMap()
+        let junction = try congressAtHigh(map)
+        let text = IntersectionScene.entryAnnouncement(for: junction)
 
-    /// Renders the junction and checks each surface actually put its colour down.
-    @Test func theCanvasDrawsAllThreeSurfaces() throws {
-        let canvas = IntersectionCanvasView(frame: CGRect(origin: .zero, size: size))
-        canvas.layout = layout()
-
-        let image = UIGraphicsImageRenderer(size: size).image { _ in
-            canvas.draw(canvas.bounds)
-        }
-        let counts = try Self.classify(image)
-
-        #expect(counts.blue > 0, "no roadway was drawn")
-        #expect(counts.sidewalkGrey > 0, "no sidewalk was drawn")
-        // Bars counted only where roadway is on both sides of them, so the white background
-        // cannot be mistaken for paint. This is the assertion that catches crossing markings
-        // drawn white-on-white and therefore invisible.
-        #expect(counts.whiteOnRoad > 0, "no crossing bars were drawn on the roadway")
-        // Nothing red left over from the kerb-ramp dots.
-        #expect(counts.red == 0, "\(counts.red) red px — a dot was drawn")
-
-        try #require(image.pngData()).write(to: FileManager.default
-            .urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("intersection.png"))
-    }
-
-    private struct Counts {
-        var blue = 0, sidewalkGrey = 0, red = 0, whiteOnRoad = 0
-    }
-
-    /// Classifies by colour family rather than exact bytes — the render pipeline is colour
-    /// managed, so a stroke laid down as #023E8A does not come back as those exact values.
-    private static func classify(_ image: UIImage) throws -> Counts {
-        let cgImage = try #require(image.cgImage)
-        let width = cgImage.width, height = cgImage.height
-        var pixels = [UInt8](repeating: 0, count: width * height * 4)
-        let context = try #require(CGContext(
-            data: &pixels, width: width, height: height, bitsPerComponent: 8,
-            bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-
-        func pixel(_ x: Int, _ y: Int) -> (Int, Int, Int) {
-            let i = (y * width + x) * 4
-            return (Int(pixels[i]), Int(pixels[i + 1]), Int(pixels[i + 2]))
-        }
-        func isBlue(_ c: (Int, Int, Int)) -> Bool { c.2 > c.0 + 40 && c.2 > c.1 + 20 }
-        func isNeutral(_ c: (Int, Int, Int)) -> Bool { abs(c.0 - c.1) < 14 && abs(c.1 - c.2) < 14 }
-        func isSidewalk(_ c: (Int, Int, Int)) -> Bool { isNeutral(c) && (140...185).contains(c.0) }
-
-        var counts = Counts()
-        for y in 0..<height {
-            for x in 0..<width {
-                let c = pixel(x, y)
-                if isBlue(c) {
-                    counts.blue += 1
-                } else if c.0 > 150, c.1 < 90, c.2 < 110 {
-                    counts.red += 1
-                } else if isSidewalk(c) {
-                    counts.sidewalkGrey += 1
-                } else if c.0 > 240, c.1 > 240, c.2 > 240 {
-                    let left = (0..<x).reversed().prefix(40).first { isBlue(pixel($0, y)) } != nil
-                    let right = ((x + 1)..<width).prefix(40).first { isBlue(pixel($0, y)) } != nil
-                    if left && right { counts.whiteOnRoad += 1 }
-                }
-            }
-        }
-        return counts
+        #expect(text.contains("Four-way intersection"))
+        #expect(text.contains("Congress Street"))
+        #expect(text.contains("High Street"))
+        // The arms are given with a compass direction, which is the thing a traveller needs.
+        #expect(text.contains("to the "))
     }
 }

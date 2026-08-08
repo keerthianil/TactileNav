@@ -103,6 +103,8 @@ final class PortlandStreetScrollView: UIScrollView {
     var onExploreMoved: ((CGPoint) -> Void)?
     var onExploreEnded: (() -> Void)?
     var onExploreTapped: ((CGPoint) -> Void)?
+    /// Double tap: open the junction under the finger.
+    var onExploreDoubleTapped: ((CGPoint) -> Void)?
 
     private var exploreTouch: UITouch?
     private var exploreStartedAt: CFTimeInterval = 0
@@ -111,6 +113,18 @@ final class PortlandStreetScrollView: UIScrollView {
     /// A touch this brief and this still is a tap, not a drag.
     private let tapMaxDuration: TimeInterval = 0.45
     private let tapMaxDisplacement: CGFloat = 28
+
+    // Double tap, synthesised from the same raw touches as everything else.
+    //
+    // A gesture recognizer would need a second, separate implementation for VoiceOver, which
+    // is exactly the split that leaves one of the two states broken. Building it here means a
+    // double tap behaves the same whether VoiceOver is on or off, for the same reason
+    // exploration does.
+    private let doubleTapMaxInterval: TimeInterval = 0.45
+    private let doubleTapMaxDistance: CGFloat = 48
+    private var lastTapTime: CFTimeInterval = 0
+    private var lastTapPoint: CGPoint = .zero
+    private var pendingSingleTap: DispatchWorkItem?
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesBegan(touches, with: event)
@@ -144,14 +158,48 @@ final class PortlandStreetScrollView: UIScrollView {
         let elapsed = CACurrentMediaTime() - exploreStartedAt
         endExplore(cancelled: false)
 
-        if elapsed <= tapMaxDuration, travelled <= tapMaxDisplacement {
-            onExploreTapped?(point)
+        guard elapsed <= tapMaxDuration, travelled <= tapMaxDisplacement else {
+            // A drag, not a tap. It also breaks any double-tap in progress, so a tap followed
+            // by a drag cannot be mistaken for the first half of one.
+            cancelPendingTap()
+            lastTapTime = 0
+            return
         }
+
+        let now = CACurrentMediaTime()
+        let isSecondTap = now - lastTapTime <= doubleTapMaxInterval
+            && hypot(point.x - lastTapPoint.x, point.y - lastTapPoint.y) <= doubleTapMaxDistance
+
+        if isSecondTap {
+            cancelPendingTap()
+            lastTapTime = 0
+            onExploreDoubleTapped?(point)
+            return
+        }
+
+        // Hold the single tap for the double-tap window. Speaking immediately and then opening
+        // a screen half a second later means the announcement is cut off by the one the new
+        // screen makes — so the single tap waits to find out which gesture it belongs to.
+        lastTapTime = now
+        lastTapPoint = point
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pendingSingleTap = nil
+            self.lastTapTime = 0
+            self.onExploreTapped?(point)
+        }
+        pendingSingleTap = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + doubleTapMaxInterval, execute: work)
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesCancelled(touches, with: event)
         endExplore(cancelled: true)
+    }
+
+    private func cancelPendingTap() {
+        pendingSingleTap?.cancel()
+        pendingSingleTap = nil
     }
 
     private func endExplore(cancelled: Bool) {
@@ -315,6 +363,8 @@ struct PortlandMapView: UIViewRepresentable {
     var description = "Tactile street map"
     var commands: StreetMapCommands?
     var onBackGesture: (() -> Void)?
+    /// Double tap on a junction: open it.
+    var onIntersectionDoubleTap: ((Intersection) -> Void)?
 
     func makeUIView(context: Context) -> PortlandStreetMapContainerView {
         makeContainer(coordinator: context.coordinator)
@@ -331,7 +381,19 @@ struct PortlandMapView: UIViewRepresentable {
         scrollView.delegate = coordinator
         scrollView.showsVerticalScrollIndicator = true
         scrollView.showsHorizontalScrollIndicator = true
-        scrollView.decelerationRate = .normal
+        // The map moves exactly as far as the fingers move, and stops when they stop.
+        //
+        // Momentum is wrong here. A sighted user throws a map and watches where it lands; a
+        // user reading by touch has one finger holding a place on the street grid, and a map
+        // that keeps gliding after the pan has ended slides that place out from under them
+        // with no way to tell how far it went. Deceleration is switched off, and
+        // `scrollViewWillEndDragging` pins the landing point to wherever the fingers let go.
+        scrollView.decelerationRate = UIScrollView.DecelerationRate(rawValue: 0)
+        // Rubber-banding at the edges is the same problem in miniature: the map moves without
+        // the fingers having moved it.
+        scrollView.bounces = false
+        scrollView.alwaysBounceHorizontal = false
+        scrollView.alwaysBounceVertical = false
         scrollView.contentInsetAdjustmentBehavior = .never
 
         // Fixed scale: physical millimetre sizing is only true at one scale.
@@ -645,6 +707,16 @@ struct PortlandMapView: UIViewRepresentable {
             container?.canvas.contentOffset = scrollView.contentOffset
         }
 
+        /// Pin the pan to where the fingers left it.
+        ///
+        /// Clearing `decelerationRate` alone is not quite enough — UIKit still projects a
+        /// landing point from the release velocity. Overwriting the target with the current
+        /// offset is what makes the gesture strictly one-to-one with the fingers.
+        func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint,
+                                       targetContentOffset: UnsafeMutablePointer<CGPoint>) {
+            targetContentOffset.pointee = scrollView.contentOffset
+        }
+
         func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
             if !decelerate { schedulePanSettled() }
         }
@@ -701,6 +773,7 @@ struct PortlandMapView: UIViewRepresentable {
             scrollView.onExploreMoved = { [weak self] point in self?.exploreMoved(to: point) }
             scrollView.onExploreEnded = { [weak self] in self?.exploreEnded() }
             scrollView.onExploreTapped = { [weak self] point in self?.exploreTapped(at: point) }
+            scrollView.onExploreDoubleTapped = { [weak self] point in self?.exploreDoubleTapped(at: point) }
         }
 
         private func exploreBegan(at point: CGPoint) {
@@ -758,6 +831,23 @@ struct PortlandMapView: UIViewRepresentable {
             }
             feedback.playTap()
             feedback.announceImmediately(announcement)
+        }
+
+        /// Double tap opens the junction under the finger.
+        ///
+        /// The catch radius is wider than the one a drag uses: a double tap is deliberate, the
+        /// user has already found the junction once, and asking them to hit the same few
+        /// millimetres twice in half a second is the wrong test.
+        private func exploreDoubleTapped(at point: CGPoint) {
+            feedback.playTap()
+            guard let junction = parent.map.intersection(at: point,
+                                                         within: parent.map.metrics.intersectionOpenRadius) else {
+                // Nothing to open. Say so rather than leaving the tap feeling broken.
+                feedback.announceImmediately("No intersection here")
+                return
+            }
+            feedback.stopAll()
+            parent.onIntersectionDoubleTap?(junction)
         }
 
         @objc func handleBackGesture() { triggerBack() }

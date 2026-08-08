@@ -50,6 +50,28 @@ final class TactileNavUITests: XCTestCase {
         attach(app, named: "02-congress-square")
     }
 
+    /// Double-tapping a junction on the map opens its close-up.
+    ///
+    /// Taps the middle of the map, where the opening viewport puts Congress at High. The
+    /// double tap has a wide catch radius on purpose, so this does not need pixel accuracy.
+    @MainActor
+    func testDoubleTapOpensTheIntersectionCloseUp() throws {
+        let app = launch()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Congress Square"))
+            .firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Congress Square"].waitForExistence(timeout: 20))
+
+        // The junction sits at the centre of the opening viewport, so tap the middle of the
+        // scroll view itself — the window's centre is lower, because of the navigation bar.
+        let map = app.scrollViews.firstMatch
+        XCTAssertTrue(map.waitForExistence(timeout: 5), "no map scroll view:\n\(app.debugDescription)")
+        map.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleTap()
+
+        XCTAssertTrue(app.navigationBars["Intersection"].waitForExistence(timeout: 10),
+                      "the double tap did not open the intersection")
+        attach(app, named: "04-intersection-detail")
+    }
+
     @MainActor
     func testStreetCrossingAudioShowsTheIntersection() throws {
         let app = launch()

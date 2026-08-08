@@ -38,12 +38,9 @@ enum DemoIntersection {
     static let name = "Congress Street at High Street"
     static let shortName = "Congress at High"
 
-    /// The two streets, as the tactile diagram draws them.
-    ///
-    /// The diagram is a schematic plus, so "along" is simply the one drawn east–west and
-    /// "across" the one drawn north–south. Congress is the street being crossed, so it is the
-    /// one laid across the walker's path.
+    /// The street being crossed — the one in front of the listener.
     static let alongStreet = "Congress Street"
+    /// The street the listener walks along — the one whose surge is the cue to step off.
     static let acrossStreet = "High Street"
 
     /// Congress Street, running east-north-east and west-south-west.
@@ -96,6 +93,38 @@ enum DemoIntersection {
         return CGPoint(x: listenerPositionM.x + forward.x * distance,
                        y: listenerPositionM.y + forward.y * distance)
     }()
+
+    // MARK: Orientation, in words
+
+    /// A compass name for a bearing: "north-west", "east" and so on.
+    static func compassName(for bearing: Double) -> String {
+        let names = ["north", "north-east", "east", "south-east",
+                     "south", "south-west", "west", "north-west"]
+        let normalised = (bearing.truncatingRemainder(dividingBy: 360) + 360)
+            .truncatingRemainder(dividingBy: 360)
+        return names[Int((normalised / 45).rounded()) % 8]
+    }
+
+    /// Which corner the listener is standing on, worked out from where they actually are
+    /// rather than written down separately — so it cannot drift out of step with the audio.
+    static var listenerCornerDescription: String {
+        // World metres are +x east, +y north; the corner is named for the quadrant.
+        let bearing = atan2(listenerPositionM.x, listenerPositionM.y) * 180 / .pi
+        return "the \(compassName(for: bearing)) corner"
+    }
+
+    static var listenerFacingDescription: String {
+        "\(compassName(for: listenerFacing)) — along \(acrossStreet)"
+    }
+
+    /// The whole orientation as one sentence, for VoiceOver.
+    static var orientationSentence: String {
+        "You are standing on \(listenerCornerDescription) of \(name), "
+        + "facing \(compassName(for: listenerFacing)) along \(acrossStreet). "
+        + "\(alongStreet) is in front of you and is the street you are crossing. "
+        + "\(acrossStreet) runs the way you are walking. "
+        + "Cross when the street beside you surges, not when it goes quiet."
+    }
 }
 
 // MARK: - Legs
@@ -241,6 +270,41 @@ final class IntersectionCrossingModel {
     /// technique itself can fail: the cue a traveller depends on is barely there.
     var fleet: Fleet = .gasoline
 
+    /// How fast the traffic moves. Slow makes the Doppler curve long and easy to follow, which
+    /// is what you want when you are learning to hear it; normal is a real downtown street.
+    var pace: Pace = .normal
+
+    enum Pace: String, CaseIterable, Identifiable {
+        case slow, normal, fast
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .slow: return "Slow"
+            case .normal: return "Normal"
+            case .fast: return "Fast"
+            }
+        }
+        /// Miles per hour, as a range: rolling away from a queue, and already at speed.
+        var mph: (queue: ClosedRange<Double>, running: ClosedRange<Double>) {
+            switch self {
+            case .slow: return (8...12, 12...16)
+            case .normal: return (14...22, 20...30)
+            case .fast: return (22...30, 32...42)
+            }
+        }
+        var detail: String {
+            switch self {
+            case .slow:
+                return "About 10 miles an hour. Each pass takes longer, so the rise and fall "
+                     + "in pitch is easy to follow while you are learning it."
+            case .normal:
+                return "Downtown traffic, 20 to 30 miles an hour."
+            case .fast:
+                return "Arterial speed. Passes are quick and the pitch drop is sharp."
+            }
+        }
+    }
+
     enum Fleet: String, CaseIterable, Identifiable {
         case gasoline, electric, mixed
         var id: String { rawValue }
@@ -339,9 +403,8 @@ final class IntersectionCrossingModel {
         }
 
         // Vehicles at the front of a queue accelerate away; later ones are already rolling.
-        let speedMph = atQueueFront
-            ? Double.random(in: 14...22, using: &random)
-            : Double.random(in: 20...30, using: &random)
+        let range = atQueueFront ? pace.mph.queue : pace.mph.running
+        let speedMph = Double.random(in: range, using: &random)
 
         vehicles.append(SimulatedVehicle(
             type: fleet.pick(&random),

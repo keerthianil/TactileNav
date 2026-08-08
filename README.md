@@ -7,8 +7,8 @@ Two screens:
 
 | Screen | What it is |
 |---|---|
-| **Congress Square** | A pannable tactile street map of downtown Portland, Maine. Real OpenStreetMap data, roads only. |
-| **Street Crossing Audio** | One four-way junction: a tactile diagram of the intersection, plus simulated traffic to judge a signal by ear. |
+| **Congress Square** | A pannable tactile street map of downtown Portland, Maine, from real OpenStreetMap data. Double tap a junction to open it. |
+| **Street Crossing Audio** | Simulated traffic at one real junction, for practising when to step off by ear. |
 
 ## Congress Square
 
@@ -47,15 +47,46 @@ changes with pixel density.
 
 ### Intersections
 
-A **red square** marks every junction, the way the reference app does. The junctions are not in the
-source data — the extract is roads, sidewalks and crossings with no junction features — so they are
-**computed from the road geometry**: wherever two road ways with *different* names cross or touch, that
-is a junction, and crossing points within 25 m collapse into one mark that names all the streets
-meeting there. Two ways carrying the same name are one street split into pieces and are ignored. This
-yields the ~490 real junctions of downtown Portland; the well-known ones (Congress at High, at Free, at
-Oak…) come straight out of the OpenStreetMap geometry.
+A **red square** marks every junction. They come from **OpenStreetMap's own node topology**, computed
+when the extract is built: two ways that genuinely meet share a node, and two ways that merely cross on
+a bridge do not. That is both the real definition of a junction and what keeps grade separations —
+I-295 over a downtown street — from being reported as intersections. Ways sharing a node but carrying
+the same name are one street split into pieces and are ignored.
+
+Every shape the network contains is included, not just the four-way ones:
+
+| Shape | Count |
+|---|---|
+| Two-way (a corner where one street becomes another) | 12 |
+| Three-way (a T) | 414 |
+| Four-way | 209 |
+| Five-way | 7 |
+| Six-way | 1 |
+
+Each junction carries its arms — a true compass bearing and the street each one carries — which is what
+the close-up is drawn from and what the entry announcement reads out.
 
 A junction outranks the road it sits on: land on one and you feel the junction, not the street.
+**Double tap** one to open it.
+
+### The intersection close-up
+
+Double-tapping a junction opens it full screen, drawn from the real geometry around that junction — the
+arms at their true bearings, and the sidewalks and crossings OpenStreetMap records at that corner.
+Nothing is schematic: a junction that meets at 43° is drawn at 43°.
+
+| Element | Width | Haptic |
+|---|---|---|
+| Roadway | true width for its lane count, 8–16 mm | Continuous buzz, 1.0 / 0.10 |
+| Sidewalk | 4 mm | Continuous buzz, 0.78 / 0.78 |
+| Crossing | 2.8 mm | Sharp transient ticks, 1.0 / 1.00 |
+| Between them | — | Nothing |
+
+The roadway is drawn at its *real* width here rather than a fixed one, because the sidewalks and
+crossings around it are at their real positions — a fixed width pushes the road's edge across the
+sidewalk beside it and the kerb, the most important line at a junction, stops existing.
+
+Back is the Back button, a three-finger swipe right, a double tap anywhere, or VoiceOver's escape.
 
 ### Feedback
 
@@ -89,35 +120,32 @@ step straight over a line.
 
 ## Street Crossing Audio
 
-A tactile diagram of Congress Street at High Street, with simulated traffic on all four legs under a
-signal cycle. The exercise is the one blind travellers actually perform: work out from sound alone when
-the parallel street gets its green, because that surge is the cue to step off. Nothing is narrated —
-being told the answer defeats it — and the diagram stops speaking while traffic is playing. The current
-phase is available on demand behind a button. **Headphones needed.**
+Simulated traffic on all four legs of Congress Street at High Street, under a signal cycle. The
+exercise is the one blind travellers actually perform: work out from sound alone when the parallel
+street gets its green, because that surge is the cue to step off. Nothing is narrated — being told the
+answer defeats it. **Headphones needed.**
 
-An all-electric fleet is under 45 dBA at low speed, so the surge you would normally step off with is
-barely there and the technique itself starts to fail. That is what the fleet picker is for.
+To feel the shape of this junction rather than hear it, open it from the map: it is the one the opening
+viewport is centred on.
 
-The diagram is a schematic plus rather than a projection of the real bearings: a finger tracing a leg
-wants a straight line, and the four legs have to be the same length or the shorter ones read as less
-important. The junction it names is real, and the audio runs on the real bearings.
+**Where you are is stated in as many words**, because "sound is coming from the left" means nothing
+until you know what is on your left. The screen says which corner you are standing on, which way you
+are facing, which street is in front of you and which runs beside you — and offers the whole thing to
+VoiceOver as one sentence. The corner and facing are derived from the same listener position the audio
+is computed from, so they cannot drift out of step with what you hear.
 
-| Element | Width | Haptic |
-|---|---|---|
-| Roadway | 12 mm | Continuous buzz, 1.0 / 0.10 |
-| Sidewalk | 4 mm | Continuous buzz, 0.78 / 0.78 |
-| Crossing | 2.8 mm | Sharp transient ticks, 1.0 / 1.00 |
-| Between them | — | Nothing |
+Two controls shape the exercise:
 
-Roadway versus sidewalk is the distinction that matters, and it is carried by **sharpness** rather than
-intensity — a low-sharpness rumble and a high-sharpness vibration feel like different materials, where
-loud and quiet just feels like the same thing further away.
+- **Traffic** — gas, electric or mixed. An all-electric fleet is under 45 dBA at low speed, so the
+  surge you would normally step off with is barely there and the technique itself starts to fail.
+- **Speed** — slow, normal or fast. Slow stretches each pass out so the rise and fall in pitch is easy
+  to follow while you are learning to hear it.
 
-The sidewalks sit one kerb back from the roadway — 11.8 mm from the centre, derived as half the roadway
-plus the crossing plus the kerb plus half the sidewalk — and form a square around the junction. The four
-crossings are the sides of that square, each bridging two corners and spanning the roadway between them.
-Crossing bars are painted only where the crossing lies over the roadway, which is both true on the
-ground and what keeps white paint off a white background.
+The sound is engine harmonics plus filtered noise, because what you mostly hear from a passing vehicle
+is tyre roar — a stack of sine harmonics alone sounds like an organ, not a car. Distance is carried by
+three things at once, as it is in the real world: level, pitch shift, and brightness, with a per-voice
+low-pass that closes down as a vehicle recedes. An EV keeps the tyre noise and loses almost all of the
+engine, which is exactly why it is so hard to hear coming.
 
 ## Gestures
 
@@ -127,9 +155,19 @@ Identical with VoiceOver on or off.
 |---|---|
 | One finger, drag | Explore |
 | One finger, tap | Say what is under the finger |
+| One finger, double tap | Open the intersection under the finger |
 | Two fingers, drag | Pan the map |
 | Three fingers, swipe right | Back |
 | VoiceOver Actions rotor | Pan half a screen, or recentre |
+
+**Panning is one-to-one with your fingers.** There is no momentum and no rubber-banding: the map moves
+exactly as far as the fingers move and stops when they stop. A sighted user throws a map and watches
+where it lands, but someone reading by touch has a finger holding a place on the grid, and a map that
+keeps gliding slides that place away with no way to tell how far it went.
+
+The double tap is synthesised from the same raw touches as everything else, so it behaves identically
+with VoiceOver on and off — a second gesture-recognizer implementation for VoiceOver is exactly the
+split that leaves one of the two states broken.
 
 **One finger never navigates.** A navigation controller has two pop gestures — the familiar left-edge
 swipe and, since iOS 18, one that pops from a swipe anywhere on the view — and both are switched off

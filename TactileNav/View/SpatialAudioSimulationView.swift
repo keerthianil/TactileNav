@@ -4,15 +4,18 @@
 //
 //  Street Crossing Audio — a four-way intersection you judge by ear.
 //
-//  You are standing on the corner of Congress Street at High Street, about to cross Congress.
-//  Traffic runs on all four legs under a signal cycle. The task is the one blind travellers
-//  actually perform: work out from sound alone when the parallel street gets its green,
-//  because that surge is the cue to step off.
+//  The technique being practised is the one blind travellers are actually taught: you do not
+//  cross when it goes quiet, you cross with the **parallel surge** — the moment the traffic
+//  beside you, running the way you want to walk, pulls away from the line.
 //
-//  Nothing is narrated. There is deliberately no spoken commentary on what the traffic is
-//  doing — being told the answer is the opposite of the exercise. The current phase is
-//  available on demand behind a button so a listener can check themselves, and every control
-//  is labelled for VoiceOver as usual.
+//  That only works if you know which way you are facing, so the screen says so in as many
+//  words. Where you are standing, which way you are pointed, which street is in front of you
+//  and which is beside you are all stated up front and available to VoiceOver as one sentence,
+//  because "sound is coming from the left" means nothing until you know what is on your left.
+//
+//  What is deliberately *not* said is which street currently has the green. That is the thing
+//  being worked out. It is available on demand behind a button so a listener can check
+//  themselves.
 //
 
 import SwiftUI
@@ -24,6 +27,7 @@ struct SpatialAudioSimulationView: View {
 
     @State private var running = false
     @State private var fleet: IntersectionCrossingModel.Fleet = .gasoline
+    @State private var pace: IntersectionCrossingModel.Pace = .normal
     @State private var phaseRevealed = false
     @State private var isWalkPhase = false
     @State private var nearestCents: Double = 0
@@ -33,37 +37,62 @@ struct SpatialAudioSimulationView: View {
     @State private var lastReadoutTick = CACurrentMediaTime()
 
     var body: some View {
-        VStack(spacing: 14) {
-            // The intersection is the demo, so it gets the room. It is a tactile diagram
-            // rather than an illustration: the same junction the traffic is running through,
-            // laid out so a finger can find the roadway, the sidewalks, the crossings and the
-            // kerb ramps. Silent while traffic plays — see `speaks`.
-            IntersectionTactileView(alongName: DemoIntersection.alongStreet,
-                                    acrossName: DemoIntersection.acrossStreet,
-                                    speaks: !running)
-                .frame(maxHeight: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(.separator)))
-
-            // Stated on screen, not only in the accessibility hint: the diagram behaves the
-            // same with VoiceOver off, and someone testing it needs to know to try that.
-            Text("Drag one finger across the diagram to feel the roadway, sidewalks and "
-                 + "crossings. Works with VoiceOver on or off.")
-                .font(.footnote)
-                .foregroundColor(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            statusView
-            controls
+        ScrollView {
+            VStack(spacing: 14) {
+                whereYouAre
+                statusView
+                controls
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 16)
         }
-        .padding(.horizontal)
-        .padding(.bottom, 12)
         .navigationTitle("Street Crossing Audio")
         .navigationBarTitleDisplayMode(.inline)
-        // The diagram above is explored with one finger, which is the same gesture that would
-        // otherwise pop this screen out from under it.
-        .disablesSwipeBack()
         .onAppear { audio.activate() }
         .onDisappear { stop() }
+    }
+
+    // MARK: - Where you are
+
+    /// Orientation, stated plainly.
+    ///
+    /// Without this the exercise is unfair rather than hard: a listener hears traffic sweeping
+    /// left to right and has no way to know whether that is the street they are about to step
+    /// into or the one running along beside them.
+    private var whereYouAre: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("You are here", systemImage: "figure.stand")
+                .font(.headline)
+
+            orientationRow("Standing on", DemoIntersection.listenerCornerDescription)
+            orientationRow("Facing", DemoIntersection.listenerFacingDescription)
+            orientationRow("Crossing", "\(DemoIntersection.alongStreet) — in front of you")
+            orientationRow("Beside you", "\(DemoIntersection.acrossStreet) — runs the way you walk")
+
+            Text("Cross when the street beside you surges, not when it goes quiet.")
+                .font(.footnote)
+                .foregroundColor(.secondary)
+                .padding(.top, 2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+        // One sentence rather than eight fragments — this is a single piece of orientation,
+        // and swiping through it line by line is slower than hearing it said.
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(DemoIntersection.orientationSentence)
+    }
+
+    private func orientationRow(_ title: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(title)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .frame(width: 92, alignment: .leading)
+            Text(value)
+                .font(.subheadline)
+            Spacer(minLength: 0)
+        }
     }
 
     // MARK: - Status and the on-demand answer
@@ -87,7 +116,9 @@ struct SpatialAudioSimulationView: View {
             }
 
             if phaseRevealed {
-                Label(isWalkPhase ? "High Street green — cross now" : "Congress Street green — wait",
+                Label(isWalkPhase
+                      ? "\(DemoIntersection.acrossStreet) green — cross now"
+                      : "\(DemoIntersection.alongStreet) green — wait",
                       systemImage: isWalkPhase ? "figure.walk" : "hand.raised.fill")
                     .font(.subheadline)
                     .foregroundColor(isWalkPhase ? .green : .red)
@@ -112,13 +143,36 @@ struct SpatialAudioSimulationView: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Picker("Traffic", selection: $fleet) {
-                ForEach(IntersectionCrossingModel.Fleet.allCases) { Text($0.label).tag($0) }
+            VStack(alignment: .leading, spacing: 6) {
+                Picker("Traffic", selection: $fleet) {
+                    ForEach(IntersectionCrossingModel.Fleet.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityLabel("Traffic type")
+                .onChange(of: fleet) { _, newValue in model.fleet = newValue }
+
+                Text(fleet.detail)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
-            .pickerStyle(.segmented)
-            .accessibilityLabel("Traffic type")
-            .accessibilityHint("Electric traffic is near-silent, so the surge is much harder to hear")
-            .onChange(of: fleet) { _, newValue in model.fleet = newValue }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Picker("Speed", selection: $pace) {
+                    ForEach(IntersectionCrossingModel.Pace.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityLabel("Traffic speed")
+                .onChange(of: pace) { _, newValue in model.pace = newValue }
+
+                Text(pace.detail)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Label("Headphones needed — the direction traffic comes from is the whole cue.",
+                  systemImage: "headphones")
+                .font(.caption)
+                .foregroundColor(.secondary)
 
             Button(action: toggle) {
                 Label(running ? "Stop" : "Start listening",
@@ -139,6 +193,7 @@ struct SpatialAudioSimulationView: View {
         audio.activate()
         model.reset()
         model.fleet = fleet
+        model.pace = pace
         running = true
         lastTick = CACurrentMediaTime()
         ticker = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { _ in
@@ -187,10 +242,15 @@ struct SpatialAudioSimulationView: View {
             let pan = Float(max(-1, min(1, Double(position.x) / max(distance, 1))))
             var volume = Float(6.0 / distance)
             volume = min(volume, 1.0) * vehicle.type.loudness
+
+            // Brightness closes down with distance as well as level — see `updateVoice`.
+            let brightness = Float(max(0, min(1, 12.0 / distance)))
+
             audio.updateVoice(voice,
                               pan: pan,
                               volume: max(vehicle.type.isEV ? 0.015 : 0.04, volume),
-                              cents: Float(cents))
+                              cents: Float(cents),
+                              brightness: brightness)
 
             if distance < nearestDistance {
                 nearestDistance = distance

@@ -101,14 +101,10 @@ nonisolated enum StreetMapSizing {
     static var intersectionBoxWidth: CGFloat { PhysicalDimensions.mmToPoints(intersectionBoxMM) }
     static var intersectionHitRadius: CGFloat { max(intersectionBoxWidth / 2, 22) }
 
-    /// How close two road crossings must be to count as the same junction, in metres.
-    ///
-    /// Set just above the box's own footprint, so two crossing points whose 6 mm marks would
-    /// overlap on the glass collapse into one — an offset junction where a second cross street
-    /// meets a few metres along (Congress at Free and High, say) reads as a single findable
-    /// mark that names all of them, which is what a finger feels there anyway. Downtown blocks
-    /// are 80 m plus, so genuinely separate junctions are never merged.
-    static let intersectionClusterMeters: CGFloat = 25
+    /// Catch radius for the deliberate double tap that opens a junction. Wider than the drag
+    /// radius: the user has already found the junction once, and asking them to hit the same
+    /// few millimetres twice inside half a second is the wrong test.
+    static var intersectionOpenRadius: CGFloat { max(intersectionBoxWidth / 2, 36) }
 
     // MARK: - Resolved metrics
 
@@ -126,7 +122,7 @@ nonisolated enum StreetMapSizing {
         let roadHitRadius: CGFloat
         let intersectionBoxWidth: CGFloat
         let intersectionHitRadius: CGFloat
-        let intersectionClusterPoints: CGFloat
+        let intersectionOpenRadius: CGFloat
     }
 
     /// Resolve the current device's metrics. Call on the main actor.
@@ -139,7 +135,7 @@ nonisolated enum StreetMapSizing {
             roadHitRadius: roadHitRadius,
             intersectionBoxWidth: intersectionBoxWidth,
             intersectionHitRadius: intersectionHitRadius,
-            intersectionClusterPoints: intersectionClusterMeters * pointsPerMeter
+            intersectionOpenRadius: intersectionOpenRadius
         )
     }
 

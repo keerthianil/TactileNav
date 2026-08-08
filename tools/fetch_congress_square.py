@@ -91,6 +91,7 @@ LANES_BY_CLASS = {
 TYPE_ROAD = "road"
 TYPE_SIDEWALK = "street"
 TYPE_CROSSWALK = "crosswalk"
+TYPE_INTERSECTION = "intersection"
 
 SIMPLIFY_EPSILON_M = 1.0
 
@@ -110,7 +111,7 @@ def overpass_query() -> str:
   way["footway"="sidewalk"]({bbox});
   way["footway"="crossing"]({bbox});
 );
-out geom;
+out body geom;
 """
 
 
@@ -343,6 +344,112 @@ def build_elements(raw: dict, width: float, height: float) -> list[dict]:
     return elements
 
 
+def compass_bearing(origin: tuple[float, float], toward: tuple[float, float]) -> float:
+    """Compass bearing in degrees from `origin` to `toward`: 0 = north, 90 = east.
+
+    Coordinates are projected metres with y growing *south*, so northward is -y.
+    """
+    dx = toward[0] - origin[0]
+    dy = toward[1] - origin[1]
+    return math.degrees(math.atan2(dx, -dy)) % 360.0
+
+
+def build_intersections(raw: dict, width: float, height: float) -> list[dict]:
+    """Find every junction in the road network from OSM's own node topology.
+
+    Two ways that genuinely meet *share a node*; two ways that merely cross on a
+    bridge do not. So sharing a node is the definition of an intersection, and using
+    it means grade separations are excluded for free rather than needing a bridge tag
+    (which this extract does not carry). It also catches every shape of junction —
+    two-way corners where one street becomes another, T-junctions, four-way crossings
+    and the occasional five — without any of them being special-cased.
+
+    A node shared only by ways carrying the *same* name is a street split into pieces,
+    not a junction, so at least two distinct street names are required.
+    """
+    # node id -> list of (way name, way id, position in way, geometry, index)
+    node_uses: dict[int, list[dict]] = {}
+
+    for way in raw.get("elements", []):
+        if way.get("type") != "way" or "geometry" not in way or "nodes" not in way:
+            continue
+        tags = way.get("tags", {})
+        if tags.get("highway") not in ROAD_CLASSES:
+            continue
+        name = road_name(tags)
+        if name is None:
+            continue
+
+        node_ids = way["nodes"]
+        geometry = way["geometry"]
+        if len(node_ids) != len(geometry):
+            continue
+
+        projected = [project(node["lat"], node["lon"]) for node in geometry]
+        for index, node_id in enumerate(node_ids):
+            node_uses.setdefault(node_id, []).append(
+                {
+                    "name": name,
+                    "way": way["id"],
+                    "index": index,
+                    "count": len(node_ids),
+                    "points": projected,
+                }
+            )
+
+    intersections: list[dict] = []
+    for node_id, uses in node_uses.items():
+        names = sorted({use["name"] for use in uses})
+        if len(names) < 2:
+            continue
+
+        point = uses[0]["points"][uses[0]["index"]]
+        x, y = point
+        if not (-CLIP_MARGIN_M <= x <= width + CLIP_MARGIN_M):
+            continue
+        if not (-CLIP_MARGIN_M <= y <= height + CLIP_MARGIN_M):
+            continue
+
+        # One leg per direction the roadway continues: a way that ends here
+        # contributes one, a way that passes through contributes two.
+        legs: list[tuple[float, str]] = []
+        for use in uses:
+            index, points = use["index"], use["points"]
+            if index > 0:
+                legs.append((compass_bearing(point, points[index - 1]), use["name"]))
+            if index < use["count"] - 1:
+                legs.append((compass_bearing(point, points[index + 1]), use["name"]))
+        legs.sort()
+
+        intersections.append(
+            {
+                "id": f"x-{node_id}",
+                "element_type": TYPE_INTERSECTION,
+                "geometry": {"type": "Point", "coordinates": [round(x, 2), round(y, 2)]},
+                "properties": {
+                    "name": " and ".join(names),
+                    "category": TYPE_INTERSECTION,
+                    "is_accessible": True,
+                    "custom": {
+                        "streets": "|".join(names),
+                        "legs": str(len(legs)),
+                        "leg_bearings": "|".join(f"{bearing:.1f}" for bearing, _ in legs),
+                        "leg_names": "|".join(name for _, name in legs),
+                    },
+                },
+            }
+        )
+
+    intersections.sort(key=lambda element: element["id"])
+    shapes: dict[int, int] = {}
+    for element in intersections:
+        legs = int(element["properties"]["custom"]["legs"])
+        shapes[legs] = shapes.get(legs, 0) + 1
+    summary = "  ".join(f"{legs}-way {count}" for legs, count in sorted(shapes.items()))
+    print(f"  intersections {len(intersections)}  ({summary})", file=sys.stderr)
+    return intersections
+
+
 def build_document(elements: list[dict], width: float, height: float) -> dict:
     center_x, center_y = project(CENTER_LAT, CENTER_LON)
     lane_sources = [
@@ -363,6 +470,9 @@ def build_document(elements: list[dict], width: float, height: float) -> dict:
             "initial_center": [round(center_x, 2), round(center_y, 2)],
             "lanes_from_osm_tag": lane_sources.count("osm"),
             "lanes_from_road_class": lane_sources.count("class"),
+            "intersections": sum(
+                1 for element in elements if element["element_type"] == TYPE_INTERSECTION
+            ),
         },
         "bounds": {"width": round(width, 2), "height": round(height, 2)},
         "features": elements,
@@ -384,7 +494,9 @@ def validate(document: dict) -> None:
             raise SystemExit(f"{element_id}: empty name")
 
         coordinates = element["geometry"]["coordinates"]
-        if len(coordinates) < 2:
+        if element["geometry"]["type"] == "Point":
+            coordinates = [coordinates]
+        elif len(coordinates) < 2:
             raise SystemExit(f"{element_id}: degenerate geometry")
         for x, y in coordinates:
             if not (math.isfinite(x) and math.isfinite(y)):
@@ -430,6 +542,8 @@ def main() -> None:
     width, height = extent()
     print(f"building document ({width:.0f} m x {height:.0f} m) ...", file=sys.stderr)
     elements = build_elements(raw, width, height)
+    elements += build_intersections(raw, width, height)
+    elements.sort(key=lambda element: element["id"])
     document = build_document(elements, width, height)
     validate(document)
 

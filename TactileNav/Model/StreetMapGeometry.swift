@@ -46,17 +46,41 @@ nonisolated struct StreetFeature {
 
 // MARK: - A junction where streets cross
 
+/// One arm of a junction: a direction the roadway continues, and the street it carries.
+///
+/// Named "arm" rather than "leg" because the crossing-audio simulation already owns
+/// `IntersectionLeg` for its own fixed four-leg model.
+nonisolated struct IntersectionArm {
+    /// Compass bearing from the junction centre: 0 is north, 90 is east.
+    let bearing: CGFloat
+    let streetName: String
+
+    /// The compass point a traveller would actually say, e.g. "north-east".
+    var compassLabel: String { IntersectionArm.compassName(for: bearing) }
+
+    static func compassName(for bearing: CGFloat) -> String {
+        let names = ["north", "north-east", "east", "south-east",
+                     "south", "south-west", "west", "north-west"]
+        let sector = Int(((bearing.truncatingRemainder(dividingBy: 360) + 360)
+            .truncatingRemainder(dividingBy: 360) / 45).rounded()) % 8
+        return names[sector]
+    }
+}
+
 /// A place where two or more differently-named streets meet.
 ///
-/// Not in the source data — the extract is roads, sidewalks and crossings, with no junction
-/// features. These are computed from the road geometry itself: wherever two road ways with
-/// different names cross or touch, that point is a junction, and nearby crossings collapse
-/// into one. It is the same thing a sighted reader sees where two blue lines meet, made into
-/// something a finger can find and something the app can name.
+/// Straight from OpenStreetMap's own node topology, computed when the extract is built. Two
+/// ways that genuinely meet *share a node*; two ways that merely cross on a bridge do not, so
+/// using shared nodes is both the real definition of a junction and what keeps grade
+/// separations — I-295 over a downtown street — from being reported as intersections. Every
+/// shape comes out of it: two-way corners where one street becomes another, T-junctions,
+/// four-way crossings and the occasional five- or six-way.
 nonisolated struct Intersection {
     let id: String
     /// The distinct streets that meet here, e.g. "Congress Street", "High Street".
     let streetNames: [String]
+    /// Every arm, in bearing order — two for a corner, three for a T, four for a crossing.
+    let legs: [IntersectionArm]
     /// Centre of the junction, in content points.
     let position: CGPoint
     /// What is spoken when a finger lands here.
@@ -68,6 +92,45 @@ nonisolated struct Intersection {
     let touchBounds: CGRect
     /// Bounding box grown by the box half-width, for draw culling.
     let drawBounds: CGRect
+
+    /// "Four-way intersection of Congress Street and High Street".
+    static func announcement(shape: Int, streets: [String]) -> String {
+        let shapeWord: String
+        switch shape {
+        case 2: shapeWord = "Two-way"
+        case 3: shapeWord = "Three-way"
+        case 4: shapeWord = "Four-way"
+        case 5: shapeWord = "Five-way"
+        case 6: shapeWord = "Six-way"
+        default: shapeWord = "\(shape)-way"
+        }
+        switch streets.count {
+        case 0: return "\(shapeWord) intersection"
+        case 1: return "\(shapeWord) intersection at \(streets[0])"
+        case 2: return "\(shapeWord) intersection of \(streets[0]) and \(streets[1])"
+        default:
+            let head = streets.dropLast().joined(separator: ", ")
+            return "\(shapeWord) intersection of \(head) and \(streets.last!)"
+        }
+    }
+}
+
+// MARK: - Footways, kept for the close-up view
+
+/// A sidewalk or a marked crossing, straight from the extract.
+///
+/// These are deliberately *not* drawn on the city-scale map — at that zoom they crowd every
+/// junction with lines a few millimetres apart and read as noise. They are kept because the
+/// intersection close-up has the room to show them, and showing the real ones is the whole
+/// point: the crossings and sidewalks around a junction are exactly what a pedestrian needs.
+nonisolated struct Footway {
+    enum Kind { case sidewalk, crossing }
+    let id: String
+    let name: String
+    let kind: Kind
+    /// Polyline in content points, the same space as the roads.
+    let points: [CGPoint]
+    let bounds: CGRect
 }
 
 // MARK: - What the finger is on
@@ -104,8 +167,10 @@ nonisolated struct StreetMap {
 
     let features: [StreetFeature]
     let labels: [StreetLabel]
-    /// Junctions computed from where roads cross — see `Intersection`.
+    /// Junctions from OpenStreetMap's node topology — see `Intersection`.
     let intersections: [Intersection]
+    /// Sidewalks and crossings, for the intersection close-up — see `Footway`.
+    let footways: [Footway]
     let contentSize: CGSize
     /// Where to open the viewport, from the document rather than a hardcoded offset.
     let initialCenter: CGPoint
@@ -116,6 +181,7 @@ nonisolated struct StreetMap {
     private let index: UniformGrid
     private let labelIndex: UniformGrid
     private let intersectionIndex: UniformGrid
+    private let footwayIndex: UniformGrid
 
     /// The subset of `HitDetectionConfig` this map uses, captured at build time.
     struct HitDetectionConfigValues {
@@ -177,6 +243,32 @@ nonisolated struct StreetMap {
             .filter { $0.drawBounds.intersects(rect) }
     }
 
+    /// Roads whose centreline passes within `radius` of a point, for the close-up view.
+    func roads(near point: CGPoint, within radius: CGFloat) -> [StreetFeature] {
+        index.candidates(near: point, radius: radius)
+            .map { features[$0] }
+            .filter { distanceToPolyline(point, $0.points) <= radius }
+    }
+
+    /// Sidewalks and crossings within `radius` of a point, for the close-up view.
+    func footways(near point: CGPoint, within radius: CGFloat) -> [Footway] {
+        footwayIndex.candidates(near: point, radius: radius)
+            .map { footways[$0] }
+            .filter { distanceToPolyline(point, $0.points) <= radius }
+    }
+
+    /// The junction nearest `point` within `radius`, for the double tap that opens one.
+    func intersection(at point: CGPoint, within radius: CGFloat) -> Intersection? {
+        var best: (junction: Intersection, distance: CGFloat)?
+        for junctionIndex in intersectionIndex.candidates(near: point, radius: radius) {
+            let junction = intersections[junctionIndex]
+            let distance = hypot(point.x - junction.position.x, point.y - junction.position.y)
+            guard distance <= radius else { continue }
+            if best == nil || distance < best!.distance { best = (junction, distance) }
+        }
+        return best?.junction
+    }
+
     /// Junctions whose box could land inside `rect`, for drawing.
     func intersections(in rect: CGRect) -> [Intersection] {
         intersectionIndex.candidates(intersecting: rect)
@@ -227,8 +319,8 @@ nonisolated struct StreetMap {
         var maxX = -CGFloat.greatestFiniteMagnitude
         var maxY = -CGFloat.greatestFiniteMagnitude
 
-        // Roads only. The extract also carries sidewalks and crossings; they are dropped here
-        // rather than filtered later so nothing downstream has to know they ever existed.
+        // Roads set the content box. Sidewalks and crossings are collected separately below,
+        // for the close-up view only — they are never drawn at city scale.
         for element in document.features where element.elementType == .road {
             guard case .lineString(let coordinates) = element.geometry, coordinates.count >= 2 else { continue }
             let points = coordinates.map {
@@ -243,14 +335,16 @@ nonisolated struct StreetMap {
 
         guard !raws.isEmpty else {
             return StreetMap(
-                features: [], labels: [], intersections: [], contentSize: .zero, initialCenter: .zero,
+                features: [], labels: [], intersections: [], footways: [],
+                contentSize: .zero, initialCenter: .zero,
                 hitConfig: .init(velocityDivisor: hitConfig.velocityDivisor,
                                  velocityBonusMax: hitConfig.velocityBonusMax,
                                  updateThreshold: hitConfig.updateThreshold),
                 metrics: metrics,
                 index: UniformGrid(cellSize: 128, entries: []),
                 labelIndex: UniformGrid(cellSize: 512, entries: []),
-                intersectionIndex: UniformGrid(cellSize: 256, entries: [])
+                intersectionIndex: UniformGrid(cellSize: 256, entries: []),
+                footwayIndex: UniformGrid(cellSize: 256, entries: [])
             )
         }
 
@@ -293,7 +387,28 @@ nonisolated struct StreetMap {
             UniformGrid.Entry(index: $0.offset, bounds: $0.element.bounds)
         }
 
-        let intersections = computeIntersections(roads: features, metrics: metrics)
+        var footways: [Footway] = []
+        for element in document.features {
+            let kind: Footway.Kind
+            switch element.elementType {
+            case .street: kind = .sidewalk
+            case .crosswalk: kind = .crossing
+            default: continue
+            }
+            guard case .lineString(let coordinates) = element.geometry, coordinates.count >= 2 else { continue }
+            let points = coordinates.map {
+                CGPoint(x: CGFloat($0.x) * scale - origin.x, y: CGFloat($0.y) * scale - origin.y)
+            }
+            footways.append(Footway(id: element.id, name: element.properties.name,
+                                    kind: kind, points: points, bounds: boundingBox(points)))
+        }
+        let footwayEntries = footways.enumerated().map {
+            UniformGrid.Entry(index: $0.offset, bounds: $0.element.bounds)
+        }
+
+        let intersections = document.features.compactMap {
+            makeIntersection(from: $0, scale: scale, origin: origin, metrics: metrics)
+        }
         let intersectionEntries = intersections.enumerated().map {
             UniformGrid.Entry(index: $0.offset, bounds: $0.element.touchBounds)
         }
@@ -305,11 +420,25 @@ nonisolated struct StreetMap {
                 y: CGFloat(requested.y) * scale - origin.y
             )
         }
+        // Open on a junction rather than on a nominal centre point.
+        //
+        // The document's centre is the middle of the requested bounding box, which lands
+        // wherever it lands — often mid-block. A junction is a far better place to start: it
+        // is the thing the map is named for, it is where the streets can be told apart, and it
+        // puts something findable under the first finger that touches the screen.
+        let snapLimit = 80 * scale
+        if let nearest = intersections.min(by: {
+            hypot($0.position.x - center.x, $0.position.y - center.y)
+                < hypot($1.position.x - center.x, $1.position.y - center.y)
+        }), hypot(nearest.position.x - center.x, nearest.position.y - center.y) <= snapLimit {
+            center = nearest.position
+        }
 
         return StreetMap(
             features: features,
             labels: labels,
             intersections: intersections,
+            footways: footways,
             contentSize: contentSize,
             initialCenter: center,
             hitConfig: .init(velocityDivisor: hitConfig.velocityDivisor,
@@ -318,171 +447,56 @@ nonisolated struct StreetMap {
             metrics: metrics,
             index: UniformGrid(cellSize: 128, entries: entries),
             labelIndex: UniformGrid(cellSize: 512, entries: labelEntries),
-            intersectionIndex: UniformGrid(cellSize: 256, entries: intersectionEntries)
+            intersectionIndex: UniformGrid(cellSize: 256, entries: intersectionEntries),
+            footwayIndex: UniformGrid(cellSize: 256, entries: footwayEntries)
         )
     }
 
     // MARK: Intersections
 
-    /// Finds the junctions in the road network.
+    /// Turns an `intersection` feature from the extract into a drawable, touchable junction.
     ///
-    /// A junction is a point where two road ways with *different names* cross or touch. Two
-    /// ways carrying the same name are the same street split into pieces, so they are ignored —
-    /// that is what keeps a street's own internal breaks from showing up as intersections.
-    ///
-    /// Done in three passes:
-    ///   1. every pair of segments from differently-named roads that actually cross, found via
-    ///      a coarse grid so it is not a full O(n²) over ~1,900 segments;
-    ///   2. those crossing points clustered, so a wide junction with several crossing lines
-    ///      collapses to a single mark;
-    ///   3. each cluster turned into an `Intersection` naming the streets that meet there.
-    private static func computeIntersections(
-        roads: [StreetFeature],
+    /// The junctions are found when the extract is built, from OpenStreetMap's node topology —
+    /// see `Intersection`. Nothing is inferred here; this only projects the point into content
+    /// coordinates and resolves the device-dependent sizes.
+    private static func makeIntersection(
+        from element: MapElement,
+        scale: CGFloat,
+        origin: CGPoint,
         metrics: StreetMapSizing.Metrics
-    ) -> [Intersection] {
-        struct Segment { let a: CGPoint; let b: CGPoint; let roadIndex: Int }
+    ) -> Intersection? {
+        guard element.elementType == .intersection,
+              case .point(let coordinate) = element.geometry else { return nil }
 
-        var segments: [Segment] = []
-        for (roadIndex, road) in roads.enumerated() {
-            for (a, b) in zip(road.points, road.points.dropFirst()) {
-                segments.append(Segment(a: a, b: b, roadIndex: roadIndex))
-            }
+        let position = CGPoint(x: CGFloat(coordinate.x) * scale - origin.x,
+                               y: CGFloat(coordinate.y) * scale - origin.y)
+
+        let custom = element.properties.custom
+        let streets = (custom["streets"] ?? "").split(separator: "|").map(String.init)
+        let bearings = (custom["leg_bearings"] ?? "").split(separator: "|").compactMap { Double($0) }
+        let legNames = (custom["leg_names"] ?? "").split(separator: "|").map(String.init)
+        let legs = zip(bearings, legNames).map {
+            IntersectionArm(bearing: CGFloat($0.0), streetName: $0.1)
         }
 
-        // Bucket segments into coarse cells and only test pairs that share a cell.
-        let cell: CGFloat = 256
-        func key(_ column: Int, _ row: Int) -> Int64 { (Int64(column) << 32) ^ Int64(row & 0xFFFF_FFFF) }
-        var buckets: [Int64: [Int]] = [:]
-        for (index, segment) in segments.enumerated() {
-            let minColumn = Int(floor(min(segment.a.x, segment.b.x) / cell))
-            let maxColumn = Int(floor(max(segment.a.x, segment.b.x) / cell))
-            let minRow = Int(floor(min(segment.a.y, segment.b.y) / cell))
-            let maxRow = Int(floor(max(segment.a.y, segment.b.y) / cell))
-            for column in minColumn...maxColumn {
-                for row in minRow...maxRow {
-                    buckets[key(column, row), default: []].append(index)
-                }
-            }
-        }
+        let names = streets.isEmpty ? [element.properties.name] : streets
+        let half = metrics.intersectionBoxWidth / 2
+        let hitRadius = metrics.intersectionHitRadius
 
-        struct Crossing { let point: CGPoint; let roadA: Int; let roadB: Int }
-        var crossings: [Crossing] = []
-        var testedPairs = Set<Int64>()
-        for indices in buckets.values {
-            for i in 0..<indices.count {
-                for j in (i + 1)..<indices.count {
-                    let (first, second) = (indices[i], indices[j])
-                    let a = segments[first], b = segments[second]
-                    if roads[a.roadIndex].name == roads[b.roadIndex].name { continue }
-                    let pairKey = (Int64(min(first, second)) << 32) | Int64(max(first, second))
-                    guard testedPairs.insert(pairKey).inserted else { continue }
-                    if let point = segmentCrossing(a.a, a.b, b.a, b.b) {
-                        crossings.append(Crossing(point: point, roadA: a.roadIndex, roadB: b.roadIndex))
-                    }
-                }
-            }
-        }
-
-        return clusterCrossings(crossings.map { ($0.point, [$0.roadA, $0.roadB]) },
-                                roads: roads, metrics: metrics)
-    }
-
-    /// Groups crossing points within the cluster radius and builds one `Intersection` per
-    /// group, naming the distinct streets that meet. Drops any group where only one street
-    /// name is present — a single street cannot intersect itself.
-    private static func clusterCrossings(
-        _ crossings: [(point: CGPoint, roads: [Int])],
-        roads: [StreetFeature],
-        metrics: StreetMapSizing.Metrics
-    ) -> [Intersection] {
-        let radius = max(metrics.intersectionClusterPoints, 1)
-        let cell = radius
-
-        func key(_ column: Int, _ row: Int) -> Int64 { (Int64(column) << 32) ^ Int64(row & 0xFFFF_FFFF) }
-        var buckets: [Int64: [Int]] = [:]
-        for (index, crossing) in crossings.enumerated() {
-            buckets[key(Int(floor(crossing.point.x / cell)), Int(floor(crossing.point.y / cell))),
-                    default: []].append(index)
-        }
-
-        var used = [Bool](repeating: false, count: crossings.count)
-        var result: [Intersection] = []
-
-        for start in crossings.indices where !used[start] {
-            var stack = [start]
-            used[start] = true
-            var members: [Int] = []
-            while let current = stack.popLast() {
-                members.append(current)
-                let here = crossings[current].point
-                let column = Int(floor(here.x / cell)), row = Int(floor(here.y / cell))
-                for dc in -1...1 {
-                    for dr in -1...1 {
-                        for candidate in buckets[key(column + dc, row + dr)] ?? [] where !used[candidate] {
-                            if hypot(crossings[candidate].point.x - here.x,
-                                     crossings[candidate].point.y - here.y) <= radius {
-                                used[candidate] = true
-                                stack.append(candidate)
-                            }
-                        }
-                    }
-                }
-            }
-
-            var sumX: CGFloat = 0, sumY: CGFloat = 0
-            var roadIndices = Set<Int>()
-            for member in members {
-                sumX += crossings[member].point.x
-                sumY += crossings[member].point.y
-                for roadIndex in crossings[member].roads { roadIndices.insert(roadIndex) }
-            }
-            let names = orderedNames(roadIndices.map { roads[$0].name })
-            guard names.count >= 2 else { continue }
-
-            let position = CGPoint(x: sumX / CGFloat(members.count), y: sumY / CGFloat(members.count))
-            let half = metrics.intersectionBoxWidth / 2
-            let hitRadius = metrics.intersectionHitRadius
-            let box = CGRect(x: position.x - half, y: position.y - half,
-                             width: metrics.intersectionBoxWidth, height: metrics.intersectionBoxWidth)
-            result.append(Intersection(
-                id: "int-\(Int(position.x.rounded()))-\(Int(position.y.rounded()))",
-                streetNames: names,
-                position: position,
-                announcement: intersectionAnnouncement(names),
-                boxWidth: metrics.intersectionBoxWidth,
-                hitRadius: hitRadius,
-                touchBounds: CGRect(x: position.x - hitRadius, y: position.y - hitRadius,
-                                    width: hitRadius * 2, height: hitRadius * 2),
-                drawBounds: box
-            ))
-        }
-        return result
-    }
-
-    /// Distinct, non-empty street names, kept in a stable order.
-    private static func orderedNames(_ names: [String]) -> [String] {
-        var seen = Set<String>()
-        var ordered: [String] = []
-        for name in names.sorted() where !name.isEmpty && seen.insert(name).inserted {
-            ordered.append(name)
-        }
-        return ordered
-    }
-
-    /// "Intersection of A and B", or "Intersection of A, B and C" for more.
-    ///
-    /// The streets that meet are what a traveller needs, so the announcement names them and
-    /// leads with the word intersection — the haptic and the ding already say *that* it is a
-    /// junction; the speech says *which* one.
-    private static func intersectionAnnouncement(_ names: [String]) -> String {
-        switch names.count {
-        case 0: return "Intersection"
-        case 1: return "Intersection at \(names[0])"
-        case 2: return "Intersection of \(names[0]) and \(names[1])"
-        default:
-            let head = names.dropLast().joined(separator: ", ")
-            return "Intersection of \(head) and \(names.last!)"
-        }
+        return Intersection(
+            id: element.id,
+            streetNames: names,
+            legs: legs,
+            position: position,
+            announcement: Intersection.announcement(shape: legs.count, streets: names),
+            boxWidth: metrics.intersectionBoxWidth,
+            hitRadius: hitRadius,
+            touchBounds: CGRect(x: position.x - hitRadius, y: position.y - hitRadius,
+                                width: hitRadius * 2, height: hitRadius * 2),
+            drawBounds: CGRect(x: position.x - half, y: position.y - half,
+                               width: metrics.intersectionBoxWidth,
+                               height: metrics.intersectionBoxWidth)
+        )
     }
 
     // MARK: Labels

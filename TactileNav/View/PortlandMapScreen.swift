@@ -24,6 +24,13 @@ struct PortlandMapScreen: View {
     @State private var phase: LoadPhase = .loading
     @State private var hasAppeared = false
     @State private var commands = StreetMapCommands()
+    /// The junction a double tap opened, if any.
+    @State private var openJunction: OpenJunction?
+
+    /// Identifiable wrapper so `navigationDestination(item:)` can drive the push.
+    private struct OpenJunction: Identifiable, Hashable {
+        let id: String
+    }
 
     var body: some View {
         content
@@ -61,8 +68,14 @@ struct PortlandMapScreen: View {
             PortlandMapView(map: map,
                             description: description(streetCount: map.features.count),
                             commands: commands,
-                            onBackGesture: { dismiss() })
+                            onBackGesture: { dismiss() },
+                            onIntersectionDoubleTap: { openJunction = OpenJunction(id: $0.id) })
                 .ignoresSafeArea(edges: .bottom)
+                .navigationDestination(item: $openJunction) { selection in
+                    if let junction = map.intersections.first(where: { $0.id == selection.id }) {
+                        IntersectionDetailScreen(junction: junction, map: map)
+                    }
+                }
 
         case .failed:
             VStack(spacing: 12) {
@@ -103,6 +116,7 @@ struct PortlandMapScreen: View {
     /// the thing that was going missing.
     private func description(streetCount: Int) -> String {
         "Congress Square, downtown Portland. A tactile street map of \(streetCount) streets. "
-        + "Drag one finger to explore, two fingers to pan."
+        + "Drag one finger to explore, two fingers to pan. "
+        + "Double tap an intersection to open it."
     }
 }
