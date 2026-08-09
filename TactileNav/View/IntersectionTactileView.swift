@@ -31,6 +31,7 @@ import AVFoundation
 import SwiftUI
 import TactileMapCore
 import TactileMapFeedback
+import TactileMapLogging
 import UIKit
 
 // MARK: - Palette
@@ -41,6 +42,10 @@ nonisolated enum IntersectionPalette {
     /// Crossing paint. Always drawn on the roadway, so white always shows.
     static let crossingStripe = CGColor(gray: 1, alpha: 1)
     static let background = CGColor(gray: 1, alpha: 1)
+    /// The kerb dot at each end of a crossing — the reference app's pink (`systemPink`).
+    static let crossingEnd = CGColor(red: 1, green: 0x2D / 255, blue: 0x55 / 255, alpha: 1)
+    /// White ring, so the dot reads against the grey pavement and the blue roadway alike.
+    static let crossingEndBorder = CGColor(gray: 1, alpha: 1)
 }
 
 // MARK: - Canvas
@@ -67,6 +72,9 @@ final class IntersectionCanvasView: UIView {
         stroke(scene.pieces.filter { $0.surface == .sidewalk }, IntersectionPalette.sidewalk, in: ctx)
         stroke(roads, IntersectionPalette.road, in: ctx)
         drawCrossings(scene.pieces.filter { $0.surface == .crossing }, over: roads, in: ctx)
+        // Last, and clipped to nothing: a kerb dot marks where a crossing meets the pavement,
+        // which is by definition the one place it is *not* on the roadway.
+        drawCrossingEnds(scene.pieces.filter { $0.surface == .crossingEnd }, in: ctx)
     }
 
     /// Strokes a set of pieces, one pass per width.
@@ -149,31 +157,65 @@ final class IntersectionCanvasView: UIView {
         }
         ctx.restoreGState()
     }
+
+    /// The kerb dots: one at each end of every crossing.
+    ///
+    /// They answer the question a line of ticks cannot. A crossing under a finger is a run of
+    /// identical taps, so there is no way to tell how far along it you are, and in particular
+    /// no way to tell that you have reached the far kerb rather than simply lost the line. The
+    /// dots put a discrete landmark at each end — the two places a pedestrian actually stands.
+    private func drawCrossingEnds(_ pieces: [IntersectionPiece], in ctx: CGContext) {
+        guard !pieces.isEmpty else { return }
+        let border = PhysicalDimensions.mmToPoints(IntersectionScene.crossingEndBorderMM)
+        ctx.setFillColor(IntersectionPalette.crossingEnd)
+        ctx.setStrokeColor(IntersectionPalette.crossingEndBorder)
+        ctx.setLineWidth(border)
+
+        for piece in pieces {
+            guard let centre = piece.points.first else { continue }
+            let radius = piece.width / 2
+            let box = CGRect(x: centre.x - radius, y: centre.y - radius,
+                             width: radius * 2, height: radius * 2)
+            ctx.fillEllipse(in: box)
+            ctx.strokeEllipse(in: box)
+        }
+    }
 }
 
 // MARK: - Feedback
 
-/// Haptics and speech for the close-up.
+/// Haptics and audio for the close-up.
 ///
 /// Separate from the street map's controller because the two screens have different
 /// vocabularies, and because this one has to be able to go quiet: it also sits on the screen
 /// whose whole point is listening to traffic, where it must never speak over the thing being
 /// judged.
+///
+/// Speech itself is *not* separate. It goes through the one channel the whole app shares, so
+/// a name started here is stopped by anything that speaks next, wherever that happens — see
+/// `TactileSpeechChannel`. A second synthesizer living here is exactly what left the close-up
+/// naming a crossing over the top of the map the user had gone back to.
 @MainActor
 final class IntersectionFeedbackController {
 
     /// Shared, so leaving the screen can silence it from anywhere.
     ///
-    /// The close-up owns its own speech, separate from the street map's. When it was owned by
-    /// the view, dismissing the screen left whatever it was saying running on over the map —
-    /// SwiftUI tears a representable down whenever it likes, which is not the moment the user
-    /// pressed back. One shared instance means `stopAll()` is reachable from the screen's own
-    /// dismissal path, which is the moment that actually matters.
+    /// When the controller was owned by the view, dismissing the screen left whatever it was
+    /// saying running on over the map — SwiftUI tears a representable down whenever it likes,
+    /// which is not the moment the user pressed back. One shared instance means `stopAll()` is
+    /// reachable from the screen's own dismissal path, which is the moment that actually
+    /// matters.
     static let shared = IntersectionFeedbackController()
 
     private let haptics = CoreHapticsEngine()
-    private let speech = AVSpeechSynthesizer()
+    private let speech = TactileSpeechChannel.shared
     private var activeID: String?
+
+    /// The kerb ding. Built on the first dot a finger actually finds, so the audio session is
+    /// configured before its engine starts, and so a screen that never reaches a crossing
+    /// never spins up an audio engine at all.
+    private var tone: ToneGenerator?
+    private var isDinging = false
 
     /// A sharp tap every 0.17 s. Transient rather than a short continuous pulse: a tap reads
     /// as a discrete marking, where a pulse blurs into the roadway buzz beside it.
@@ -185,50 +227,102 @@ final class IntersectionFeedbackController {
     /// path and check what it resolved to.
     private(set) var currentSurface: IntersectionSurface?
 
-    func enter(id: String, surface: IntersectionSurface, name: String, speaking: Bool) {
+    private init() {
+        // Core Haptics tears its engine down when the app backgrounds and nothing restarts it
+        // on the way back, so without this the close-up is silently dead to the touch for the
+        // rest of the session after the first time the user switches away.
+        let center = NotificationCenter.default
+        center.addObserver(forName: UIApplication.didEnterBackgroundNotification,
+                           object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.stopAll()
+                self?.haptics.handleAppBackground()
+                self?.tone?.handleAppBackground()
+            }
+        }
+        center.addObserver(forName: UIApplication.willEnterForegroundNotification,
+                           object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.haptics.handleAppForeground()
+                self?.tone?.handleAppForeground()
+            }
+        }
+    }
+
+    /// A finger has arrived on a new surface. Called only on an actual change, so a buzz is
+    /// never restarted while the finger stays on one thing.
+    ///
+    /// `audible` is off while traffic is playing: that exercise is judging a signal by ear, and
+    /// a spoken street name or a kerb ding over the top of it is the one thing that makes it
+    /// impossible. Haptics stay on either way — they do not compete with listening.
+    func enter(id: String, surface: IntersectionSurface, name: String, audible: Bool) {
         guard id != activeID else { return }
         activeID = id
         haptics.stopAll()
+        stopKerbDing()
 
         currentSurface = surface
         switch surface {
         case .road: haptics.start(pattern: .heavyBuzzContinuous)
         case .sidewalk: haptics.start(pattern: .streetContinuous)
         case .crossing: haptics.start(pattern: Self.crossingTick)
+        case .crossingEnd:
+            // No haptic at all, on purpose. The kerb dot is a landmark rather than a surface,
+            // and a ding on its own is unmistakable next to three continuous textures — where
+            // a fourth vibration would just be a fourth thing to tell apart.
+            speech.cancelPending()
+            if audible { playKerbDing() }
+            return
         }
 
-        guard speaking else { return }
-        if speech.isSpeaking { speech.stopSpeaking(at: .immediate) }
-        if UIAccessibility.isVoiceOverRunning {
-            UIAccessibility.post(notification: .announcement, argument: announcement(name))
-        } else {
-            let utterance = AVSpeechUtterance(string: name)
-            utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 1.05
-            utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
-            speech.speak(utterance)
+        guard audible else {
+            speech.cancelPending()
+            return
         }
+        // Dwell-gated, exactly as the street map is. Haptics change the instant the surface
+        // does; the name waits until the finger settles. Without this, crossing a lane, a
+        // crossing and a lane again in half a second queued three utterances, and the crossing
+        // was still being read out after the finger was back on the lane.
+        speech.speak(name)
     }
 
-    /// High priority, so a new name replaces the previous one outright rather than layering
-    /// over it. Without this, two names sweeping past each other overlap into noise.
-    private func announcement(_ text: String) -> Any {
-        if #available(iOS 17.0, *) {
-            return NSAttributedString(
-                string: text,
-                attributes: [.accessibilitySpeechAnnouncementPriority: UIAccessibilityPriority.high])
-        }
-        return text
-    }
-
+    /// The finger is between things, or has lifted. Haptics and the ding stop at once;
+    /// whatever is mid-sentence is allowed to finish.
     func leave() {
         activeID = nil
         currentSurface = nil
         haptics.stopAll()
+        stopKerbDing()
+        speech.cancelPending()
     }
 
+    /// Leaving the screen. Everything stops, including a sentence already in flight.
     func stopAll() {
         leave()
-        if speech.isSpeaking { speech.stopSpeaking(at: .immediate) }
+        speech.stopAll()
+    }
+
+    // MARK: Kerb ding
+
+    /// 1120 Hz for 0.16 s, once per dot. The same ding the reference app plays at a crossing
+    /// endpoint, and the same tone the street map uses for a junction — one sound meaning
+    /// "a named place, not a stretch of something".
+    private func playKerbDing() {
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        try? session.setActive(true)
+        let generator = tone ?? ToneGenerator()
+        tone = generator
+        isDinging = true
+        generator.playTone(frequency: 1120, duration: 0.16, amplitude: 0.88)
+    }
+
+    /// Guarded on having actually dinged, so the common path — a finger crossing surfaces that
+    /// have no ding — never builds an audio engine just to switch it off again.
+    private func stopKerbDing() {
+        guard isDinging else { return }
+        isDinging = false
+        tone?.stop()
     }
 }
 
@@ -239,12 +333,12 @@ final class IntersectionTouchView: UIView {
     let canvas = IntersectionCanvasView()
     private let feedback = IntersectionFeedbackController.shared
 
-    /// Whether entering a surface says its name.
+    /// Whether entering a surface makes any sound — its name, or a kerb ding.
     ///
     /// Off while the traffic simulation is running: the exercise is judging a signal by ear,
-    /// and a spoken street name over the top of it is the one thing that makes that
+    /// and a street name or a ding over the top of it is the one thing that makes that
     /// impossible. Haptics stay on either way — they do not compete with listening.
-    var speaks = true
+    var isAudible = true
 
     /// Set by the owner. Rebuilding the scene needs both this and a laid-out frame.
     var source: (junction: Intersection, map: StreetMap)? {
@@ -255,6 +349,23 @@ final class IntersectionTouchView: UIView {
     var onDoubleTap: (() -> Void)?
 
     private(set) var scene: IntersectionScene?
+
+    // MARK: Logging
+    //
+    // The close-up recorded nothing at all, so every trace stopped at the moment a junction was
+    // opened — which is the moment the interesting part starts. It writes its own session
+    // rather than sharing the map's: the two are different coordinate spaces at different
+    // scales, and a row that does not say which is which cannot be read back.
+
+    private let logger = CSVTouchLogger(fileNameGenerator: { _ in
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        return "Intersection_\(formatter.string(from: Date()))"
+    })
+    private var loggingStarted = false
+    private var sessionStart = Date()
+
     private var trackingTouch: UITouch?
     private var touchStartedAt: CFTimeInterval = 0
     private var touchStartPoint: CGPoint = .zero
@@ -302,13 +413,38 @@ final class IntersectionTouchView: UIView {
     ///
     /// `.silentOnTouch` stops VoiceOver speaking on every touch-down — what gets said is
     /// decided by what is under the finger, not by the fact that a finger arrived.
+    ///
+    /// The label is the junction's name and nothing else. VoiceOver reads it in its own voice
+    /// when focus lands here and no app can cut that short, so the arms and the instructions
+    /// live in the spoken introduction instead, where they can be stopped — see
+    /// `TactileSpeechChannel.speakArrival`.
     private func applyAccessibility() {
         isAccessibilityElement = true
         accessibilityTraits = [.allowsDirectInteraction]
-        accessibilityLabel = scene?.title ?? "Intersection diagram"
-        accessibilityHint = "Drag one finger to feel the roadway, the sidewalks and the "
-            + "crossings."
+        accessibilityLabel = source?.junction.announcement ?? scene?.title ?? "Intersection diagram"
+        accessibilityHint = "Drag one finger to explore."
         if #available(iOS 17.0, *) { accessibilityDirectTouchOptions = .silentOnTouch }
+    }
+
+    /// Say where we have landed, once the screen is actually on screen.
+    ///
+    /// With VoiceOver on, focus is handed to this element so it reads the junction's name — a
+    /// detached string posted as an announcement is read into the void, and goes into a queue
+    /// nothing can empty. The arms and the instruction follow in the app's own voice, timed to
+    /// start after VoiceOver has finished with the name so the two never overlap.
+    func announceArrival() {
+        guard let source else { return }
+        if UIAccessibility.isVoiceOverRunning {
+            applyAccessibility()
+            UIAccessibility.post(notification: .screenChanged, argument: self)
+            // VoiceOver has just said the junction's name, so this picks up from there rather
+            // than saying it a second time in a second voice.
+            TactileSpeechChannel.shared.speakArrival(
+                IntersectionScene.armsAnnouncement(for: source.junction))
+        } else {
+            TactileSpeechChannel.shared.speakArrival(
+                IntersectionScene.entryAnnouncement(for: source.junction))
+        }
     }
 
     // MARK: Touches
@@ -318,16 +454,21 @@ final class IntersectionTouchView: UIView {
         trackingTouch = touch
         touchStartedAt = CACurrentMediaTime()
         touchStartPoint = touch.location(in: self)
-        explore(at: touchStartPoint)
+        startLoggingIfNeeded()
+        // A finger on the glass replaces the introduction rather than playing under it.
+        TactileSpeechChannel.shared.endSuppression()
+        log(.touchDown, at: touchStartPoint, piece: explore(at: touchStartPoint))
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = trackingTouch, touches.contains(touch) else { return }
-        explore(at: touch.location(in: self))
+        let point = touch.location(in: self)
+        log(.touchMove, at: point, piece: explore(at: point))
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         let point = trackingTouch?.location(in: self) ?? touchStartPoint
+        log(.touchUp, at: point, piece: scene?.piece(at: point))
         let elapsed = CACurrentMediaTime() - touchStartedAt
         let travelled = hypot(point.x - touchStartPoint.x, point.y - touchStartPoint.y)
         endTracking()
@@ -366,34 +507,120 @@ final class IntersectionTouchView: UIView {
     /// Called straight from the raw touch handlers, and directly from tests — there is no
     /// gesture recognizer in between, which is exactly why the behaviour is identical with
     /// VoiceOver on and off.
-    func explore(at point: CGPoint) {
-        guard let scene else { return }
+    @discardableResult
+    func explore(at point: CGPoint) -> IntersectionPiece? {
+        guard let scene else { return nil }
         guard let piece = scene.piece(at: point) else {
             // Between things. Silence is the right answer: it is how a gap reads as a gap.
             feedback.leave()
-            return
+            return nil
         }
-        feedback.enter(id: piece.id, surface: piece.surface, name: piece.name, speaking: speaks)
+        feedback.enter(id: piece.id, surface: piece.surface, name: piece.name, audible: isAudible)
+        return piece
     }
 
-    func stopFeedback() { feedback.stopAll() }
+    func stopFeedback() {
+        feedback.stopAll()
+        endLogging()
+    }
+
+    // MARK: Logging
+
+    /// Opens a session the first time a finger arrives, recording everything needed to read a
+    /// trace back afterwards: which junction, at what scale, and what was drawn on it.
+    private func startLoggingIfNeeded() {
+        guard !loggingStarted, let scene else { return }
+        loggingStarted = true
+        sessionStart = Date()
+
+        func count(_ surface: IntersectionSurface) -> Int {
+            scene.pieces.filter { $0.surface == surface }.count
+        }
+        logger.startSession(metadata: [
+            "map": "CongressSquare",
+            "screen": "IntersectionCloseUp",
+            "junction": scene.junction.id,
+            "junctionName": scene.junction.announcement,
+            "streets": scene.junction.streetNames.joined(separator: "|"),
+            "legs": "\(scene.junction.legs.count)",
+            // Everything drawn, so a trace says what was reachable as well as what was reached.
+            "roads": "\(count(.road))",
+            "sidewalks": "\(count(.sidewalk))",
+            "crossings": "\(count(.crossing))",
+            "kerbDots": "\(count(.crossingEnd))",
+            // The two numbers a position has to be read through.
+            "pointsPerMeter": String(format: "%.3f", scene.scale),
+            "radiusMeters": String(format: "%.1f", IntersectionScene.radiusMeters),
+            "viewSize": "\(Int(scene.size.width))x\(Int(scene.size.height))",
+            "audible": isAudible ? "yes" : "no",
+            "voiceOver": UIAccessibility.isVoiceOverRunning ? "on" : "off",
+        ])
+    }
+
+    private func endLogging() {
+        guard loggingStarted else { return }
+        loggingStarted = false
+        logger.endSession()
+    }
+
+    /// One touch sample, with what it landed on.
+    ///
+    /// Positions are recorded twice: in view points, so a trace can be replayed against the
+    /// drawing, and in metres from the junction centre, so it can be compared across devices —
+    /// the point scale differs with pixel density, and this view's scale differs from the
+    /// city map's again.
+    private func log(_ type: TouchEventType, at point: CGPoint, piece: IntersectionPiece?) {
+        guard loggingStarted, let scene else { return }
+        let name: String
+        let kind: String
+        switch piece?.surface {
+        case .road: name = piece!.name; kind = "road"
+        case .sidewalk: name = piece!.name; kind = "sidewalk"
+        case .crossing: name = piece!.name; kind = "crossing"
+        case .crossingEnd: name = piece!.name; kind = "kerbDot"
+        case nil: name = "Background"; kind = "background"
+        }
+        _ = logger.logEvent(TouchEvent(
+            timestamp: Date(),
+            sessionElapsed: Date().timeIntervalSince(sessionStart),
+            eventType: type,
+            elementName: name,
+            elementType: piece?.surface.elementType,
+            touchPoint: point,
+            custom: [
+                "gesture": "explore",
+                "on": kind,
+                "pieceID": piece?.id ?? "",
+                "junction": scene.junction.id,
+                "metersX": String(format: "%.2f", (point.x - scene.center.x) / scene.scale),
+                "metersY": String(format: "%.2f", (point.y - scene.center.y) / scene.scale),
+            ]))
+    }
 }
 
 // MARK: - SwiftUI wrapper
+
+/// Lets the screen drive the close-up without owning it — the SwiftUI equivalent of holding
+/// a reference to the view, and the same arrangement the street map uses.
+final class IntersectionViewCommands {
+    var announceArrival: (() -> Void)?
+}
 
 struct IntersectionTactileView: UIViewRepresentable {
 
     let junction: Intersection
     let map: StreetMap
-    /// Silenced while traffic is playing — see `IntersectionTouchView.speaks`.
-    var speaks: Bool = true
+    /// Silenced while traffic is playing — see `IntersectionTouchView.isAudible`.
+    var isAudible: Bool = true
+    var commands: IntersectionViewCommands?
     var onDoubleTap: (() -> Void)?
 
     func makeUIView(context: Context) -> IntersectionTouchView {
         let view = IntersectionTouchView(frame: .zero)
         view.source = (junction, map)
-        view.speaks = speaks
+        view.isAudible = isAudible
         view.onDoubleTap = onDoubleTap
+        commands?.announceArrival = { [weak view] in view?.announceArrival() }
         return view
     }
 
@@ -401,8 +628,9 @@ struct IntersectionTactileView: UIViewRepresentable {
         if view.source?.junction.id != junction.id {
             view.source = (junction, map)
         }
-        view.speaks = speaks
+        view.isAudible = isAudible
         view.onDoubleTap = onDoubleTap
+        commands?.announceArrival = { [weak view] in view?.announceArrival() }
     }
 
     static func dismantleUIView(_ view: IntersectionTouchView, coordinator: ()) {

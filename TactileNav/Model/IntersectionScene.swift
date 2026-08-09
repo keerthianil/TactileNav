@@ -29,19 +29,25 @@ nonisolated enum IntersectionSurface {
     case sidewalk
     /// A marked crossing over a roadway.
     case crossing
+    /// The kerb at one end of a crossing: where you wait, and where you arrive.
+    case crossingEnd
 
     var elementType: TactileElementType {
         switch self {
         case .road: return .road
         case .sidewalk: return .street
-        case .crossing: return .crosswalk
+        case .crossing, .crossingEnd: return .crosswalk
         }
     }
 
     /// Resolves an overlap. A crossing is painted over a roadway, so when the two are equally
     /// close the crossing is the honest answer — and it is the thinner, harder-to-find thing.
+    /// A kerb dot outranks everything: it is a single point deliberately placed where a
+    /// crossing, a sidewalk and often a roadway all meet, and it is the only one of the four
+    /// that tells you *where along* the crossing you are.
     var priority: Int {
         switch self {
+        case .crossingEnd: return 3
         case .crossing: return 2
         case .sidewalk: return 1
         case .road: return 0
@@ -54,10 +60,13 @@ nonisolated enum IntersectionSurface {
 nonisolated struct IntersectionPiece {
     let id: String
     let surface: IntersectionSurface
-    /// What is spoken when a finger lands here.
+    /// What is spoken when a finger lands here. A `.crossingEnd` is not spoken — see
+    /// `IntersectionFeedbackController.enter` — but still carries a name, for the touch log.
     let name: String
-    /// Polyline in view points, junction at the centre, north up.
+    /// Polyline in view points, junction at the centre, north up. A `.crossingEnd` is a
+    /// single point: it is a dot, not a line.
     let points: [CGPoint]
+    /// Stroke width for a line; diameter for a `.crossingEnd` dot.
     let width: CGFloat
     let hitRadius: CGFloat
 }
@@ -76,7 +85,12 @@ nonisolated struct IntersectionScene {
     /// the sidewalks and crossings around it are at their real positions. Drawing the roadway
     /// at a fixed width instead pushes its edge across the sidewalk beside it, and the kerb —
     /// the single most important line at a junction — stops existing.
-    static let minimumRoadWidthMM: CGFloat = 8.0
+    ///
+    /// The floor is deliberately well under a fingertip. A roadway is found by its hit radius,
+    /// which never drops below `minimumHitRadius` however narrow the drawing gets, so the drawn
+    /// width is free to give ground to the kerb beside it — and a kerb that exists is worth far
+    /// more than the last millimetre of a roadway that is already unmistakable.
+    static let minimumRoadWidthMM: CGFloat = 6.0
     static let maximumRoadWidthMM: CGFloat = 16.0
     static let sidewalkWidthMM: CGFloat = 4.0
     /// A crossing is a thin line, the weight of the paint on the ground.
@@ -86,9 +100,31 @@ nonisolated struct IntersectionScene {
     static let crossingBarLengthMM: CGFloat = 1.2
     static let crossingBarPitchMM: CGFloat = 2.6
 
+    /// The kerb dot at each end of a crossing, and its white ring. The reference app's sizes.
+    static let crossingEndDiameterMM: CGFloat = 5.0
+    static let crossingEndBorderMM: CGFloat = 0.4
+
+    /// The white line left between a roadway and the pavement beside it.
+    ///
+    /// A kerb is the most important edge at a junction — it is the difference between standing
+    /// on the footway and standing in traffic — so it is guaranteed rather than hoped for. See
+    /// `roadWidthLimit`.
+    static let kerbGapMM: CGFloat = 0.8
+
     /// How much ground the close-up covers, measured from the junction centre. Far enough to
     /// take in the corners and the crossings, close enough that a kerb is a finger's width.
-    static let radiusMeters: CGFloat = 42
+    ///
+    /// The second half of that sentence is what sets the number, and 42 m did not satisfy it.
+    /// Downtown Portland puts its pavements a median of 8.7 m from the road centreline — a
+    /// quarter of them closer than 6.7 m — while the roadway drawn over them needed about
+    /// 7.8 m of clearance to leave the pavement whole. So across the extract, two fifths of
+    /// every stretch of pavement running alongside a road was partly painted over, and the grey
+    /// line came out thinner than it should be or disappeared for a while. There is no way to
+    /// draw an 8 mm roadway, a 4 mm pavement and a real kerb offset in 6 m of ground: the only
+    /// fix is more glass per metre. At 26 m the same measurement falls to under a tenth, and
+    /// what is lost is block, not junction — 52 m across the short edge still holds the corners
+    /// and every crossing.
+    static let radiusMeters: CGFloat = 26
 
     /// Below this a line is drawn but cannot reliably be found by a moving finger.
     static let minimumHitRadius: CGFloat = 18
@@ -110,7 +146,16 @@ nonisolated struct IntersectionScene {
     /// Static because it is needed before the scene exists — the screen announces itself while
     /// the view is still being laid out.
     static func entryAnnouncement(for junction: Intersection) -> String {
-        var parts = ["\(junction.announcement)."]
+        "\(junction.announcement). " + armsAnnouncement(for: junction)
+    }
+
+    /// The same thing with the junction's name left off.
+    ///
+    /// With VoiceOver on, the name has just been read out as the drawing's accessibility label
+    /// when focus landed on it. Saying it again here would be the same sentence twice, once in
+    /// each voice, which is exactly the thing this split exists to avoid.
+    static func armsAnnouncement(for junction: Intersection) -> String {
+        var parts: [String] = []
         if !junction.legs.isEmpty {
             let arms = junction.legs.map { "\($0.streetName) to the \($0.compassLabel)" }
             parts.append("Streets from here: " + arms.joined(separator: ", ") + ".")
@@ -149,25 +194,16 @@ nonisolated struct IntersectionScene {
 
         var pieces: [IntersectionPiece] = []
 
-        for road in map.roads(near: junction.position, within: radiusInContentPoints) {
-            // True width for this roadway, then held inside the tactile bounds.
-            let realWidth = CGFloat(max(road.lanes, 1)) * laneWidthMeters * viewScale
-            let roadWidth = min(max(realWidth, mm(minimumRoadWidthMM)), mm(maximumRoadWidthMM))
-            pieces.append(IntersectionPiece(
-                id: road.id,
-                surface: .road,
-                name: road.name,
-                points: road.points.map(place),
-                width: roadWidth,
-                hitRadius: max(roadWidth / 2, minimumHitRadius)))
-        }
-
+        // Footways first, because the roadways are sized against them — see `roadWidthLimit`.
         let sidewalkWidth = mm(sidewalkWidthMM)
         let crossingWidth = mm(crossingWidthMM)
+        var sidewalkLines: [[CGPoint]] = []
+
         for footway in map.footways(near: junction.position, within: radiusInContentPoints) {
             let placed = footway.points.map(place)
             switch footway.kind {
             case .sidewalk:
+                sidewalkLines.append(placed)
                 pieces.append(IntersectionPiece(
                     id: footway.id,
                     surface: .sidewalk,
@@ -186,8 +222,172 @@ nonisolated struct IntersectionScene {
             }
         }
 
+        for road in map.roads(near: junction.position, within: radiusInContentPoints) {
+            let placed = road.points.map(place)
+            // True width for this roadway, then held inside the tactile bounds, then held
+            // clear of the pavement running beside it.
+            let realWidth = CGFloat(max(road.lanes, 1)) * laneWidthMeters * viewScale
+            var roadWidth = min(max(realWidth, mm(minimumRoadWidthMM)), mm(maximumRoadWidthMM))
+            let limit = roadWidthLimit(centreline: placed, sidewalks: sidewalkLines,
+                                       sidewalkWidth: sidewalkWidth, gap: mm(kerbGapMM))
+            roadWidth = max(min(roadWidth, limit), mm(minimumRoadWidthMM))
+            pieces.append(IntersectionPiece(
+                id: road.id,
+                surface: .road,
+                name: road.name,
+                points: placed,
+                width: roadWidth,
+                hitRadius: max(roadWidth / 2, minimumHitRadius)))
+        }
+
+        pieces.append(contentsOf: crossingEnds(of: pieces, mm: mm))
+
         return IntersectionScene(junction: junction, pieces: pieces,
                                  size: size, center: center, scale: viewScale)
+    }
+
+    // MARK: Kerbs
+
+    /// The widest this roadway may be drawn without eating the pavement beside it.
+    ///
+    /// The drawn roadway is the real one — lane count times lane width — and the sidewalks are
+    /// at their real offsets, but those two numbers come from different parts of OpenStreetMap
+    /// and do not have to agree. Where they disagreed, the roadway was drawn wider than the
+    /// gap to the kerb, and since the roadway is painted over the pavement the grey line came
+    /// out visibly thinner than it should be, or vanished for a stretch. That is not a drawing
+    /// artefact to live with: a sidewalk whose width changes under a finger reads as a
+    /// different surface, and the kerb it is supposed to mark stops existing.
+    ///
+    /// So the width is capped at twice the clearance to the nearest sidewalk, less that
+    /// sidewalk's own half-width and a kerb gap. Only *parallel* sidewalks count. A sidewalk
+    /// crossing the road head-on at a junction passes straight through the middle of it, and
+    /// counting that one would collapse every roadway in the scene to the minimum.
+    static func roadWidthLimit(centreline: [CGPoint], sidewalks: [[CGPoint]],
+                               sidewalkWidth: CGFloat, gap: CGFloat) -> CGFloat {
+        guard centreline.count >= 2 else { return .greatestFiniteMagnitude }
+
+        var clearance = CGFloat.greatestFiniteMagnitude
+        for line in sidewalks {
+            for (a, b) in zip(line, line.dropFirst()) {
+                let middle = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+                let distance = distanceToPolyline(middle, centreline)
+                guard distance < clearance else { continue }
+                guard runsAlongside(a, b, centreline, at: middle) else { continue }
+                clearance = distance
+            }
+        }
+        guard clearance < .greatestFiniteMagnitude else { return .greatestFiniteMagnitude }
+        return max((clearance - sidewalkWidth / 2 - gap) * 2, 0)
+    }
+
+    /// Whether a sidewalk segment runs along a roadway rather than across it.
+    private static func runsAlongside(_ a: CGPoint, _ b: CGPoint, _ centreline: [CGPoint],
+                                      at point: CGPoint) -> Bool {
+        guard let walk = direction(from: a, to: b),
+              let road = nearestSegmentDirection(to: point, in: centreline) else { return false }
+        // |sin| of the angle between the two. 0.42 is a little over 25 degrees, which is wide
+        // enough to catch a pavement following a bend and narrow enough to reject a crossing.
+        return abs(walk.dx * road.dy - walk.dy * road.dx) <= 0.42
+    }
+
+    private static func direction(from a: CGPoint, to b: CGPoint) -> CGVector? {
+        let length = hypot(b.x - a.x, b.y - a.y)
+        guard length > 0.001 else { return nil }
+        return CGVector(dx: (b.x - a.x) / length, dy: (b.y - a.y) / length)
+    }
+
+    private static func nearestSegmentDirection(to point: CGPoint, in line: [CGPoint]) -> CGVector? {
+        var best: (direction: CGVector, distance: CGFloat)?
+        for (a, b) in zip(line, line.dropFirst()) {
+            guard let unit = direction(from: a, to: b) else { continue }
+            let distance = distanceToSegment(point, a, b)
+            if best == nil || distance < best!.distance { best = (unit, distance) }
+        }
+        return best?.direction
+    }
+
+    /// A kerb dot everywhere a crossing meets the edge of a roadway.
+    ///
+    /// **Placed where the crossing crosses the kerb, not at the ends of the way.** A kerb is a
+    /// physical edge — the line where the pavement stops and the traffic starts — so that is
+    /// the only place a dot marking one can honestly go. Taking the first and last vertex of
+    /// the OpenStreetMap way instead put them wherever the mapper happened to stop drawing:
+    /// out in the verge, part-way down a pavement, or floating in the middle of a block with no
+    /// road anywhere near them. On real data those two things are simply not the same point.
+    ///
+    /// Every transition counts, not just the outer two. A crossing over a divided road meets
+    /// four kerbs — two at the pavements and two at the refuge in the middle — and each one is
+    /// somewhere you stop and wait, so each one is worth a dot.
+    ///
+    /// A crossing that never touches a roadway gets no dots at all. Those are the ones that
+    /// were showing up stranded on the white.
+    private static func crossingEnds(of pieces: [IntersectionPiece],
+                                     mm: (CGFloat) -> CGFloat) -> [IntersectionPiece] {
+        let roads = pieces.filter { $0.surface == .road && $0.points.count >= 2 }
+        guard !roads.isEmpty else { return [] }
+
+        let diameter = mm(crossingEndDiameterMM)
+        let hitRadius = max(mm(crossingEndDiameterMM + crossingEndBorderMM) / 2, minimumHitRadius)
+        let mergeWithin = mm(2.0)
+        /// Sampling step along a crossing, in view points. The exact edge is then found by
+        /// halving between the two samples that straddle it, so this only sets how narrow a
+        /// sliver of roadway can be missed, not how accurate a kerb is.
+        let step: CGFloat = 2
+
+        /// Inside the roadway means inside *any* road's stroke — they overlap at a junction,
+        /// and their union is the asphalt.
+        func onRoadway(_ point: CGPoint) -> Bool {
+            roads.contains { distanceToPolyline(point, $0.points) <= $0.width / 2 }
+        }
+
+        /// The point between `outside` and `inside` where the roadway edge actually falls.
+        func kerb(between outside: CGPoint, and inside: CGPoint) -> CGPoint {
+            var low = outside, high = inside
+            for _ in 0..<12 {
+                let middle = CGPoint(x: (low.x + high.x) / 2, y: (low.y + high.y) / 2)
+                if onRoadway(middle) { high = middle } else { low = middle }
+            }
+            return high
+        }
+
+        var dots: [IntersectionPiece] = []
+        for piece in pieces where piece.surface == .crossing {
+            let total = polylineLength(piece.points)
+            guard total > 0 else { continue }
+
+            var kerbs: [CGPoint] = []
+            var previous: (point: CGPoint, inside: Bool)?
+            var along: CGFloat = 0
+            while along <= total {
+                guard let point = pointAlongPolyline(piece.points, distance: min(along, total))
+                else { break }
+                let inside = onRoadway(point)
+                if let previous, previous.inside != inside {
+                    kerbs.append(inside
+                        ? kerb(between: previous.point, and: point)
+                        : kerb(between: point, and: previous.point))
+                }
+                previous = (point, inside)
+                if along >= total { break }
+                along = min(along + step, total)
+            }
+
+            for (index, point) in kerbs.enumerated() {
+                // Where two crossings meet at a corner they often share a kerb, and two dots on
+                // the same spot would ding twice for one place.
+                guard !dots.contains(where: {
+                    hypot($0.points[0].x - point.x, $0.points[0].y - point.y) <= mergeWithin
+                }) else { continue }
+                dots.append(IntersectionPiece(
+                    id: "\(piece.id)_kerb_\(index)",
+                    surface: .crossingEnd,
+                    name: "Kerb, \(piece.name.lowercased())",
+                    points: [point],
+                    width: diameter,
+                    hitRadius: hitRadius))
+            }
+        }
+        return dots
     }
 
     /// "North sidewalk" — which side of the junction it runs along.

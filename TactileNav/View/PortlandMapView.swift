@@ -216,18 +216,22 @@ final class PortlandStreetScrollView: UIScrollView {
         onOffsetChange?(contentOffset)
     }
 
-    /// What VoiceOver says when focus lands on the map. Leads with the map's name.
-    var mapDescription = "Tactile street map"
+    /// What VoiceOver says when focus lands on the map: the map's name, and nothing more.
+    ///
+    /// **Deliberately a name rather than a description.** VoiceOver reads this in its own voice
+    /// when the push moves focus here, and there is no way for an app to cancel that once it
+    /// starts. While it was a paragraph — the name, the street count, the gestures — a finger
+    /// arriving two seconds later set this map's own voice going underneath it, and the user
+    /// heard both at once. Everything past the name is said by the speech channel instead,
+    /// which waits its turn and can be stopped. See `TactileSpeechChannel.speakArrival`.
+    var mapName = "Tactile street map"
 
     func applyAccessibility() {
         if UIAccessibility.isVoiceOverRunning {
             isAccessibilityElement = true
             accessibilityTraits = [.allowsDirectInteraction]
-            accessibilityLabel = mapDescription
-            accessibilityHint = "Drag one finger to explore streets. "
-                + "Drag two fingers to pan the map. "
-                + "Swipe up or down for pan and recentre actions. "
-                + "Three finger swipe right to go back."
+            accessibilityLabel = mapName
+            accessibilityHint = "Drag one finger to explore."
             if #available(iOS 17.0, *) { accessibilityDirectTouchOptions = .silentOnTouch }
         } else {
             isAccessibilityElement = false
@@ -359,8 +363,12 @@ final class StreetMapCommands {
 struct PortlandMapView: UIViewRepresentable {
 
     let map: StreetMap
-    /// What VoiceOver reads when focus lands on the map — the map's name first.
-    var description = "Tactile street map"
+    /// What VoiceOver reads when focus lands on the map — a name, not a description. See
+    /// `PortlandStreetScrollView.mapName`.
+    var name = "Tactile street map"
+    /// The fuller introduction, spoken by the app's own voice once VoiceOver has finished
+    /// with the name. Cancelled the moment a finger arrives.
+    var introduction = ""
     var commands: StreetMapCommands?
     var onBackGesture: (() -> Void)?
     /// Double tap on a junction: open it.
@@ -449,7 +457,7 @@ struct PortlandMapView: UIViewRepresentable {
         scrollView.addGestureRecognizer(backPan)
 
         scrollView.onBackGesture = { [weak coordinator] in coordinator?.triggerBack() }
-        scrollView.mapDescription = description
+        scrollView.mapName = name
         scrollView.applyAccessibility()
 
         NotificationCenter.default.addObserver(
@@ -462,7 +470,7 @@ struct PortlandMapView: UIViewRepresentable {
     func updateUIView(_ container: PortlandStreetMapContainerView, context: Context) {
         let coordinator = context.coordinator
         coordinator.parent = self
-        container.scrollView.mapDescription = description
+        container.scrollView.mapName = name
         container.scrollView.applyAccessibility()
         container.scrollView.onBackGesture = { [weak coordinator] in coordinator?.triggerBack() }
         container.scrollView.panActions = coordinator.makePanActions()
@@ -640,7 +648,13 @@ struct PortlandMapView: UIViewRepresentable {
             guard !hasAnnouncedArrival else { return }
             hasAnnouncedArrival = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-                self?.scrollView?.announceAsScreenChange()
+                guard let self else { return }
+                // Two steps, in this order and never at the same time. VoiceOver is given the
+                // element so focus lands on the map and it reads the map's *name*; the fuller
+                // introduction follows in this app's own voice, once that has had room. With
+                // VoiceOver off the first step does nothing and only the introduction is heard.
+                self.scrollView?.announceAsScreenChange()
+                self.feedback.announceScreenEntry(self.parent.introduction)
             }
         }
 
@@ -843,11 +857,36 @@ struct PortlandMapView: UIViewRepresentable {
             guard let junction = parent.map.intersection(at: point,
                                                          within: parent.map.metrics.intersectionOpenRadius) else {
                 // Nothing to open. Say so rather than leaving the tap feeling broken.
+                logGesture("doubleTap", at: point, name: "Background", opened: nil)
                 feedback.announceImmediately("No intersection here")
                 return
             }
+            // Recorded so a map trace and the close-up trace that follows it can be joined up:
+            // this row carries the junction id the next session's metadata is keyed by.
+            logGesture("doubleTap", at: point, name: junction.announcement, opened: junction.id)
             feedback.stopAll()
             parent.onIntersectionDoubleTap?(junction)
+        }
+
+        /// A discrete gesture, as opposed to the touch stream `logTouch` records.
+        private func logGesture(_ gesture: String, at point: CGPoint, name: String,
+                                opened: String?) {
+            guard loggingStarted else { return }
+            let scale = parent.map.metrics.pointsPerMeter
+            _ = logger.logEvent(TouchEvent(
+                timestamp: Date(),
+                sessionElapsed: Date().timeIntervalSince(sessionStart),
+                eventType: .touchUp,
+                elementName: name,
+                elementType: opened == nil ? nil : .intersection,
+                touchPoint: point,
+                custom: [
+                    "gesture": gesture,
+                    "on": opened == nil ? "background" : "intersection",
+                    "openedJunction": opened ?? "",
+                    "metersX": String(format: "%.1f", point.x / scale),
+                    "metersY": String(format: "%.1f", point.y / scale),
+                ]))
         }
 
         @objc func handleBackGesture() { triggerBack() }

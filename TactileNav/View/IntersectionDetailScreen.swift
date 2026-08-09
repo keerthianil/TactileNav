@@ -8,10 +8,12 @@
 //  and the sidewalks and crossings OpenStreetMap records at that corner. See
 //  `IntersectionScene`.
 //
-//  Two ways back, and no others: a double tap anywhere, and a three-finger swipe right (plus
-//  VoiceOver's own escape and scroll, which are the same two gestures under VoiceOver). There
-//  is no navigation-bar back button and no one-finger swipe — one finger is exploration on this
-//  screen, and every accidental pop while reading the junction came from that.
+//  Three ways back: the Back button, a double tap anywhere, and a three-finger swipe right
+//  (plus VoiceOver's own escape and scroll, which are the same two gestures under VoiceOver).
+//  What there is *not* is a one-finger swipe — one finger is exploration on this screen, and
+//  every accidental pop while reading the junction came from that. The button is the system's
+//  own, deliberate and reachable by every input method; the gestures are for a hand that is
+//  already on the glass.
 //
 
 import SwiftUI
@@ -22,16 +24,25 @@ struct IntersectionDetailScreen: View {
     let junction: Intersection
     let map: StreetMap
 
-    @Environment(\.dismiss) private var dismiss
+    /// Clears the binding that pushed this screen, which is what pops it.
+    ///
+    /// Deliberately not `@Environment(\.dismiss)`. Calling `dismiss()` pops the screen and
+    /// *then* lets SwiftUI write nil back into the binding, and a double tap that opened
+    /// another junction in between was overwritten by that late write — emptying the stack out
+    /// to the home screen. One owner of the state, one write, no race.
+    let onLeave: () -> Void
+
     @State private var hasAnnounced = false
     /// Set the moment we start leaving, so a delayed announcement does not land on the map.
     @State private var hasLeft = false
+    @State private var commands = IntersectionViewCommands()
 
     var body: some View {
         // The junction, and nothing else. Everything that was written underneath — the name,
         // the arms, the gesture hints — is said on arrival instead, so the drawing gets the
         // whole screen and there is nothing to read past to reach it.
-        IntersectionTactileView(junction: junction, map: map, onDoubleTap: goBack)
+        IntersectionTactileView(junction: junction, map: map,
+                                commands: commands, onDoubleTap: goBack)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(.separator)))
@@ -39,9 +50,20 @@ struct IntersectionDetailScreen: View {
             .padding(.bottom, 12)
         .navigationTitle("Intersection")
         .navigationBarTitleDisplayMode(.inline)
-        // No back button: back is the double tap and the three-finger swipe, nothing else.
+        // The system's own button is hidden and replaced, so that pressing it runs the same
+        // teardown the gestures do. A back that pops the screen without silencing it is how
+        // the junction ended up still talking over the map.
         .navigationBarBackButtonHidden(true)
-        // And no one-finger swipe-back either — one finger is exploration here.
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: goBack) {
+                    Label("Back", systemImage: "chevron.backward")
+                }
+                .accessibilityLabel("Back")
+                .accessibilityHint("Returns to the Congress Square map")
+            }
+        }
+        // No one-finger swipe-back — one finger is exploration here.
         .disablesSwipeBack()
         .background(BackGestures(onBack: goBack))
         .accessibilityAction(.escape) { goBack() }
@@ -58,20 +80,15 @@ struct IntersectionDetailScreen: View {
             // Only if we are still here. A quick double tap straight back out would otherwise
             // fire this announcement over the map we have already returned to.
             guard !hasLeft else { return }
-            let text = IntersectionScene.entryAnnouncement(for: junction)
-            if UIAccessibility.isVoiceOverRunning {
-                UIAccessibility.post(notification: .screenChanged, argument: text)
-            } else {
-                StreetFeedbackController.shared.announceImmediately(text)
-            }
+            commands.announceArrival?()
         }
     }
 
     /// Everything this screen can be making a noise with, stopped.
     ///
-    /// Both controllers, because the close-up speaks through its own and the entry
-    /// announcement goes through the map's. Missing either one leaves speech running on over
-    /// the screen underneath.
+    /// Both controllers, because they own different haptics and different tones. They share
+    /// one speech channel now, so either call would silence the voice — but only the close-up
+    /// stops the kerb ding, and only the map's controller stops the junction ding.
     private func silence() {
         hasLeft = true
         IntersectionFeedbackController.shared.stopAll()
@@ -80,7 +97,7 @@ struct IntersectionDetailScreen: View {
 
     private func goBack() {
         silence()
-        dismiss()
+        onLeave()
     }
 }
 

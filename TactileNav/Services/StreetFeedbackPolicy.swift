@@ -66,10 +66,10 @@ final class StreetFeedbackPolicy: OutdoorFeedbackPolicy {
 
 // MARK: - Speech
 
-/// The single speech channel for this map.
+/// The single speech channel for the whole app.
 ///
-/// Nothing else on the screen is allowed to speak. Everything funnels through here so the
-/// rules below hold unconditionally rather than depending on each caller remembering them.
+/// Nothing anywhere is allowed to speak except through here, so the rules below hold
+/// unconditionally rather than depending on each caller remembering them.
 ///
 /// **Why speech is delayed and haptics are not.** A finger sweeping across a grid crosses a
 /// street every few milliseconds. Announcing each one means every utterance interrupts the
@@ -78,25 +78,80 @@ final class StreetFeedbackPolicy: OutdoorFeedbackPolicy {
 /// six streets and you hear exactly the one you stop on. Haptics stay instantaneous, so the
 /// map still feels continuous while the speech stays legible. Feeling everything and hearing
 /// only what you settle on is the right division of the two channels.
+///
+/// **Why this synthesises its own speech instead of posting VoiceOver announcements.** A
+/// posted announcement goes into VoiceOver's queue, and there is no API that empties that
+/// queue. Every symptom of the old version follows from that one fact: a new surface could
+/// not cut the previous name short, so names stacked up and arrived late — you would hear
+/// "crossing" while your finger was already back on the lane — and leaving the screen could
+/// not stop what was still waiting to be read, so a junction went on naming itself over the
+/// map underneath. Synthesising here makes every one of those a single `stopSpeaking` call.
+/// VoiceOver users keep their own voice and speaking rate through
+/// `prefersAssistiveTechnologySettings`, which is the only thing the announcement route was
+/// really buying.
 @MainActor
 final class TactileSpeechChannel: NSObject, SpatialAudioEngine {
+
+    /// The one voice in the app.
+    ///
+    /// Shared, not one per screen. "Stop what you were saying" has to work across a screen
+    /// boundary as well as inside one: when the junction close-up owned a second synthesizer,
+    /// leaving it silenced one voice and left the other talking over the map underneath.
+    static let shared = TactileSpeechChannel()
 
     /// How long a finger must rest on one surface before it is named.
     private let dwell: TimeInterval = 0.2
 
     private let synthesizer = AVSpeechSynthesizer()
     private var pendingSpeech: DispatchWorkItem?
+    private var pendingArrival: DispatchWorkItem?
     private var suppressedUntil: CFTimeInterval = 0
-    private var isAnnouncing = false
+    private var hasActivatedSession = false
 
-    override init() {
-        super.init()
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(announcementFinished(_:)),
-            name: UIAccessibility.announcementDidFinishNotification, object: nil)
+    /// How long to leave clear for VoiceOver to read the label of the element it has just
+    /// focused, before this channel says anything of its own. See `speakArrival`.
+    private let voiceOverFocusGrace: TimeInterval = 1.2
+
+    // MARK: Arrival
+
+    /// A screen introducing itself.
+    ///
+    /// **This is the only place two voices could ever talk at once, and why it is delayed.**
+    /// Pushing a screen moves VoiceOver's focus, and VoiceOver reads the newly focused
+    /// element's label in its own voice — that is not something an app can cancel or opt out
+    /// of. So this channel waits for it to finish rather than talking over it, and the labels
+    /// on the tactile surfaces are kept to a name so there is little to wait for. Everything
+    /// past the name — the street count, the arms of a junction, how to explore — is said
+    /// here, where it can be stopped.
+    ///
+    /// Cancelled outright by a finger arriving. The introduction is a courtesy; a finger on
+    /// the glass is an instruction, and someone who starts exploring has heard as much of it
+    /// as they wanted.
+    func speakArrival(_ text: String) {
+        guard !text.isEmpty else { return }
+        cancelArrival()
+        let delay = UIAccessibility.isVoiceOverRunning ? voiceOverFocusGrace : 0.3
+        // Hold exploration speech until the introduction has had room, so the two do not
+        // interleave into gibberish if a finger lands halfway through.
+        suppressExploration(for: delay + 6)
+
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pendingArrival = nil
+            self.utter(text)
+        }
+        pendingArrival = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
-    deinit { NotificationCenter.default.removeObserver(self) }
+    func cancelArrival() {
+        pendingArrival?.cancel()
+        pendingArrival = nil
+    }
+
+    /// Whether an introduction is still waiting to be spoken. Readable so a test can check it
+    /// is dropped by a finger rather than left to play underneath exploration.
+    var hasArrivalPending: Bool { pendingArrival != nil }
 
     // MARK: Suppression
 
@@ -106,32 +161,31 @@ final class TactileSpeechChannel: NSObject, SpatialAudioEngine {
         suppressedUntil = CACurrentMediaTime() + duration
     }
 
-    /// Drop the hold immediately.
+    /// Drop the hold immediately, and drop the introduction with it.
     ///
-    /// The entry summary is a courtesy; a finger on the glass is an instruction. Someone who
-    /// starts exploring straight away has heard as much of the intro as they wanted, and
-    /// making them wait it out reads as the map simply not responding.
+    /// A finger on the glass replaces the introduction rather than queueing behind it — which
+    /// is the difference between one voice and two.
     func endSuppression() {
         suppressedUntil = 0
+        cancelArrival()
     }
 
     private var isSuppressed: Bool { CACurrentMediaTime() < suppressedUntil }
 
-    @objc private func announcementFinished(_ note: Notification) {
-        isAnnouncing = false
-        // If VoiceOver reports it was cut off, the next utterance is a replacement rather
-        // than a queue-behind, which is exactly what `.high` priority already gives us.
-        // Tracked here so the flag reflects reality instead of an assumption.
-        _ = note.userInfo?[UIAccessibility.announcementWasSuccessfulUserInfoKey] as? Bool
-    }
-
     // MARK: SpatialAudioEngine
 
     /// The dwell-gated path. This is what the feedback policy calls on every surface entry.
+    ///
+    /// The previous name is cut off the moment a new surface is asked for, not when the new
+    /// one starts speaking. What is in the air belongs to the thing the finger has already
+    /// left, and letting it run to the end is what made a name arrive one surface too late.
     func speak(_ text: String) {
         guard !text.isEmpty else { return }
         pendingSpeech?.cancel()
+        // Checked before anything is stopped: while the entry summary holds the channel, a
+        // surface entry is dropped outright rather than cutting the summary in half.
         guard !isSuppressed else { return }
+        stopSpeakingNow()
 
         let work = DispatchWorkItem { [weak self] in
             guard let self, !self.isSuppressed else { return }
@@ -159,18 +213,25 @@ final class TactileSpeechChannel: NSObject, SpatialAudioEngine {
 
     func registerSound(name: String, buffer: AVAudioPCMBuffer) {}
 
+    /// Everything stops, including whatever is mid-sentence. This is the screen-exit path.
     func stopAll() {
+        suppressedUntil = 0
+        cancelArrival()
         pendingSpeech?.cancel()
         pendingSpeech = nil
-        if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
+        stopSpeakingNow()
     }
 
     /// Whether an utterance is waiting out its dwell. Readable so a test can tell a
     /// suppressed channel (which drops requests) from a live one (which schedules them).
     var hasSpeechPending: Bool { pendingSpeech != nil }
 
+    /// Whether anything is being said right now. Readable for the same reason.
+    var isSpeaking: Bool { synthesizer.isSpeaking }
+
     /// Cancel anything queued but let whatever is mid-sentence finish. Used when a finger
-    /// lifts: cutting the current street name off at that moment is just rude.
+    /// lifts, or moves into the blank ground between streets: cutting the current street name
+    /// off at that moment is just rude.
     func cancelPending() {
         pendingSpeech?.cancel()
         pendingSpeech = nil
@@ -178,30 +239,42 @@ final class TactileSpeechChannel: NSObject, SpatialAudioEngine {
 
     // MARK: Delivery
 
-    private func utter(_ text: String) {
-        if UIAccessibility.isVoiceOverRunning {
-            isAnnouncing = true
-            UIAccessibility.post(notification: .announcement, argument: Self.announcement(text))
-        } else {
-            if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
-            let utterance = AVSpeechUtterance(string: text)
-            utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 1.05
-            utterance.volume = 1.0
-            utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
-            synthesizer.speak(utterance)
-        }
+    private func stopSpeakingNow() {
+        if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
     }
 
-    /// High priority so a new street name *replaces* the previous utterance outright instead
-    /// of layering over it. Without this two names can overlap into noise.
-    private static func announcement(_ text: String) -> Any {
-        if #available(iOS 17.0, *) {
-            return NSAttributedString(
-                string: text,
-                attributes: [.accessibilitySpeechAnnouncementPriority: UIAccessibilityPriority.high]
-            )
+    private func utter(_ text: String) {
+        prepareSession()
+        stopSpeakingNow()
+
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.volume = 1.0
+        if UIAccessibility.isVoiceOverRunning {
+            // Speak in the user's own VoiceOver voice, at their own rate. A blind user has
+            // tuned those settings to something they can work at, and a map that ignores them
+            // is a map that sounds wrong on every single utterance. This is what makes owning
+            // the synthesizer cost nothing next to posting announcements.
+            utterance.prefersAssistiveTechnologySettings = true
+        } else {
+            utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 1.05
+            utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
         }
-        return text
+        synthesizer.speak(utterance)
+    }
+
+    /// Route speech through a mixable playback session, so it is audible alongside VoiceOver
+    /// rather than silenced by it, and does not interrupt other audio.
+    ///
+    /// The category is re-asserted on every utterance rather than set once: the Street
+    /// Crossing Audio screen installs its own session, so coming back to a map cannot be
+    /// assumed to leave this one in place. Activation happens once — that is the expensive
+    /// half, and it survives a category change.
+    private func prepareSession() {
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        guard !hasActivatedSession else { return }
+        hasActivatedSession = true
+        try? session.setActive(true)
     }
 }
 
@@ -213,7 +286,7 @@ final class StreetFeedbackController {
 
     static let shared = StreetFeedbackController()
 
-    private let speech = TactileSpeechChannel()
+    private let speech = TactileSpeechChannel.shared
     private let haptics = CoreHapticsEngine()
     private let policy: StreetFeedbackPolicy
     private var activeIdentifier: String?
@@ -357,13 +430,9 @@ final class StreetFeedbackController {
         speech.speakNow(text)
     }
 
-    /// Screen-entry summary. Holds exploration speech until it has had time to finish, so
-    /// the intro and the first street name don't talk over each other.
+    /// Screen-entry summary — see `TactileSpeechChannel.speakArrival` for the timing, which is
+    /// what keeps this from landing on top of VoiceOver reading the screen it just focused.
     func announceScreenEntry(_ text: String) {
-        speech.suppressExploration(for: 2.5)
-        UIAccessibility.post(notification: .screenChanged, argument: text)
-        if !UIAccessibility.isVoiceOverRunning {
-            speech.speakNow(text)
-        }
+        speech.speakArrival(text)
     }
 }

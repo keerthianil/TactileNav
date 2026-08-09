@@ -39,17 +39,23 @@ struct SpatialAudioSimulationView: View {
     @State private var shownVehicles: [SimulatedVehicle] = []
     @State private var lastDiagramTick = CACurrentMediaTime()
 
+    /// One screen, no scrolling.
+    ///
+    /// The exercise is listening, and the controls have to be reachable without hunting: a
+    /// screen you have to scroll puts Start below the fold exactly when a listener wants it,
+    /// and asks a VoiceOver user to swipe past the whole diagram to reach it. So everything
+    /// below the diagram is fixed height and the diagram takes whatever is left — it is square,
+    /// so it simply gets smaller on a smaller phone rather than pushing anything off.
     var body: some View {
-        ScrollView {
-            VStack(spacing: 14) {
-                CrossingOrientationDiagram(vehicles: shownVehicles)
-                whereYouAre
-                statusView
-                controls
-            }
-            .padding(.horizontal)
-            .padding(.bottom, 16)
+        VStack(spacing: 10) {
+            CrossingOrientationDiagram(vehicles: shownVehicles)
+                .frame(maxHeight: .infinity)
+            whereYouAre
+            statusView
+            controls
         }
+        .padding(.horizontal)
+        .padding(.bottom, 12)
         .navigationTitle("Street Crossing Audio")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { audio.activate() }
@@ -63,126 +69,103 @@ struct SpatialAudioSimulationView: View {
     /// Without this the exercise is unfair rather than hard: a listener hears traffic sweeping
     /// left to right and has no way to know whether that is the street they are about to step
     /// into or the one running along beside them.
+    /// Orientation in two lines rather than a labelled table.
+    ///
+    /// The four-row version said the same things at four times the height, and the height is
+    /// what pushed the controls off the screen. Nothing is lost for VoiceOver: it reads the
+    /// whole thing as one sentence either way, and always did.
     private var whereYouAre: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("You are here", systemImage: "figure.stand")
-                .font(.headline)
-
-            orientationRow("Standing on", DemoIntersection.listenerCornerDescription)
-            orientationRow("Facing", DemoIntersection.listenerFacingDescription)
-            orientationRow("Crossing", "\(DemoIntersection.alongStreet) — in front of you")
-            orientationRow("Beside you", "\(DemoIntersection.acrossStreet) — runs the way you walk")
-
-            Text("Cross when the street beside you surges, not when it goes quiet.")
-                .font(.footnote)
+        VStack(alignment: .leading, spacing: 3) {
+            Text("On \(DemoIntersection.listenerCornerDescription), facing "
+                 + "\(DemoIntersection.listenerFacingDescription).")
+                .font(.subheadline)
+            Text("Crossing \(DemoIntersection.alongStreet). "
+                 + "\(DemoIntersection.acrossStreet) beside you.")
+                .font(.subheadline)
+            Text("Cross with the surge beside you, not the quiet.")
+                .font(.caption)
                 .foregroundColor(.secondary)
-                .padding(.top, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
+        .padding(10)
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-        // One sentence rather than eight fragments — this is a single piece of orientation,
+        // One sentence rather than several fragments — this is a single piece of orientation,
         // and swiping through it line by line is slower than hearing it said.
         .accessibilityElement(children: .combine)
         .accessibilityLabel(DemoIntersection.orientationSentence)
     }
 
-    private func orientationRow(_ title: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(title)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .frame(width: 92, alignment: .leading)
-            Text(value)
-                .font(.subheadline)
-            Spacer(minLength: 0)
-        }
-    }
-
     // MARK: - Status and the on-demand answer
 
     private var statusView: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: running ? "waveform" : "pause.circle")
-                Text(running ? "Listening" : "Stopped").font(.headline)
-                Spacer()
-                if running {
-                    Text(String(format: "%+.0f cents", nearestCents))
-                        .font(.caption.monospacedDigit())
-                        .foregroundColor(.secondary)
-                        // Hidden from VoiceOver on purpose. It is a sighted readout of a
-                        // number that changes several times a second, and the exercise is to
-                        // judge the traffic by ear — a voice reading out pitch shifts is both
-                        // a distraction and a partial answer.
-                        .accessibilityHidden(true)
-                }
-            }
-
+        HStack(spacing: 8) {
+            Image(systemName: running ? "waveform" : "pause.circle")
             if phaseRevealed {
-                Label(isWalkPhase
-                      ? "\(DemoIntersection.acrossStreet) green — cross now"
-                      : "\(DemoIntersection.alongStreet) green — wait",
-                      systemImage: isWalkPhase ? "figure.walk" : "hand.raised.fill")
+                Text(isWalkPhase
+                     ? "\(DemoIntersection.acrossStreet) green — cross"
+                     : "\(DemoIntersection.alongStreet) green — wait")
                     .font(.subheadline)
                     .foregroundColor(isWalkPhase ? .green : .red)
             } else {
-                Text("Which street has the green?")
+                Text(running ? "Which street has the green?" : "Stopped")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
             }
-
-            Button(phaseRevealed ? "Hide answer" : "Reveal phase") { phaseRevealed.toggle() }
+            Spacer(minLength: 4)
+            if running {
+                Text(String(format: "%+.0f", nearestCents))
+                    .font(.caption.monospacedDigit())
+                    .foregroundColor(.secondary)
+                    // Hidden from VoiceOver on purpose. It is a sighted readout of a number
+                    // that changes several times a second, and the exercise is to judge the
+                    // traffic by ear — a voice reading out pitch shifts is both a distraction
+                    // and a partial answer.
+                    .accessibilityHidden(true)
+            }
+            Button(phaseRevealed ? "Hide" : "Reveal") { phaseRevealed.toggle() }
                 .font(.subheadline)
+                .accessibilityLabel(phaseRevealed ? "Hide answer" : "Reveal phase")
                 .accessibilityHint(phaseRevealed
                     ? "Stops showing which street has the green"
                     : "Shows which street has the green, so you can check your judgement")
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
+        .padding(10)
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - Controls
 
     private var controls: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                Picker("Traffic", selection: $fleet) {
-                    ForEach(IntersectionCrossingModel.Fleet.allCases) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .accessibilityLabel("Traffic type")
-                .onChange(of: fleet) { _, newValue in model.fleet = newValue }
-
-                Text(fleet.detail)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            // The captions that used to sit under each picker are now hints. They explain the
+            // choice rather than name it, which is what a hint is for — and they were four
+            // lines of the height that pushed Start off the bottom of the screen.
+            Picker("Traffic", selection: $fleet) {
+                ForEach(IntersectionCrossingModel.Fleet.allCases) { Text($0.label).tag($0) }
             }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("Traffic type")
+            .accessibilityHint(fleet.detail)
+            .onChange(of: fleet) { _, newValue in model.fleet = newValue }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Picker("Speed", selection: $pace) {
-                    ForEach(IntersectionCrossingModel.Pace.allCases) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .accessibilityLabel("Traffic speed")
-                .onChange(of: pace) { _, newValue in model.pace = newValue }
-
-                Text(pace.detail)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+            Picker("Speed", selection: $pace) {
+                ForEach(IntersectionCrossingModel.Pace.allCases) { Text($0.label).tag($0) }
             }
+            .pickerStyle(.segmented)
+            .accessibilityLabel("Traffic speed")
+            .accessibilityHint(pace.detail)
+            .onChange(of: pace) { _, newValue in model.pace = newValue }
 
-            Label("Headphones needed — the direction traffic comes from is the whole cue.",
-                  systemImage: "headphones")
+            Label("Headphones needed.", systemImage: "headphones")
                 .font(.caption)
                 .foregroundColor(.secondary)
+                .accessibilityHint("The direction traffic comes from is the whole cue.")
 
             Button(action: toggle) {
                 Label(running ? "Stop" : "Start listening",
                       systemImage: running ? "stop.fill" : "play.fill")
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, 11)
                     .background(running ? Color.red : Color.blue, in: RoundedRectangle(cornerRadius: 12))
                     .foregroundColor(.white)
             }

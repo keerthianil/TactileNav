@@ -105,9 +105,16 @@ CLIP_MARGIN_M = 25.0
 def overpass_query() -> str:
     bbox = f"{SOUTH},{WEST},{NORTH},{EAST}"
     classes = "|".join(ROAD_CLASSES)
+    # Footways are asked for by `highway` rather than by `footway`, because the `footway`
+    # subtag is optional and frequently absent. Asking only for `footway=sidewalk` missed 295
+    # plain `highway=footway` ways in this bbox — real, mapped pavement that simply had not
+    # been sub-classified — which is why a run of junctions in the close-up had no kerb at all.
+    # `pedestrian` picks up pedestrianised streets, which are walkable surface by definition.
     return f"""[out:json][timeout:300];
 (
   way["highway"~"^({classes})$"]({bbox});
+  way["highway"="footway"]({bbox});
+  way["highway"="pedestrian"]({bbox});
   way["footway"="sidewalk"]({bbox});
   way["footway"="crossing"]({bbox});
 );
@@ -280,11 +287,9 @@ def build_elements(raw: dict, width: float, height: float) -> list[dict]:
         tags = way.get("tags", {})
         footway = tags.get("footway")
 
-        if footway == "sidewalk":
-            element_type = TYPE_SIDEWALK
-            name = (tags.get("name") or "").strip() or "Sidewalk"
-            custom = {}
-        elif footway == "crossing":
+        highway = tags.get("highway")
+
+        if footway == "crossing" or (highway == "footway" and footway == "crossing"):
             element_type = TYPE_CROSSWALK
             name = crossing_name(tags)
             custom = {}
@@ -292,7 +297,19 @@ def build_elements(raw: dict, width: float, height: float) -> list[dict]:
                 custom["crossing_markings"] = tags["crossing:markings"]
             if tags.get("crossing"):
                 custom["crossing_control"] = tags["crossing"]
-        elif tags.get("highway") in ROAD_CLASSES:
+        elif highway in ("footway", "pedestrian") or footway == "sidewalk":
+            # Everything walkable that is not a marked crossing.
+            #
+            # Keyed on `highway` rather than on the `footway` subtag, because the subtag is
+            # optional: most of downtown Portland's pavement is a plain `highway=footway` with
+            # nothing further said about it, and keying on `footway=sidewalk` alone dropped all
+            # of it. `traffic_island` comes in here too — a refuge is somewhere you stand.
+            element_type = TYPE_SIDEWALK
+            name = (tags.get("name") or "").strip() or "Sidewalk"
+            custom = {}
+            if footway:
+                custom["footway"] = footway
+        elif highway in ROAD_CLASSES:
             element_type = TYPE_ROAD
             name = road_name(tags)
             if name is None:

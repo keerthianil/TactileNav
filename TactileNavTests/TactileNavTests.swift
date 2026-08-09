@@ -581,6 +581,70 @@ struct CongressSquareMapTests {
         #expect(channel.hasSpeechPending, "speech was still being held after a touch")
     }
 
+    /// One voice, never two.
+    ///
+    /// VoiceOver reads a newly focused element's label in its own voice, and no app can stop
+    /// it once it starts. The app's own voice therefore has to stay out of the way, which it
+    /// does in two ways, both checked here: the label is short enough to be over quickly, and
+    /// the spoken introduction is dropped outright the moment a finger arrives rather than
+    /// playing underneath the street names.
+    ///
+    /// While the label was the whole description — name, street count, every gesture — a
+    /// finger landing two seconds into it set the app talking underneath VoiceOver, and the
+    /// user heard both at once.
+    @Test func onlyOneVoiceEverSpeaksAtATime() throws {
+        let laidOut = try laidOutContainer(size: CGSize(width: 402, height: 720))
+        let scrollView = laidOut.container.scrollView
+        scrollView.mapName = PortlandMapScreen.mapName
+        scrollView.applyAccessibility()
+
+        if UIAccessibility.isVoiceOverRunning {
+            let label = try #require(scrollView.accessibilityLabel)
+            #expect(label.count < 40, "the label VoiceOver reads has grown into a paragraph")
+            #expect(!label.contains("Drag"), "instructions belong in the spoken introduction")
+        }
+        // The description itself is still said — just by the channel that can be interrupted.
+        #expect(PortlandMapScreen.introduction(streetCount: 715).contains("Drag one finger"))
+
+        let channel = TactileSpeechChannel()
+        channel.speakArrival(PortlandMapScreen.introduction(streetCount: 715))
+        #expect(channel.hasArrivalPending)
+
+        // What a finger arriving does.
+        channel.endSuppression()
+        #expect(!channel.hasArrivalPending, "the introduction would have played under the map")
+        channel.speak("Congress Street")
+        #expect(channel.hasSpeechPending, "the introduction was still holding the channel")
+    }
+
+    /// Leaving a screen leaves nothing waiting to be said.
+    ///
+    /// This is why the channel synthesises its own speech rather than posting VoiceOver
+    /// announcements: an announcement goes into a queue with no way to empty it, so a name
+    /// scheduled a moment before the user went back was read out over the screen underneath,
+    /// and a name already in the air could not be cut short by the next surface. Both are one
+    /// call here, and both are asserted.
+    @Test func leavingAScreenLeavesNothingWaitingToBeSaid() {
+        let channel = TactileSpeechChannel()
+
+        channel.speak("Congress Street")
+        #expect(channel.hasSpeechPending)
+
+        // A newer surface replaces the pending one rather than queueing behind it.
+        channel.speak("High Street")
+        #expect(channel.hasSpeechPending)
+
+        channel.stopAll()
+        #expect(!channel.hasSpeechPending, "a name was still queued after the screen went away")
+        #expect(!channel.isSpeaking, "a name was still being read after the screen went away")
+
+        // And the entry hold does not survive either — otherwise the next screen opens mute.
+        channel.suppressExploration(for: 30)
+        channel.stopAll()
+        channel.speak("Free Street")
+        #expect(channel.hasSpeechPending)
+    }
+
     // MARK: - Exploration touches
 
     /// Exploration must not depend on a gesture recognizer.
@@ -1035,20 +1099,142 @@ struct IntersectionSceneTests {
 
         for piece in scene.pieces {
             #expect(!piece.name.isEmpty, "\(piece.id) has nothing to say")
-            #expect(piece.points.count >= 2)
             switch piece.surface {
             case .road:
+                #expect(piece.points.count >= 2)
                 // Real width for the lane count, held inside the tactile bounds.
                 #expect(piece.width >= PhysicalDimensions.mmToPoints(IntersectionScene.minimumRoadWidthMM) - 0.01)
                 #expect(piece.width <= PhysicalDimensions.mmToPoints(IntersectionScene.maximumRoadWidthMM) + 0.01)
             case .sidewalk:
+                #expect(piece.points.count >= 2)
                 #expect(abs(piece.width - PhysicalDimensions.mmToPoints(IntersectionScene.sidewalkWidthMM)) < 0.01)
                 #expect(piece.name.contains("sidewalk"))
             case .crossing:
+                #expect(piece.points.count >= 2)
                 #expect(abs(piece.width - PhysicalDimensions.mmToPoints(IntersectionScene.crossingWidthMM)) < 0.01)
                 #expect(piece.name.contains("Crossing"))
+            case .crossingEnd:
+                // A dot, not a line.
+                #expect(piece.points.count == 1)
+                #expect(abs(piece.width - PhysicalDimensions.mmToPoints(IntersectionScene.crossingEndDiameterMM)) < 0.01)
+                #expect(piece.name.hasPrefix("Kerb"))
             }
         }
+    }
+
+    /// The kerb dots — the pink markers at the two ends of every crossing.
+    ///
+    /// They exist because a crossing under a finger is a run of identical ticks with no sense
+    /// of position along it: without a landmark at each end there is no way to tell reaching
+    /// the far kerb from losing the line. So every crossing gets one at each end, they land on
+    /// the ends and nowhere else, and a finger on one finds the dot rather than the crossing
+    /// underneath it.
+    @Test func everyCrossingIsMarkedAtBothKerbs() throws {
+        let map = try loadMap()
+        let scene = IntersectionScene.build(junction: try congressAtHigh(map), map: map, size: size)
+
+        let crossings = scene.pieces.filter { $0.surface == .crossing }
+        let dots = scene.pieces.filter { $0.surface == .crossingEnd }
+        #expect(!crossings.isEmpty)
+        #expect(!dots.isEmpty, "the crossings have no kerb dots")
+
+        // A dot belongs to a crossing — it lies *on* one, at the point where that crossing
+        // leaves the asphalt. Deliberately not "at the first or last vertex of one": that is
+        // wherever the mapper stopped drawing, which on real data is routinely nowhere near a
+        // kerb. Which roadway edge it is on is checked across the whole extract by
+        // `everyKerbDotSitsOnTheEdgeOfARoadway`.
+        let merge = PhysicalDimensions.mmToPoints(2.0)
+        for dot in dots {
+            let at = try #require(dot.points.first)
+            let onACrossing = crossings.contains { distanceToPolyline(at, $0.points) <= merge }
+            #expect(onACrossing, "\(dot.id) is not on any crossing")
+        }
+
+        // Stacked dots would ding twice for one place.
+        for (index, dot) in dots.enumerated() {
+            for other in dots.dropFirst(index + 1) {
+                let separation = hypot(dot.points[0].x - other.points[0].x,
+                                       dot.points[0].y - other.points[0].y)
+                #expect(separation > merge, "\(dot.id) and \(other.id) sit on top of each other")
+            }
+        }
+
+        // A finger on a dot finds the dot, not the crossing or the roadway under it.
+        let dot = try #require(dots.first)
+        #expect(scene.piece(at: dot.points[0])?.surface == .crossingEnd)
+    }
+
+    /// A pavement running alongside a roadway keeps its full thickness.
+    ///
+    /// This is the bug the close-up shipped with, and it was not rare: the drawn roadway comes
+    /// from OpenStreetMap's lane count and the pavements come from OpenStreetMap's geometry,
+    /// and at the old scale the roadway needed about 7.8 m of clearance while downtown Portland
+    /// puts a quarter of its pavements closer than 6.7 m. The roadway is painted over the
+    /// pavement, so two fifths of every stretch of pavement running along a road came out
+    /// visibly thinner than it should be, or vanished for a while — and a grey line whose
+    /// thickness changes under a finger reads as a different surface.
+    ///
+    /// Measured the way a reader sees it: over a wide spread of real junctions, count the
+    /// pavement that is *parallel* to a road — pavement crossing a road head-on is genuinely
+    /// under the asphalt and is supposed to be covered — and check how much of it the roadway
+    /// reaches. At the old scale this was 41.5%.
+    @Test func pavementRunningAlongsideARoadKeepsItsThickness() throws {
+        let map = try loadMap()
+        let phone = CGSize(width: 393, height: 700)
+        let sidewalkHalf = PhysicalDimensions.mmToPoints(IntersectionScene.sidewalkWidthMM) / 2
+
+        var alongside = 0
+        var eaten = 0
+
+        for junction in map.intersections.prefix(200) {
+            let scene = IntersectionScene.build(junction: junction, map: map, size: phone)
+            let roads = scene.pieces.filter { $0.surface == .road }
+            let pavements = scene.pieces.filter { $0.surface == .sidewalk }
+            guard !roads.isEmpty, !pavements.isEmpty else { continue }
+
+            for pavement in pavements {
+                for (a, b) in zip(pavement.points, pavement.points.dropFirst()) {
+                    let middle = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+                    for road in roads {
+                        let distance = distanceToPolyline(middle, road.points)
+                        // Only pavement near *this* road, and only where the two run together.
+                        guard distance < scene.scale * 25 else { continue }
+                        let limit = IntersectionScene.roadWidthLimit(
+                            centreline: road.points, sidewalks: [[a, b]],
+                            sidewalkWidth: sidewalkHalf * 2, gap: 0)
+                        guard limit < .greatestFiniteMagnitude else { continue }
+                        alongside += 1
+                        if distance < road.width / 2 + sidewalkHalf { eaten += 1 }
+                    }
+                }
+            }
+        }
+
+        #expect(alongside > 500, "not enough pavement to judge by")
+        let covered = Double(eaten) / Double(alongside)
+        #expect(covered < 0.05,
+                "\(Int(covered * 100))% of the pavement alongside a road is painted over")
+    }
+
+    /// The kerb rule itself: a pavement running *along* a road caps it, one crossing it does not.
+    ///
+    /// A sidewalk that crosses a roadway head-on passes straight through the middle of it, so
+    /// counting it would collapse every roadway in every scene to the minimum width.
+    @Test func onlyAPavementRunningAlongsideCapsTheRoadway() {
+        let road = [CGPoint(x: 0, y: 100), CGPoint(x: 400, y: 100)]
+        let alongside = [CGPoint(x: 0, y: 130), CGPoint(x: 400, y: 130)]
+        let across = [CGPoint(x: 200, y: 0), CGPoint(x: 200, y: 200)]
+        let sidewalkWidth: CGFloat = 10
+        let gap: CGFloat = 4
+
+        let capped = IntersectionScene.roadWidthLimit(
+            centreline: road, sidewalks: [alongside], sidewalkWidth: sidewalkWidth, gap: gap)
+        // 30 pt of clearance, less the pavement's own half-width and the kerb gap, doubled.
+        #expect(abs(capped - (30 - 5 - 4) * 2) < 0.01)
+
+        let ignored = IntersectionScene.roadWidthLimit(
+            centreline: road, sidewalks: [across], sidewalkWidth: sidewalkWidth, gap: gap)
+        #expect(ignored == .greatestFiniteMagnitude, "a crossing pavement narrowed the road")
     }
 
     /// The close-up has to respond to a finger with VoiceOver *off* as well as on.
@@ -1076,6 +1262,27 @@ struct IntersectionSceneTests {
         // Lifting off has to stop everything, or the buzz runs on after the finger is gone.
         view.stopFeedback()
         #expect(view.currentSurface == nil)
+    }
+
+    /// A finger on a kerb dot resolves to the dot through the real touch path.
+    ///
+    /// Silenced for the test so it does not spin up an audio engine to ding at nobody — the
+    /// same switch the traffic screen uses.
+    @Test func aFingerOnAKerbDotFindsTheKerb() throws {
+        let map = try loadMap()
+        let junction = try congressAtHigh(map)
+
+        let view = IntersectionTouchView(frame: CGRect(origin: .zero, size: size))
+        view.isAudible = false
+        view.source = (junction, map)
+        view.layoutIfNeeded()
+
+        let scene = try #require(view.scene)
+        let dot = try #require(scene.pieces.first { $0.surface == .crossingEnd })
+        view.explore(at: dot.points[0])
+        #expect(view.currentSurface == .crossingEnd)
+
+        view.stopFeedback()
     }
 
     /// Crossing paint never lands anywhere but the roadway.
@@ -1157,6 +1364,66 @@ struct IntersectionSceneTests {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
         context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
         return (data, width, height)
+    }
+
+    /// Every kerb dot in the whole extract sits on a real kerb.
+    ///
+    /// A kerb is the edge of the roadway, so a dot marking one has to be *on* that edge: as far
+    /// from some road's centreline as that road is wide, and not buried inside another road
+    /// that overlaps it. Dots used to be dropped at the first and last vertex of the crossing
+    /// way instead, which on real data is wherever the mapper stopped drawing — so they turned
+    /// up out in the verge and floating on blank ground with no road near them.
+    ///
+    /// This sweeps every junction in the extract rather than a chosen one, because the bug was
+    /// invisible at the junction that happened to be looked at.
+    @Test func everyKerbDotSitsOnTheEdgeOfARoadway() throws {
+        let map = try loadMap()
+        var dots = 0
+        var stranded: [String] = []
+
+        for junction in map.intersections {
+            let scene = IntersectionScene.build(junction: junction, map: map, size: size)
+            let roads = scene.pieces.filter { $0.surface == .road && $0.points.count >= 2 }
+
+            for dot in scene.pieces where dot.surface == .crossingEnd {
+                dots += 1
+                let point = dot.points[0]
+                let distances = roads.map { (distanceToPolyline(point, $0.points), $0.width / 2) }
+                // On the edge of one road...
+                let onAnEdge = distances.contains { abs($0.0 - $0.1) <= 2.5 }
+                // ...and not swallowed by another that overlaps it, where there is no kerb.
+                let buried = distances.contains { $0.0 < $0.1 - 2.5 }
+                if !onAnEdge || buried {
+                    stranded.append("\(junction.id) \(dot.id)")
+                }
+            }
+        }
+
+        #expect(dots > 0, "no junction in the extract produced a kerb dot")
+        let report = "\(stranded.count) of \(dots) kerb dots are not on a kerb: "
+            + stranded.prefix(5).joined(separator: ", ")
+        #expect(stranded.isEmpty, Comment(rawValue: report))
+    }
+
+    /// A crossing with no roadway under it contributes no dots at all.
+    @Test func aCrossingThatTouchesNoRoadwayGetsNoKerbDots() throws {
+        let map = try loadMap()
+        let junction = try congressAtHigh(map)
+        let scene = IntersectionScene.build(junction: junction, map: map, size: size)
+
+        let roadless = IntersectionScene.build(
+            junction: junction,
+            map: map,
+            size: size)
+        // Same scene with the roadways taken out: nothing is left for a kerb to be the edge of.
+        let withoutRoads = IntersectionScene(
+            junction: roadless.junction,
+            pieces: roadless.pieces.filter { $0.surface != .road && $0.surface != .crossingEnd },
+            size: roadless.size, center: roadless.center, scale: roadless.scale)
+
+        #expect(scene.pieces.contains { $0.surface == .crossingEnd },
+                "this junction should have kerbs to mark")
+        #expect(!withoutRoads.pieces.contains { $0.surface == .crossingEnd })
     }
 
     @Test func theEntryAnnouncementNamesTheJunctionAndItsArms() throws {

@@ -28,8 +28,19 @@ struct PortlandMapScreen: View {
     @State private var openJunction: OpenJunction?
 
     /// Identifiable wrapper so `navigationDestination(item:)` can drive the push.
+    ///
+    /// It carries the junction and the map outright rather than an id to look them up by.
+    /// A lookup can miss, and a destination builder that produces nothing is how SwiftUI is
+    /// told to empty the navigation stack — which lands the user on the home screen. Carrying
+    /// the values makes the destination total: whatever is in the binding, there is a screen
+    /// for it. Both are value types over copy-on-write storage, so this costs nothing.
     private struct OpenJunction: Identifiable, Hashable {
         let id: String
+        let junction: Intersection
+        let map: StreetMap
+
+        static func == (a: OpenJunction, b: OpenJunction) -> Bool { a.id == b.id }
+        func hash(into hasher: inout Hasher) { hasher.combine(id) }
     }
 
     var body: some View {
@@ -41,11 +52,11 @@ struct PortlandMapScreen: View {
             // the branch, SwiftUI finds no destination for the binding it is still holding, and
             // resolves that by emptying the stack — which is why opening a junction a second
             // time threw the user out to the home screen.
+            //
+            // The builder is unconditional for the same reason: see `OpenJunction`.
             .navigationDestination(item: $openJunction) { selection in
-                if case .ready(let map) = phase,
-                   let junction = map.intersections.first(where: { $0.id == selection.id }) {
-                    IntersectionDetailScreen(junction: junction, map: map)
-                }
+                IntersectionDetailScreen(junction: selection.junction, map: selection.map,
+                                         onLeave: { openJunction = nil })
             }
             .navigationTitle("Congress Square")
             .navigationBarTitleDisplayMode(.inline)
@@ -67,7 +78,13 @@ struct PortlandMapScreen: View {
                 hasAppeared = true
                 load()
             }
-            .onDisappear { StreetFeedbackController.shared.silence() }
+            .onDisappear {
+                // Not while a junction is open. Pushing the close-up takes this screen off
+                // screen too, and the two now share one speech channel — so silencing here
+                // unconditionally cut the junction's own introduction off before it started.
+                guard openJunction == nil else { return }
+                StreetFeedbackController.shared.silence()
+            }
     }
 
     @ViewBuilder
@@ -79,10 +96,19 @@ struct PortlandMapScreen: View {
 
         case .ready(let map):
             PortlandMapView(map: map,
-                            description: description(streetCount: map.features.count),
+                            name: Self.mapName,
+                            introduction: Self.introduction(streetCount: map.features.count),
                             commands: commands,
                             onBackGesture: { dismiss() },
-                            onIntersectionDoubleTap: { openJunction = OpenJunction(id: $0.id) })
+                            onIntersectionDoubleTap: { junction in
+                                // Ignored while one is already open. A double tap that lands
+                                // during the pop animation used to set the binding while
+                                // SwiftUI was still clearing it, and the write that arrived
+                                // second emptied the stack out to the home screen.
+                                guard openJunction == nil else { return }
+                                openJunction = OpenJunction(id: junction.id,
+                                                            junction: junction, map: map)
+                            })
                 .ignoresSafeArea(edges: .bottom)
 
         case .failed:
@@ -109,21 +135,21 @@ struct PortlandMapScreen: View {
                     return
                 }
                 phase = .ready(result)
-                // With VoiceOver on, the map announces itself once it is on screen and
-                // focused — see `announceArrival`. With it off there is nothing to focus, so
-                // the same sentence is spoken outright.
-                if !UIAccessibility.isVoiceOverRunning {
-                    StreetFeedbackController.shared.announceScreenEntry(
-                        description(streetCount: result.features.count))
-                }
+                // The map introduces itself once it is on screen and laid out, in one place
+                // for both VoiceOver states — see `PortlandMapView.Coordinator.announceArrival`.
             }
         }
     }
 
-    /// The map's name first, because that is the thing a user needs to hear on arrival and
-    /// the thing that was going missing.
-    private func description(streetCount: Int) -> String {
-        "Congress Square, downtown Portland. A tactile street map of \(streetCount) streets. "
+    /// What VoiceOver reads when focus lands on the map. A name, not a description: anything
+    /// longer is still being read when a finger starts exploring, and the two talk over each
+    /// other. See `PortlandStreetScrollView.mapName`.
+    static let mapName = "Congress Square street map"
+
+    /// The rest of it, said in the app's own voice once VoiceOver has finished with the name,
+    /// and dropped the moment a finger arrives.
+    static func introduction(streetCount: Int) -> String {
+        "Congress Square, downtown Portland. \(streetCount) streets. "
         + "Drag one finger to explore, two fingers to pan. "
         + "Double tap an intersection to open it."
     }
