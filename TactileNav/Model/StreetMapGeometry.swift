@@ -749,6 +749,61 @@ nonisolated func pointAlongPolyline(_ points: [CGPoint], distance: CGFloat) -> C
     return points.last
 }
 
+/// Pushes both ends of a polyline `distance` further out, along the direction of its own end
+/// segments.
+///
+/// Used to give a crossing room to reach a pavement it stops short of. The added point keeps the
+/// bearing the way already had, so a straight crossing stays straight and a bent one carries on
+/// in the direction it was last going.
+nonisolated func extendEnds(of points: [CGPoint], by distance: CGFloat) -> [CGPoint] {
+    guard points.count >= 2, distance > 0 else { return points }
+    var result = points
+    if let head = pointBeyond(points[1], points[0], distance) {
+        result.insert(head, at: 0)
+    }
+    if let tail = pointBeyond(points[points.count - 2], points[points.count - 1], distance) {
+        result.append(tail)
+    }
+    return result
+}
+
+/// `to`, moved a further `distance` along the direction from `from` to `to`.
+nonisolated private func pointBeyond(_ from: CGPoint, _ to: CGPoint,
+                                    _ distance: CGFloat) -> CGPoint? {
+    let length = hypot(to.x - from.x, to.y - from.y)
+    guard length > 0.0001 else { return nil }
+    return CGPoint(x: to.x + (to.x - from.x) / length * distance,
+                   y: to.y + (to.y - from.y) / length * distance)
+}
+
+/// The stretch of a polyline between two arc-length positions along it.
+///
+/// The cut ends land exactly on `start` and `end`; every original vertex strictly between them
+/// is kept, so a bend inside the stretch survives being trimmed.
+nonisolated func subpath(of points: [CGPoint], from start: CGFloat, to end: CGFloat) -> [CGPoint] {
+    guard points.count >= 2, end > start else { return [] }
+
+    var cut: [CGPoint] = []
+    if let first = pointAlongPolyline(points, distance: start) { cut.append(first) }
+    var travelled: CGFloat = 0
+    for (a, b) in zip(points, points.dropFirst()) {
+        travelled += hypot(b.x - a.x, b.y - a.y)
+        if travelled > start, travelled < end { cut.append(b) }
+    }
+    if let last = pointAlongPolyline(points, distance: end) { cut.append(last) }
+
+    // A vertex sitting on top of a cut end would leave a zero-length segment behind, which
+    // gives no direction to orient a marking by.
+    var cleaned: [CGPoint] = []
+    for point in cut {
+        if let previous = cleaned.last, hypot(previous.x - point.x, previous.y - point.y) < 0.01 {
+            continue
+        }
+        cleaned.append(point)
+    }
+    return cleaned
+}
+
 nonisolated func polylineLength(_ points: [CGPoint]) -> CGFloat {
     zip(points, points.dropFirst()).reduce(CGFloat.zero) { $0 + hypot($1.1.x - $1.0.x, $1.1.y - $1.0.y) }
 }

@@ -100,9 +100,16 @@ nonisolated struct IntersectionScene {
     static let crossingBarLengthMM: CGFloat = 1.2
     static let crossingBarPitchMM: CGFloat = 2.6
 
-    /// The kerb dot at each end of a crossing, and its white ring. The reference app's sizes.
+    /// The dot at each end of a crossing, and its white ring. The reference app's sizes.
     static let crossingEndDiameterMM: CGFloat = 5.0
     static let crossingEndBorderMM: CGFloat = 0.4
+
+    /// How far a crossing may be stretched to reach the pavement it is meant to land on.
+    ///
+    /// Generous enough to close the gap left by a way that stops at the kerb, and short enough
+    /// that a crossing with no pavement near it is left alone rather than dragged across the
+    /// block to the nearest unrelated footway.
+    static let pavementReachMeters: CGFloat = 9.0
 
     /// The white line left between a roadway and the pavement beside it.
     ///
@@ -240,10 +247,99 @@ nonisolated struct IntersectionScene {
                 hitRadius: max(roadWidth / 2, minimumHitRadius)))
         }
 
-        pieces.append(contentsOf: crossingEnds(of: pieces, mm: mm))
+        // A crossing runs from pavement to pavement — see `crossingSpanningThePavements`.
+        pieces = pieces.map { piece in
+            guard piece.surface == .crossing else { return piece }
+            return crossingSpanningThePavements(piece, sidewalks: sidewalkLines,
+                                                sidewalkWidth: sidewalkWidth,
+                                                reach: pavementReachMeters * viewScale)
+        }
+
+        pieces.append(contentsOf: crossingEnds(of: pieces, sidewalks: sidewalkLines,
+                                               sidewalkWidth: sidewalkWidth, mm: mm))
 
         return IntersectionScene(junction: junction, pieces: pieces,
                                  size: size, center: center, scale: viewScale)
+    }
+
+    // MARK: Crossings
+
+    /// Cuts a crossing down to the stretch that actually links one pavement to the other.
+    ///
+    /// **A crossing is the thing that joins two pavements, so that is where it has to start and
+    /// stop.** OpenStreetMap does not promise this: a crossing way is drawn to whatever the
+    /// mapper found convenient, so some stop at the kerb and leave a gap of blank ground before
+    /// the pavement, and others run on well past it down the block. Under a finger both are
+    /// wrong in the same way — the line you are following gives out, and there is nothing to
+    /// tell you whether you have arrived or lost it.
+    ///
+    /// So the way is extended a little at both ends, then trimmed back to the first and last
+    /// place it meets a pavement. Short ones grow to reach; long ones lose their overhang. The
+    /// extension is bounded by `pavementReachMeters`, and a crossing with no pavement within
+    /// that falls back to the kerbs of the roadway it is on, which is the best that can be said
+    /// about it.
+    ///
+    /// Trimming the piece itself, rather than only what is drawn, is deliberate: the markings,
+    /// the touch target and the kerb dots then all agree, and a finger can run off the pavement,
+    /// along the crossing and onto the far pavement without the line ever going quiet.
+    private static func crossingSpanningThePavements(
+        _ crossing: IntersectionPiece,
+        sidewalks: [[CGPoint]],
+        sidewalkWidth: CGFloat,
+        reach: CGFloat
+    ) -> IntersectionPiece {
+        guard crossing.points.count >= 2 else { return crossing }
+        let extended = extendEnds(of: crossing.points, by: reach)
+        let total = polylineLength(extended)
+        guard total > 0 else { return crossing }
+
+        let onPavement = sidewalkWidth / 2 + 1
+        func touchesPavement(_ point: CGPoint) -> Bool {
+            sidewalks.contains { distanceToPolyline(point, $0) <= onPavement }
+        }
+
+        // `extendEnds` prepends and appends one point at exactly `reach`, so the way's own ends
+        // sit at these two positions along the extended line.
+        let ownStart = reach
+        let ownEnd = total - reach
+
+        /// The pavement contact *nearest this end of the way*, searched outward and inward
+        /// together.
+        ///
+        /// Deliberately not the first contact anywhere along the extended line. Searching from
+        /// the far tip of the extension finds whichever pavement it ran into out there —
+        /// typically the one running along the far side of the block — and trimming to that left
+        /// the crossing overhanging the pavement it was supposed to stop at by several metres.
+        /// The stripes then ran on across the grey, punching a dashed hole through a pavement
+        /// that is meant to read as one continuous line under a finger.
+        func nearestPavement(to anchor: CGFloat) -> CGFloat? {
+            var offset: CGFloat = 0
+            while offset <= reach {
+                for candidate in offset == 0 ? [anchor] : [anchor - offset, anchor + offset] {
+                    guard candidate >= 0, candidate <= total,
+                          let point = pointAlongPolyline(extended, distance: candidate),
+                          touchesPavement(point) else { continue }
+                    return candidate
+                }
+                offset += 2
+            }
+            return nil
+        }
+
+        // No pavement within reach of an end means there is nothing to connect it to, so that
+        // end is left exactly as OpenStreetMap drew it. Inventing a stopping point for it would
+        // be guessing at geometry that is simply absent — and it gets no dot either, because
+        // there is nowhere to stand.
+        let from = nearestPavement(to: ownStart) ?? ownStart
+        let to = nearestPavement(to: ownEnd) ?? ownEnd
+        guard to > from else { return crossing }
+
+        let trimmed = subpath(of: extended, from: from, to: to)
+        guard trimmed.count >= 2 else { return crossing }
+
+        return IntersectionPiece(
+            id: crossing.id, surface: crossing.surface, name: crossing.name,
+            points: trimmed, width: crossing.width, hitRadius: crossing.hitRadius)
     }
 
     // MARK: Kerbs
@@ -306,83 +402,50 @@ nonisolated struct IntersectionScene {
         return best?.direction
     }
 
-    /// A kerb dot everywhere a crossing meets the edge of a roadway.
+    /// A dot on the pavement at each end of a crossing.
     ///
-    /// **Placed where the crossing crosses the kerb, not at the ends of the way.** A kerb is a
-    /// physical edge — the line where the pavement stops and the traffic starts — so that is
-    /// the only place a dot marking one can honestly go. Taking the first and last vertex of
-    /// the OpenStreetMap way instead put them wherever the mapper happened to stop drawing:
-    /// out in the verge, part-way down a pavement, or floating in the middle of a block with no
-    /// road anywhere near them. On real data those two things are simply not the same point.
+    /// **On the pavement, not on the kerb.** The dot marks the place a pedestrian actually
+    /// stands: waiting to step off at this end, and arrived at the other. That place is the
+    /// footway behind the kerb, not the edge of the traffic — a dot on the kerb line marks the
+    /// boundary you are trying not to be standing on.
     ///
-    /// Every transition counts, not just the outer two. A crossing over a divided road meets
-    /// four kerbs — two at the pavements and two at the refuge in the middle — and each one is
-    /// somewhere you stop and wait, so each one is worth a dot.
+    /// Because the piece has already been cut to the stretch between the two pavements — see
+    /// `crossingSpanningThePavements` — the two ends of the crossing *are* the two waiting
+    /// places, so this is simply its endpoints. That also makes the three things agree: the
+    /// crossing you feel, the markings you see and the dots all start and stop together, and a
+    /// finger can run off one pavement, along the crossing and onto the other without the line
+    /// ever going quiet.
     ///
-    /// A crossing that never touches a roadway gets no dots at all. Those are the ones that
-    /// were showing up stranded on the white.
+    /// An end that did not reach a pavement gets no dot. Those are the crossings that fell back
+    /// to kerb-to-kerb for want of any mapped footway, and a dot out on blank ground marks
+    /// nothing a traveller can use.
     private static func crossingEnds(of pieces: [IntersectionPiece],
+                                     sidewalks: [[CGPoint]],
+                                     sidewalkWidth: CGFloat,
                                      mm: (CGFloat) -> CGFloat) -> [IntersectionPiece] {
-        let roads = pieces.filter { $0.surface == .road && $0.points.count >= 2 }
-        guard !roads.isEmpty else { return [] }
-
         let diameter = mm(crossingEndDiameterMM)
         let hitRadius = max(mm(crossingEndDiameterMM + crossingEndBorderMM) / 2, minimumHitRadius)
         let mergeWithin = mm(2.0)
-        /// Sampling step along a crossing, in view points. The exact edge is then found by
-        /// halving between the two samples that straddle it, so this only sets how narrow a
-        /// sliver of roadway can be missed, not how accurate a kerb is.
-        let step: CGFloat = 2
-
-        /// Inside the roadway means inside *any* road's stroke — they overlap at a junction,
-        /// and their union is the asphalt.
-        func onRoadway(_ point: CGPoint) -> Bool {
-            roads.contains { distanceToPolyline(point, $0.points) <= $0.width / 2 }
-        }
-
-        /// The point between `outside` and `inside` where the roadway edge actually falls.
-        func kerb(between outside: CGPoint, and inside: CGPoint) -> CGPoint {
-            var low = outside, high = inside
-            for _ in 0..<12 {
-                let middle = CGPoint(x: (low.x + high.x) / 2, y: (low.y + high.y) / 2)
-                if onRoadway(middle) { high = middle } else { low = middle }
-            }
-            return high
-        }
+        // The crossing was trimmed to the near edge of the pavement band, so a dot is on the
+        // pavement if it is within that band's half width, with a little slack for the trim.
+        let onPavement = sidewalkWidth / 2 + 1.5
 
         var dots: [IntersectionPiece] = []
         for piece in pieces where piece.surface == .crossing {
-            let total = polylineLength(piece.points)
-            guard total > 0 else { continue }
-
-            var kerbs: [CGPoint] = []
-            var previous: (point: CGPoint, inside: Bool)?
-            var along: CGFloat = 0
-            while along <= total {
-                guard let point = pointAlongPolyline(piece.points, distance: min(along, total))
-                else { break }
-                let inside = onRoadway(point)
-                if let previous, previous.inside != inside {
-                    kerbs.append(inside
-                        ? kerb(between: previous.point, and: point)
-                        : kerb(between: point, and: previous.point))
-                }
-                previous = (point, inside)
-                if along >= total { break }
-                along = min(along + step, total)
-            }
-
-            for (index, point) in kerbs.enumerated() {
-                // Where two crossings meet at a corner they often share a kerb, and two dots on
-                // the same spot would ding twice for one place.
+            guard let first = piece.points.first, let last = piece.points.last else { continue }
+            for (index, end) in [first, last].enumerated() {
+                guard sidewalks.contains(where: { distanceToPolyline(end, $0) <= onPavement })
+                else { continue }
+                // Where two crossings meet at a corner they share a waiting place, and two dots
+                // on the same spot would ding twice for one place.
                 guard !dots.contains(where: {
-                    hypot($0.points[0].x - point.x, $0.points[0].y - point.y) <= mergeWithin
+                    hypot($0.points[0].x - end.x, $0.points[0].y - end.y) <= mergeWithin
                 }) else { continue }
                 dots.append(IntersectionPiece(
                     id: "\(piece.id)_kerb_\(index)",
                     surface: .crossingEnd,
                     name: "Kerb, \(piece.name.lowercased())",
-                    points: [point],
+                    points: [end],
                     width: diameter,
                     hitRadius: hitRadius))
             }

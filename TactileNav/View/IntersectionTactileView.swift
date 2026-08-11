@@ -116,25 +116,22 @@ final class IntersectionCanvasView: UIView {
     /// zebra is. The other way round gives a solid patch that reads as a notch in the road.
     private func drawCrossings(_ pieces: [IntersectionPiece], over roads: [IntersectionPiece],
                                in ctx: CGContext) {
-        guard !pieces.isEmpty, !roads.isEmpty else { return }
+        guard !pieces.isEmpty else { return }
 
         let bar = PhysicalDimensions.mmToPoints(IntersectionScene.crossingBarLengthMM)
         let pitch = PhysicalDimensions.mmToPoints(IntersectionScene.crossingBarPitchMM)
         let barWidth = PhysicalDimensions.mmToPoints(IntersectionScene.crossingWidthMM) * 1.9
 
-        // Clip to the roadways. Overlapping outlines union under the default winding rule, so
-        // the junction box itself is inside the region and a crossing may be painted across it.
-        let roadway = CGMutablePath()
-        for road in roads where road.points.count >= 2 {
-            let centreline = CGMutablePath()
-            centreline.addLines(between: road.points)
-            roadway.addPath(centreline.copy(strokingWithWidth: road.width, lineCap: .round,
-                                            lineJoin: .round, miterLimit: 10))
-        }
-
+        // Painted the whole way across, pavement to pavement, and no longer clipped to the
+        // roadway.
+        //
+        // Clipping was right when a crossing was whatever length the mapper drew: the paint had
+        // to be held to the asphalt or it smeared over the pavements and merged into blobs at
+        // the corners. The piece is now cut to exactly the stretch between the two pavements —
+        // see `crossingSpanningThePavements` — so there is nothing left to clip away, and
+        // clipping actively hurt: the last stripe stopped at the kerb, leaving the crossing
+        // visibly detached from the pavement it is the whole point of reaching.
         ctx.saveGState()
-        ctx.addPath(roadway)
-        ctx.clip()
         ctx.setFillColor(IntersectionPalette.crossingStripe)
 
         for piece in pieces where piece.points.count >= 2 {

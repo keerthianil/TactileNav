@@ -1122,14 +1122,14 @@ struct IntersectionSceneTests {
         }
     }
 
-    /// The kerb dots — the pink markers at the two ends of every crossing.
+    /// The waiting dots — the pink markers where a crossing meets each pavement.
     ///
     /// They exist because a crossing under a finger is a run of identical ticks with no sense
-    /// of position along it: without a landmark at each end there is no way to tell reaching
-    /// the far kerb from losing the line. So every crossing gets one at each end, they land on
-    /// the ends and nowhere else, and a finger on one finds the dot rather than the crossing
-    /// underneath it.
-    @Test func everyCrossingIsMarkedAtBothKerbs() throws {
+    /// of position along it: without a landmark at each end there is no way to tell arriving at
+    /// the far pavement from losing the line. So every crossing gets one where it meets the
+    /// footway, they land on the crossing and nowhere else, and a finger on one finds the dot
+    /// rather than the crossing or the roadway underneath it.
+    @Test func everyCrossingIsMarkedWhereItMeetsThePavement() throws {
         let map = try loadMap()
         let scene = IntersectionScene.build(junction: try congressAtHigh(map), map: map, size: size)
 
@@ -1138,11 +1138,9 @@ struct IntersectionSceneTests {
         #expect(!crossings.isEmpty)
         #expect(!dots.isEmpty, "the crossings have no kerb dots")
 
-        // A dot belongs to a crossing — it lies *on* one, at the point where that crossing
-        // leaves the asphalt. Deliberately not "at the first or last vertex of one": that is
-        // wherever the mapper stopped drawing, which on real data is routinely nowhere near a
-        // kerb. Which roadway edge it is on is checked across the whole extract by
-        // `everyKerbDotSitsOnTheEdgeOfARoadway`.
+        // A dot belongs to a crossing — it lies on one, at the end that reaches a pavement.
+        // That it is standing on the pavement rather than out on the kerb line is checked
+        // across the whole extract by `everyKerbDotStandsOnAPavement`.
         let merge = PhysicalDimensions.mmToPoints(2.0)
         for dot in dots {
             let at = try #require(dot.points.first)
@@ -1285,38 +1283,62 @@ struct IntersectionSceneTests {
         view.stopFeedback()
     }
 
-    /// Crossing paint never lands anywhere but the roadway.
+    /// Crossing paint is no longer held back to the asphalt, and still stays on its crossing.
     ///
-    /// This is the bug the close-up shipped with: crossings were painted along their whole
-    /// length, so a grey band ran over the sidewalks they connect, neighbouring crossings
-    /// merged into a blob at the corners, and bars ended up stranded on the background. The
-    /// markings are now clipped to the roadways, and this checks it across a spread of real
-    /// junctions rather than the one that happened to be looked at.
+    /// **This invariant replaced an earlier one, deliberately.** The markings used to be clipped
+    /// to the roadway, because a crossing was whatever length the mapper drew and the paint had
+    /// to be held to the asphalt or it smeared over the pavements and merged into blobs at the
+    /// corners. Holding the *piece* to the stretch between the two pavements is a better answer
+    /// to the same problem: there is nothing left to clip, and the zebra reaches the pavement
+    /// instead of stopping at the kerb short of it.
     ///
-    /// Crossing paint is white and so is the background, so the two are told apart by
-    /// rendering the scene twice — with the crossings and without — and diffing. Whatever
-    /// changed is the paint, and every one of those pixels has to have been roadway before.
-    @Test func crossingPaintOnlyLandsOnTheRoadway() throws {
+    /// So there are two things to check, and they pull against each other. Paint gets past the
+    /// kerb — under the clip that was impossible by construction, so any at all proves the
+    /// change — and it still does not wander off its own crossing, which is what the clip used
+    /// to buy and what the trim has to buy now.
+    ///
+    /// Crossing paint is white and so is the background, so the two are told apart by rendering
+    /// the scene twice, with the crossings and without, and diffing.
+    @Test func crossingPaintReachesPastTheKerbWithoutSmearing() throws {
         let map = try loadMap()
-        var checked = 0
+        // Half a bar across, plus slack for antialiasing.
+        let reach = PhysicalDimensions.mmToPoints(IntersectionScene.crossingWidthMM) * 1.9 / 2 + 3
 
-        for junction in map.intersections.prefix(120) {
-            let scene = IntersectionScene.build(junction: junction, map: map, size: size)
-            guard scene.pieces.contains(where: { $0.surface == .crossing }) else { continue }
-            checked += 1
-
+        func changedPoints(_ scene: IntersectionScene) throws -> [CGPoint] {
             let bare = IntersectionScene(
                 junction: scene.junction,
                 pieces: scene.pieces.filter { $0.surface != .crossing },
                 size: scene.size, center: scene.center, scale: scene.scale)
+            return try Self.pointsChanged(by: try Self.render(scene),
+                                          versus: try Self.render(bare), size: scene.size)
+        }
 
-            let painted = try Self.render(scene)
-            let unpainted = try Self.render(bare)
-            let stray = try Self.paintOffTheRoadway(painted: painted, unpainted: unpainted)
-            // A handful of pixels is the antialiased corner where a clipped bar meets the kerb.
-            // The bug this guards against painted a band along the *whole* length of every
-            // crossing, which measured in the thousands — three orders of magnitude away.
-            #expect(stray < 25, "\(junction.id): \(stray) px of crossing paint off the roadway")
+        // Congress at High: a real four-way with mapped pavements at its crossing ends, so paint
+        // getting past the kerb is something this junction can actually show.
+        let scene = IntersectionScene.build(junction: try congressAtHigh(map), map: map, size: size)
+        let roads = scene.pieces.filter { $0.surface == .road }
+        let changed = try changedPoints(scene)
+        #expect(!changed.isEmpty, "the crossings painted nothing at all")
+
+        let offAsphalt = changed.filter { point in
+            !roads.contains { distanceToPolyline(point, $0.points) <= $0.width / 2 }
+        }
+        #expect(!offAsphalt.isEmpty,
+                "no crossing paint gets past the kerb — the roadway clip is back")
+
+        // And across a spread of junctions, none of it wanders off its crossing.
+        var checked = 0
+        for junction in map.intersections.prefix(120) {
+            let scene = IntersectionScene.build(junction: junction, map: map, size: size)
+            let crossings = scene.pieces.filter { $0.surface == .crossing }
+            guard !crossings.isEmpty else { continue }
+            checked += 1
+
+            let smeared = try changedPoints(scene).filter { point in
+                !crossings.contains { distanceToPolyline(point, $0.points) <= reach }
+            }
+            #expect(smeared.count < 25, Comment(rawValue:
+                "\(junction.id): \(smeared.count) px of crossing paint is not on any crossing"))
 
             if checked >= 8 { break }
         }
@@ -1331,27 +1353,25 @@ struct IntersectionSceneTests {
         }
     }
 
-    /// Pixels the crossings changed that were not roadway underneath.
-    private static func paintOffTheRoadway(painted: UIImage, unpainted: UIImage) throws -> Int {
+    /// The points, in view coordinates, where the crossings changed the drawing.
+    private static func pointsChanged(by painted: UIImage, versus unpainted: UIImage,
+                                      size: CGSize) throws -> [CGPoint] {
         let a = try pixels(of: painted)
         let b = try pixels(of: unpainted)
-        guard a.data.count == b.data.count else { return 0 }
+        guard a.data.count == b.data.count, a.width > 0 else { return [] }
+        let scale = CGFloat(a.width) / size.width
 
-        // Any blue tint counts as roadway. A hard "is this the road colour" test rejects the
-        // antialiased rim of a road, where the pixel is a blue-white blend — and a bar that
-        // legitimately reaches the kerb always touches that rim.
-        func hasRoadwayUnder(_ c: (Int, Int, Int)) -> Bool { c.2 > c.0 + 10 }
-
-        var stray = 0
+        var points: [CGPoint] = []
         for index in stride(from: 0, to: a.data.count, by: 4) {
             let before = (Int(b.data[index]), Int(b.data[index + 1]), Int(b.data[index + 2]))
             let after = (Int(a.data[index]), Int(a.data[index + 1]), Int(a.data[index + 2]))
-            // Unchanged means the crossings did not paint here.
             guard abs(before.0 - after.0) > 12 || abs(before.1 - after.1) > 12
                     || abs(before.2 - after.2) > 12 else { continue }
-            if !hasRoadwayUnder(before) { stray += 1 }
+            let pixel = index / 4
+            points.append(CGPoint(x: CGFloat(pixel % a.width) / scale,
+                                  y: CGFloat(pixel / a.width) / scale))
         }
-        return stray
+        return points
     }
 
     private static func pixels(of image: UIImage) throws -> (data: [UInt8], width: Int, height: Int) {
@@ -1366,64 +1386,83 @@ struct IntersectionSceneTests {
         return (data, width, height)
     }
 
-    /// Every kerb dot in the whole extract sits on a real kerb.
+    /// Every dot in the whole extract stands on a pavement, and every crossing reaches one.
     ///
-    /// A kerb is the edge of the roadway, so a dot marking one has to be *on* that edge: as far
-    /// from some road's centreline as that road is wide, and not buried inside another road
-    /// that overlaps it. Dots used to be dropped at the first and last vertex of the crossing
-    /// way instead, which on real data is wherever the mapper stopped drawing — so they turned
-    /// up out in the verge and floating on blank ground with no road near them.
+    /// The dot marks where a pedestrian waits, so it belongs on the footway behind the kerb. It
+    /// has been in two wrong places before now: at the first and last vertex of the crossing
+    /// way, which on real data is wherever the mapper stopped drawing, and then on the kerb line
+    /// itself, which is the edge of the traffic rather than somewhere to stand.
     ///
-    /// This sweeps every junction in the extract rather than a chosen one, because the bug was
-    /// invisible at the junction that happened to be looked at.
-    @Test func everyKerbDotSitsOnTheEdgeOfARoadway() throws {
+    /// This sweeps every junction in the extract rather than a chosen one, because both bugs
+    /// were invisible at the junction that happened to be looked at.
+    @Test func everyKerbDotStandsOnAPavement() throws {
         let map = try loadMap()
+        let halfPavement = PhysicalDimensions.mmToPoints(IntersectionScene.sidewalkWidthMM) / 2
         var dots = 0
         var stranded: [String] = []
+        var disconnected: [String] = []
 
         for junction in map.intersections {
             let scene = IntersectionScene.build(junction: junction, map: map, size: size)
-            let roads = scene.pieces.filter { $0.surface == .road && $0.points.count >= 2 }
+            let pavements = scene.pieces.filter { $0.surface == .sidewalk }.map(\.points)
+            guard !pavements.isEmpty else { continue }
 
             for dot in scene.pieces where dot.surface == .crossingEnd {
                 dots += 1
                 let point = dot.points[0]
-                let distances = roads.map { (distanceToPolyline(point, $0.points), $0.width / 2) }
-                // On the edge of one road...
-                let onAnEdge = distances.contains { abs($0.0 - $0.1) <= 2.5 }
-                // ...and not swallowed by another that overlaps it, where there is no kerb.
-                let buried = distances.contains { $0.0 < $0.1 - 2.5 }
-                if !onAnEdge || buried {
-                    stranded.append("\(junction.id) \(dot.id)")
+                let standing = pavements.contains { distanceToPolyline(point, $0) <= halfPavement + 2 }
+                if !standing { stranded.append("\(junction.id) \(dot.id)") }
+            }
+
+            // And the crossing itself has to arrive at the pavement, or the dot marks the end of
+            // a line that stops in the road.
+            for crossing in scene.pieces where crossing.surface == .crossing {
+                guard let first = crossing.points.first, let last = crossing.points.last else { continue }
+                let reaches = [first, last].filter { end in
+                    pavements.contains { distanceToPolyline(end, $0) <= halfPavement + 2 }
                 }
+                if reaches.isEmpty { disconnected.append("\(junction.id) \(crossing.id)") }
             }
         }
 
-        #expect(dots > 0, "no junction in the extract produced a kerb dot")
-        let report = "\(stranded.count) of \(dots) kerb dots are not on a kerb: "
-            + stranded.prefix(5).joined(separator: ", ")
-        #expect(stranded.isEmpty, Comment(rawValue: report))
+        #expect(dots > 0, "no junction in the extract produced a dot")
+        #expect(stranded.isEmpty, Comment(rawValue:
+            "\(stranded.count) of \(dots) dots are not on a pavement: "
+            + stranded.prefix(5).joined(separator: ", ")))
+        // A handful of crossings genuinely have no footway within reach at either end; the point
+        // is that it stays a handful rather than the normal case.
+        #expect(disconnected.count * 20 < dots, Comment(rawValue:
+            "\(disconnected.count) crossings reach no pavement at all: "
+            + disconnected.prefix(5).joined(separator: ", ")))
     }
 
-    /// A crossing with no roadway under it contributes no dots at all.
-    @Test func aCrossingThatTouchesNoRoadwayGetsNoKerbDots() throws {
+    /// A crossing end that reaches no pavement is left unmarked.
+    ///
+    /// A dot means "stand here". Out on blank ground, with no mapped footway to stand on, it
+    /// would mean nothing — and those were the dots that turned up stranded on the white.
+    @Test func aCrossingEndThatReachesNoPavementGetsNoDot() throws {
         let map = try loadMap()
         let junction = try congressAtHigh(map)
         let scene = IntersectionScene.build(junction: junction, map: map, size: size)
-
-        let roadless = IntersectionScene.build(
-            junction: junction,
-            map: map,
-            size: size)
-        // Same scene with the roadways taken out: nothing is left for a kerb to be the edge of.
-        let withoutRoads = IntersectionScene(
-            junction: roadless.junction,
-            pieces: roadless.pieces.filter { $0.surface != .road && $0.surface != .crossingEnd },
-            size: roadless.size, center: roadless.center, scale: roadless.scale)
+        let halfPavement = PhysicalDimensions.mmToPoints(IntersectionScene.sidewalkWidthMM) / 2
+        let pavements = scene.pieces.filter { $0.surface == .sidewalk }.map(\.points)
 
         #expect(scene.pieces.contains { $0.surface == .crossingEnd },
-                "this junction should have kerbs to mark")
-        #expect(!withoutRoads.pieces.contains { $0.surface == .crossingEnd })
+                "this junction should have pavements to mark")
+
+        let ends = scene.pieces.filter { $0.surface == .crossing }
+            .flatMap { [$0.points.first, $0.points.last].compactMap { $0 } }
+        let endsOnAPavement = ends.filter { end in
+            pavements.contains { distanceToPolyline(end, $0) <= halfPavement + 1.5 }
+        }
+        let dots = scene.pieces.filter { $0.surface == .crossingEnd }
+
+        // Never more dots than there are pavement ends to put them on. Fewer is expected and
+        // correct: crossings meeting at a corner share one waiting place, and those collapse to
+        // a single dot rather than dinging twice for the same spot.
+        #expect(dots.count <= endsOnAPavement.count,
+                "there are more dots than there are pavement ends to stand on")
+        #expect(!endsOnAPavement.isEmpty)
     }
 
     @Test func theEntryAnnouncementNamesTheJunctionAndItsArms() throws {
