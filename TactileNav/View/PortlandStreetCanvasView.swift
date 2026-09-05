@@ -76,11 +76,11 @@ final class PortlandStreetCanvasView: UIView {
         // Junction markers sit on top of the road network, the way a painted marking does, and
         // under the labels so a street name is never hidden behind a box.
         drawIntersections(map.intersections(in: window), in: ctx)
-        // The route's own landmarks outrank even a junction — same as the close-up, and for
-        // the same reason: they are the things on this map more specific than "you have
-        // arrived." Turns under the ends, so a turn that happens to be the destination reads
-        // as the destination.
-        drawRouteTurns(route, in: ctx)
+        // The route's own start and end outrank even a junction — they are the two things on
+        // this map more specific than "you have arrived." Turns are deliberately *not* drawn
+        // here: at overview scale a turn is a detail of one junction, and marking every one of
+        // them buries the two dots that say where the walk begins and ends. They appear in the
+        // close-up, where there is room for them to mean something.
         drawRouteEndpoints(route, in: ctx)
         drawLabels(map.labels(in: window), in: ctx)
 
@@ -148,15 +148,6 @@ final class PortlandStreetCanvasView: UIView {
         let points = [route.departurePosition, route.destinationPosition].compactMap { $0 }
         drawRouteDots(points, fill: StreetMapSizing.routeEndpointColor,
                       stroke: StreetMapSizing.routeEndpointBorderColor, in: ctx)
-    }
-
-    /// Every place the route turns, in orange — the same landmark, and the same colour, as the
-    /// close-up draws, so a turn found on the overview is recognisably the same thing when the
-    /// junction it belongs to is opened.
-    private func drawRouteTurns(_ route: RouteScene?, in ctx: CGContext) {
-        guard let route else { return }
-        drawRouteDots(route.turns, fill: StreetMapSizing.routeTurnColor,
-                      stroke: StreetMapSizing.routeTurnBorderColor, in: ctx)
     }
 
     private func drawRouteDots(_ points: [CGPoint], fill: CGColor, stroke: CGColor, in ctx: CGContext) {

@@ -71,11 +71,13 @@ nonisolated enum IntersectionSurface {
     /// legible on their own is worth more than the route's pulse being felt through them too.
     /// A turn ranks with the route's own ends rather than with the line between them: all three
     /// are single points that say something a stretch cannot, and a turn sitting on top of a
-    /// crossing still has to be findable as a turn.
+    /// crossing still has to be findable as a turn. Where a turn and an end genuinely coincide
+    /// the end wins, because arriving outranks continuing — the same order `oneDotPerPlace`
+    /// resolves them in when they are close enough that only one dot should be drawn at all.
     var priority: Int {
         switch self {
-        case .routeTurn: return 7
-        case .routeEndpoint: return 6
+        case .routeEndpoint: return 7
+        case .routeTurn: return 6
         case .center: return 5
         case .crossingEnd: return 4
         case .crossing: return 3
@@ -170,11 +172,23 @@ nonisolated struct IntersectionScene {
     /// is a corner. Marking those here would put a dot every few centimetres along the whole
     /// route. 40 degrees is well past kerb noise and well under the ~90 a real street corner
     /// turns through.
-    static let routeTurnMinimumAngleDegrees: CGFloat = 60
+    static let routeTurnMinimumAngleDegrees: CGFloat = 20
 
     /// Two vertices this close together are the same corner rounded off in the data, not two
     /// turns, and should not get a dot each.
     static let routeTurnMergeMeters: CGFloat = 25
+
+    /// How close a crossing has to run to the route before it counts as *the* crossing the
+    /// route uses, rather than just another one at the same junction.
+    static let routeCrossingReachMeters: CGFloat = 4.0
+
+    /// How far a detected turn may be moved to land on a real corner.
+    ///
+    /// A turn is found where the route's own line bends, which is out on the roadway — but the
+    /// place a pedestrian actually stands to make that turn is the corner, at the kerb. Wide
+    /// enough to reach the kerb from the middle of a junction, narrow enough that a turn with
+    /// no corner near it stays where it really is rather than being dragged to an unrelated one.
+    static let routeTurnSnapMeters: CGFloat = 15
 
     /// How far either side of a point the direction of travel is measured over — see
     /// `RouteScene.turns`. Long enough to ignore how ragged real stitched pavement is between
@@ -235,7 +249,10 @@ nonisolated struct IntersectionScene {
     /// Static because it is needed before the scene exists — the screen announces itself while
     /// the view is still being laid out.
     static func entryAnnouncement(for junction: Intersection) -> String {
-        "\(junction.announcement). " + armsAnnouncement(for: junction)
+        // Named as a screen, not just as a place. Arriving here is a change of context — the
+        // scale, the gestures and what is under the finger are all different from the city map
+        // — and someone who cannot see the transition has nothing else to tell them it happened.
+        "Intersection view. \(junction.announcement). " + armsAnnouncement(for: junction)
     }
 
     /// The same thing with the junction's name left off.
@@ -352,6 +369,10 @@ nonisolated struct IntersectionScene {
             pieces.append(contentsOf: routePieces(for: junction, route: route, place: place, mm: mm,
                                                   searchRadius: radiusInContentPoints,
                                                   endpointTolerance: endpointTolerance))
+            pieces = markRouteCorners(pieces, mm: mm,
+                                      nearRoute: routeCrossingReachMeters * viewScale,
+                                      snapWithin: routeTurnSnapMeters * viewScale)
+            pieces = oneDotPerPlace(pieces, mm: mm)
         }
 
         return IntersectionScene(junction: junction, pieces: pieces,
@@ -359,6 +380,170 @@ nonisolated struct IntersectionScene {
     }
 
     // MARK: Route
+
+    /// What a route kerb dot says: that this is the crossing to take, and which way it goes.
+    ///
+    /// The direction is measured to the crossing's *far* end, because that is where the walk is
+    /// headed — a traveller standing on this kerb needs to know which way to step off it, and
+    /// "cross here" on its own leaves them on a corner with two crossings leading away.
+    private static func crossingInstruction(from kerb: CGPoint, along crossing: IntersectionPiece) -> String {
+        let ends = [crossing.points.first, crossing.points.last].compactMap { $0 }
+        guard let far = ends.max(by: {
+            hypot($0.x - kerb.x, $0.y - kerb.y) < hypot($1.x - kerb.x, $1.y - kerb.y)
+        }) else { return "Cross here." }
+        let direction = compassDirection(from: kerb, to: far)
+        return direction.isEmpty ? "Cross here." : "Cross here. Cross to the \(direction)."
+    }
+
+    /// What the yellow dot says at the start of the walk.
+    ///
+    /// Where you are, where you are going, and — the part that was missing — which way to set
+    /// off. Without the last one the dot tells a traveller everything except the one thing they
+    /// need in order to take a step.
+    private static func departureAnnouncement(for route: RouteScene) -> String {
+        let opening = "Your location. Route to \(route.destinationName)."
+        guard let heading = route.departureInstruction else { return opening }
+        return "\(opening) \(heading)"
+    }
+
+    /// Puts the route's dots where a pedestrian actually stands, and marks the crossing it uses.
+    ///
+    /// Two things happen here, both about the corner rather than the carriageway:
+    ///
+    /// A turn is *detected* out where the route's line bends, which is in the middle of the
+    /// junction — useless as a landmark, since nobody stands there. It is moved onto the nearest
+    /// real corner: the kerb where the crossing meets the pavement, which is exactly where the
+    /// turn is made from.
+    ///
+    /// And the kerb dots of the crossing the route uses change from the ordinary pink to the
+    /// route's own orange. That is what makes "which of these crossings is mine?" a question a
+    /// finger can answer — colour alone would be no use, so they take the turn dot's sound and
+    /// tap as well, which is what actually tells the two apart without sight.
+    private static func markRouteCorners(_ pieces: [IntersectionPiece], mm: (CGFloat) -> CGFloat,
+                                         nearRoute: CGFloat, snapWithin: CGFloat) -> [IntersectionPiece] {
+        let routeLines = pieces.filter { $0.surface == .route }.map(\.points).filter { $0.count >= 2 }
+        guard !routeLines.isEmpty else { return pieces }
+
+        let corners = pieces.filter { $0.surface == .crossingEnd }.compactMap(\.points.first)
+        // Kept as pieces, not just ids: telling someone which way to cross needs the crossing's
+        // far end, which only the geometry knows.
+        let usedCrossings = pieces.filter { $0.surface == .crossing }
+            .filter { crossing in
+                crossing.points.count >= 2 && routeLines.contains {
+                    distanceToPolyline(polylineMidpoint(crossing.points), $0) <= nearRoute
+                }
+            }
+
+        let turnDiameter = mm(routeTurnDiameterMM)
+        let turnHitRadius = max(mm(routeTurnDiameterMM + routeTurnBorderMM) / 2, minimumHitRadius)
+
+        /// Where each turn ends up: on the nearest corner, or where it already was if no corner
+        /// is close enough to be the one it means. A turn dragged onto an unrelated corner would
+        /// be a landmark pointing at the wrong place, which is worse than one that is awkward.
+        func snapped(_ centre: CGPoint) -> CGPoint {
+            guard let corner = corners.min(by: {
+                hypot($0.x - centre.x, $0.y - centre.y) < hypot($1.x - centre.x, $1.y - centre.y)
+            }), hypot(corner.x - centre.x, corner.y - centre.y) <= snapWithin
+            else { return centre }
+            return corner
+        }
+        let turnCorners = pieces.filter { $0.surface == .routeTurn }.compactMap(\.points.first).map(snapped)
+
+        /// The crossing the route runs down that this dot stands at an end of, if any.
+        ///
+        /// Asked of the dot's *position*, not of its id, and that distinction is the whole
+        /// point. Two crossings that meet at the same corner share that corner, and
+        /// `crossingEnds` keeps only one dot there — which of the two crossings owns the
+        /// survivor is an accident of the order they were walked in. Going by id therefore left
+        /// the corner pink whenever the survivor happened to belong to the neighbour, which is
+        /// exactly what put a pink dot on the route's own crossing at Fore and Market. Where
+        /// the dot stands is the same question answered by geometry, and geometry does not care
+        /// which duplicate won.
+        let sharedCorner = mm(2.0)   // the merge distance `crossingEnds` deduped them at
+        func routeCrossing(at dot: CGPoint) -> IntersectionPiece? {
+            usedCrossings.first { crossing in
+                [crossing.points.first, crossing.points.last].compactMap { $0 }
+                    .contains { hypot($0.x - dot.x, $0.y - dot.y) <= sharedCorner }
+            }
+        }
+
+        return pieces.map { piece in
+            guard let centre = piece.points.first else { return piece }
+            switch piece.surface {
+            case .routeTurn:
+                return IntersectionPiece(id: piece.id, surface: .routeTurn, name: piece.name,
+                                         points: [snapped(centre)], width: piece.width,
+                                         hitRadius: piece.hitRadius)
+            case .crossingEnd:
+                guard let crossing = routeCrossing(at: centre) else { return piece }
+                // Not where a turn has just landed. Both are orange dots on the same corner, and
+                // of the two "turn left here" is the instruction — "cross here" is what you do
+                // once you have turned. Leaving both would put two dots a millimetre apart and
+                // say the less useful one twice.
+                guard !turnCorners.contains(where: { hypot($0.x - centre.x, $0.y - centre.y) <= turnDiameter })
+                else { return piece }
+                return IntersectionPiece(id: piece.id, surface: .routeTurn,
+                                         name: crossingInstruction(from: centre, along: crossing),
+                                         points: piece.points, width: turnDiameter, hitRadius: turnHitRadius)
+            default:
+                return piece
+            }
+        }
+    }
+
+    /// Keeps one dot per place a finger can land on.
+    ///
+    /// A corner the route turns at is very often also a corner a crossing lands on, so the
+    /// orange turn dot and the pink kerb dot end up millimetres apart — two landmarks for one
+    /// place, which under a fingertip is worse than either alone: you find something, then
+    /// find something else half a fingertip away, and neither is the answer on its own.
+    ///
+    /// So where they collide, the more specific one stays. A turn beats a kerb dot, because
+    /// "the route turns here" is a thing to act on where "a crossing reaches the pavement
+    /// here" is a thing to know. The route's own start or end beats a turn, for the same
+    /// reason one rung up: arriving outranks continuing. Kerb dots away from the route are
+    /// untouched — this only ever fires where the route actually puts a dot of its own.
+    private static func oneDotPerPlace(_ pieces: [IntersectionPiece],
+                                       mm: (CGFloat) -> CGFloat) -> [IntersectionPiece] {
+        func centres(_ surface: IntersectionSurface) -> [CGPoint] {
+            pieces.filter { $0.surface == surface }.compactMap(\.points.first)
+        }
+        let endpoints = centres(.routeEndpoint)
+        guard !centres(.routeTurn).isEmpty || !endpoints.isEmpty else { return pieces }
+
+        /// Two dots crowd each other once their edges are closer than a hair's breadth apart,
+        /// so the test is the sum of their radii — a real distance between real drawn things,
+        /// not a number picked to look right.
+        func crowds(_ point: CGPoint, _ others: [CGPoint], _ clearance: CGFloat) -> Bool {
+            others.contains { hypot($0.x - point.x, $0.y - point.y) <= clearance }
+        }
+        let turnRadius = mm(routeTurnDiameterMM) / 2
+        let kerbClearance = turnRadius + mm(crossingEndDiameterMM) / 2
+        let endpointClearance = turnRadius + mm(routeEndpointDiameterMM) / 2
+
+        // Which turns survive, decided before anything is tested against them — snapping a turn
+        // to a corner and marking that corner's crossing both aim at the same few millimetres,
+        // so two orange dots can land on each other as easily as an orange and a pink one.
+        var keptTurns: [CGPoint] = []
+        var keptTurnIDs: Set<String> = []
+        for piece in pieces where piece.surface == .routeTurn {
+            guard let centre = piece.points.first,
+                  !crowds(centre, endpoints, endpointClearance),
+                  !crowds(centre, keptTurns, turnRadius * 2)
+            else { continue }
+            keptTurns.append(centre)
+            keptTurnIDs.insert(piece.id)
+        }
+
+        return pieces.filter { piece in
+            guard let centre = piece.points.first else { return true }
+            switch piece.surface {
+            case .crossingEnd: return !crowds(centre, keptTurns, kerbClearance)
+            case .routeTurn: return keptTurnIDs.contains(piece.id)
+            default: return true
+            }
+        }
+    }
 
     /// How close the route's real departure or destination has to sit to a junction before
     /// this counts as *the* corner where the walk begins or ends, not merely a corner the
@@ -402,7 +587,7 @@ nonisolated struct IntersectionScene {
         if let departure = isThisCorner(route.departurePosition) {
             pieces.append(IntersectionPiece(
                 id: "route_start", surface: .routeEndpoint,
-                name: "Your location. Route to \(route.destinationName).",
+                name: departureAnnouncement(for: route),
                 points: [place(departure)], width: endpointDiameter,
                 hitRadius: endpointHitRadius))
         }
@@ -417,10 +602,11 @@ nonisolated struct IntersectionScene {
         let turnDiameter = mm(routeTurnDiameterMM)
         let turnHitRadius = max(mm(routeTurnDiameterMM + routeTurnBorderMM) / 2, minimumHitRadius)
         for (index, turn) in route.turns.enumerated()
-        where hypot(turn.x - junction.position.x, turn.y - junction.position.y) <= searchRadius {
+        where hypot(turn.position.x - junction.position.x,
+                    turn.position.y - junction.position.y) <= searchRadius {
             pieces.append(IntersectionPiece(
-                id: "route_turn_\(index)", surface: .routeTurn, name: "Turn",
-                points: [place(turn)], width: turnDiameter, hitRadius: turnHitRadius))
+                id: "route_turn_\(index)", surface: .routeTurn, name: turn.instruction,
+                points: [place(turn.position)], width: turnDiameter, hitRadius: turnHitRadius))
         }
         return pieces
     }
@@ -660,11 +846,7 @@ nonisolated struct IntersectionScene {
 
     /// Compass direction of `to` from `from`. Screen y grows south.
     private static func compass(from: CGPoint, to: CGPoint) -> String {
-        let dx = to.x - from.x
-        let dy = to.y - from.y
-        guard hypot(dx, dy) > 0.5 else { return "" }
-        let bearing = atan2(dx, -dy) * 180 / .pi
-        return IntersectionArm.compassName(for: CGFloat(bearing))
+        compassDirection(from: from, to: to)
     }
 
     // MARK: Lookup

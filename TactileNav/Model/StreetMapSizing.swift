@@ -178,11 +178,6 @@ nonisolated enum StreetMapSizing {
     static let routeEndpointColor = CGColor(red: 1, green: 0xD7 / 255, blue: 0, alpha: 1)
     static let routeEndpointBorderColor = CGColor(gray: 1, alpha: 1)
 
-    /// The turn dot, matching the close-up's own orange — a turn is a thing to do, the ends
-    /// are things to arrive at, and the two should never be mistaken for each other.
-    static let routeTurnColor = CGColor(red: 1, green: 0x8C / 255, blue: 0, alpha: 1)
-    static let routeTurnBorderColor = CGColor(gray: 1, alpha: 1)
-
     /// Labels are drawn along road centrelines, so they always sit on the dark road colour.
     /// White gives roughly 8:1 contrast against it; a dark label would be near-illegible.
     static let labelColor = CGColor(gray: 1, alpha: 1)

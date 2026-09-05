@@ -27,48 +27,6 @@ import TactileMapCore
 import TactileMapLogging
 import UIKit
 
-// MARK: - Touch indicator
-
-/// A follow dot under the finger. Purely a sighted-observer aid — it is never an
-/// accessibility element and never affects what is spoken.
-final class PortlandTouchIndicatorView: UIView {
-    override init(frame: CGRect) {
-        super.init(frame: CGRect(x: 0, y: 0, width: 36, height: 36))
-        isUserInteractionEnabled = false
-        isAccessibilityElement = false
-        backgroundColor = .clear
-        isHidden = true
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
-
-    override func draw(_ rect: CGRect) {
-        guard let ctx = UIGraphicsGetCurrentContext() else { return }
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        let outer: CGFloat = 16, inner: CGFloat = 5
-        ctx.setFillColor(UIColor(red: 1, green: 0.88, blue: 0, alpha: 0.28).cgColor)
-        ctx.fillEllipse(in: CGRect(x: center.x - outer, y: center.y - outer,
-                                   width: outer * 2, height: outer * 2))
-        ctx.setStrokeColor(UIColor.white.cgColor)
-        ctx.setLineWidth(2)
-        ctx.strokeEllipse(in: CGRect(x: center.x - outer, y: center.y - outer,
-                                     width: outer * 2, height: outer * 2))
-        ctx.setFillColor(UIColor.white.cgColor)
-        ctx.fillEllipse(in: CGRect(x: center.x - inner, y: center.y - inner,
-                                   width: inner * 2, height: inner * 2))
-    }
-
-    func show(at point: CGPoint) {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        center = point
-        isHidden = false
-        CATransaction.commit()
-    }
-
-    func hide() { isHidden = true }
-}
-
 // MARK: - Scroll view
 
 /// Hosts the canvas and owns the accessibility surface.
@@ -436,7 +394,7 @@ struct PortlandMapView: UIViewRepresentable {
 
         // The indicator rides on the canvas, which does not scroll, so it is positioned in
         // view coordinates and needs no offset correction.
-        let indicator = PortlandTouchIndicatorView()
+        let indicator = TouchIndicatorView()
         container.addSubview(indicator)
         coordinator.touchIndicator = indicator
 
@@ -499,7 +457,7 @@ struct PortlandMapView: UIViewRepresentable {
         let feedback = StreetFeedbackController.shared
 
         weak var container: PortlandStreetMapContainerView?
-        var touchIndicator: PortlandTouchIndicatorView?
+        var touchIndicator: TouchIndicatorView?
 
         private var scrollView: PortlandStreetScrollView? { container?.scrollView }
 

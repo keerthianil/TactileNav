@@ -414,7 +414,7 @@ final class IntersectionFeedbackController {
     /// The turn: the junction ding repeating every 0.4 s, each one paired with a tap, so a turn
     /// is both heard and felt without borrowing any of the four surface textures.
     private func startTurnDing() {
-        soundGenerator().playRepeatingTone(frequency: 440, duration: 0.16, interval: 0.4,
+        soundGenerator().playRepeatingTone(frequency: 1120, duration: 0.16, interval: 0.4,
                                            count: 0, amplitude: 0.88)
         turnTapper?.invalidate()
         let impact = UIImpactFeedbackGenerator(style: .medium)
@@ -441,6 +441,11 @@ final class IntersectionFeedbackController {
 final class IntersectionTouchView: UIView {
 
     let canvas = IntersectionCanvasView()
+
+    /// The follow dot. Same one the street map uses, for the same reason — a sighted observer
+    /// watching a session needs to know where the finger was when something was said.
+    let touchIndicator = TouchIndicatorView()
+
     private let feedback = IntersectionFeedbackController.shared
 
     /// Whether entering a surface makes any sound — its name, or a kerb ding.
@@ -495,6 +500,8 @@ final class IntersectionTouchView: UIView {
         canvas.isAccessibilityElement = false
         canvas.backgroundColor = .clear
         addSubview(canvas)
+        // Above the canvas, so the dot is never buried under a road or a crossing stripe.
+        addSubview(touchIndicator)
         applyAccessibility()
 
         NotificationCenter.default.addObserver(
@@ -537,7 +544,11 @@ final class IntersectionTouchView: UIView {
     private func applyAccessibility() {
         isAccessibilityElement = true
         accessibilityTraits = [.allowsDirectInteraction]
-        accessibilityLabel = source?.junction.announcement ?? scene?.title ?? "Intersection diagram"
+        // "Intersection view" first, then the junction. With VoiceOver on this label is the
+        // only thing that announces the change of screen — `entryAnnouncement` deliberately
+        // does not run in that case, to avoid saying the junction's name twice in two voices.
+        let place = source?.junction.announcement ?? scene?.title
+        accessibilityLabel = place.map { "Intersection view. \($0)" } ?? "Intersection diagram"
         accessibilityHint = "Drag one finger to explore."
         if #available(iOS 17.0, *) { accessibilityDirectTouchOptions = .silentOnTouch }
     }
@@ -574,12 +585,14 @@ final class IntersectionTouchView: UIView {
         // A finger on the glass replaces the introduction rather than playing under it.
         TactileSpeechChannel.shared.endSuppression()
         log(.touchDown, at: touchStartPoint, piece: explore(at: touchStartPoint))
+        touchIndicator.show(at: touchStartPoint)
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touch = trackingTouch, touches.contains(touch) else { return }
         let point = touch.location(in: self)
         log(.touchMove, at: point, piece: explore(at: point))
+        touchIndicator.show(at: point)
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -612,6 +625,7 @@ final class IntersectionTouchView: UIView {
     private func endTracking() {
         trackingTouch = nil
         feedback.leave()
+        touchIndicator.hide()
     }
 
     /// The surface currently under the finger. Exposed so a test can drive `explore(at:)` and
@@ -638,6 +652,9 @@ final class IntersectionTouchView: UIView {
     func stopFeedback() {
         feedback.stopAll()
         endLogging()
+        // The follow dot goes with it. A screen that has stopped responding must not still be
+        // showing a finger resting on it — to an observer that reads as a live touch.
+        touchIndicator.hide()
     }
 
     // MARK: Logging

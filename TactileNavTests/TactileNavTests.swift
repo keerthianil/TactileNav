@@ -1318,6 +1318,47 @@ struct IntersectionSceneTests {
         #expect(view.currentSurface == nil)
     }
 
+    /// The close-up's follow dot: a sighted-observer aid that must never become anything more.
+    ///
+    /// It exists so someone watching a session can see where the finger was when something was
+    /// spoken. That makes two things load-bearing. It has to be invisible to the app's own
+    /// machinery — not an accessibility element, not able to take a touch — or it would start
+    /// intercepting the exploration it is meant to be reporting on. And it has to disappear
+    /// when the screen stops, because a dot left behind reads as a finger that is still there.
+    @Test func theFollowDotTracksTheFingerWithoutEverBecomingPartOfTheMap() throws {
+        let map = try loadMap()
+        let view = IntersectionTouchView(frame: CGRect(origin: .zero, size: size))
+        view.isAudible = false
+        view.source = (try congressAtHigh(map), map)
+        view.layoutIfNeeded()
+
+        let dot = view.touchIndicator
+        #expect(dot.isHidden, "the follow dot is showing before anything has been touched")
+        #expect(!dot.isAccessibilityElement, "the follow dot is exposed to VoiceOver")
+        #expect(!dot.isUserInteractionEnabled, "the follow dot can swallow a touch")
+
+        // Above the canvas, or a road drawn over it would hide the thing it is reporting.
+        let subviews = view.subviews
+        let dotIndex = try #require(subviews.firstIndex(of: dot))
+        let canvasIndex = try #require(subviews.firstIndex(of: view.canvas))
+        #expect(dotIndex > canvasIndex, "the follow dot is drawn underneath the canvas")
+
+        let scene = try #require(view.scene)
+        dot.show(at: scene.center)
+        #expect(!dot.isHidden)
+        #expect(abs(dot.center.x - scene.center.x) < 0.01)
+        #expect(abs(dot.center.y - scene.center.y) < 0.01)
+
+        // Smaller than every landmark it sits beside, so an observer never reads the finger as
+        // a thing on the map.
+        #expect(TouchIndicatorView.diameterMM < IntersectionScene.crossingEndDiameterMM)
+        #expect(TouchIndicatorView.diameterMM < IntersectionScene.routeEndpointDiameterMM)
+        #expect(TouchIndicatorView.diameterMM < IntersectionScene.routeTurnDiameterMM)
+
+        view.stopFeedback()
+        #expect(dot.isHidden, "the follow dot outlived the touch that put it there")
+    }
+
     /// A finger on a kerb dot resolves to the dot through the real touch path.
     ///
     /// Silenced for the test so it does not spin up an audio engine to ding at nobody — the
@@ -1614,6 +1655,92 @@ struct RouteModelTests {
         try PortlandMapLoader.loadStreetMap(context: PortlandMapLoader.LoadContext.current())
     }
 
+    /// A route bent through a known angle, so a turn's *side* can be checked against geometry
+    /// rather than against whatever the detector happens to produce on the real extract.
+    ///
+    /// One point per metre, so the detector's metre-based window and merge distances are also
+    /// point distances and the numbers below can be read directly.
+    private func bentRoute(to corner: CGPoint) -> RouteScene {
+        RouteScene(
+            departureName: "Start", destinationName: "End",
+            legs: [RouteLeg(streetName: "Fore Street",
+                            points: [CGPoint(x: 0, y: 0), CGPoint(x: 1000, y: 0)], hitRadius: 20),
+                   RouteLeg(streetName: "Union Street",
+                            points: [CGPoint(x: 1000, y: 0), corner], hitRadius: 20)],
+            waypointPositions: [CGPoint(x: 0, y: 0), corner],
+            pointsPerMeter: 1)
+    }
+
+    /// **Which way is right.**
+    ///
+    /// Screen y grows *south*, so the sign that means "right" is the opposite of the one a
+    /// y-up convention would give. Getting it backwards is the worst bug this feature can have:
+    /// nothing crashes, no test about counts or positions notices, and a blind traveller is
+    /// confidently told to turn the wrong way at a road. So it is checked against walking
+    /// directions anyone can verify by hand — head east, then turn to face south, and you have
+    /// turned right.
+    @Test func aRightTurnOnTheGroundReadsAsRight() throws {
+        // East, then south. On the ground that is a right turn.
+        let right = try #require(bentRoute(to: CGPoint(x: 1000, y: 1000)).turns.first)
+        #expect(right.side == "right", "walking east then south was reported as a \(right.side) turn")
+        #expect(right.angle > 0, "a right turn must be a positive angle")
+        // Not exact: the direction of travel is sampled at intervals along the walk, so the
+        // closest sample to a corner is a step short of its peak. Close enough that a square
+        // corner is never mistaken for a slight bend, which is what the wording depends on.
+        #expect(abs(right.angle - 90) < 5, "a square corner measured \(right.angle)°")
+
+        // East, then north. The mirror image, and it has to mirror.
+        let left = try #require(bentRoute(to: CGPoint(x: 1000, y: -1000)).turns.first)
+        #expect(left.side == "left", "walking east then north was reported as a \(left.side) turn")
+        #expect(left.angle < 0, "a left turn must be a negative angle")
+    }
+
+    /// The wording has to match how sharp the corner actually is.
+    ///
+    /// Told "turn right" at a 30° bend, someone goes looking for a corner that is not there and
+    /// walks past the one they wanted. The whole point of keeping the angle rather than just
+    /// its sign is that these three read differently under the finger.
+    @Test func aTurnIsDescribedAsSharplyAsItIsActuallyTurned() throws {
+        func instruction(degreesRight: CGFloat) throws -> String {
+            let radians = degreesRight * .pi / 180
+            let corner = CGPoint(x: 1000 + cos(radians) * 1000, y: sin(radians) * 1000)
+            return try #require(bentRoute(to: corner).turns.first).instruction
+        }
+
+        #expect(try instruction(degreesRight: 30) == "Slight right onto Union Street.")
+        #expect(try instruction(degreesRight: 90) == "Turn right onto Union Street.")
+        #expect(try instruction(degreesRight: 140) == "Sharp right onto Union Street.")
+        // Past 160° the route has doubled back, and "sharp right" would understate it badly.
+        #expect(try instruction(degreesRight: 175) == "Turn around onto Union Street.")
+
+        // The street named is the one being turned *onto*, not the one being left.
+        let turn = try #require(bentRoute(to: CGPoint(x: 1000, y: 1000)).turns.first)
+        #expect(turn.streetName == "Union Street",
+                "the turn named \(turn.streetName), which is the street it is leaving")
+    }
+
+    /// Standing at the start there is no incoming direction to be relative to — "turn right"
+    /// means nothing until you are already walking — so the departure is the one instruction
+    /// that has to be a compass bearing. The map is north-up and cannot rotate, which is what
+    /// makes a bearing read off the drawing a bearing on the ground.
+    @Test func theDepartureSaysWhichWayToSetOff() throws {
+        // The first leg runs east from the origin.
+        let heading = try #require(bentRoute(to: CGPoint(x: 1000, y: 1000)).departureInstruction)
+        #expect(heading == "Head east on Fore Street.")
+
+        // And on the real route, where the geometry is ragged rather than synthetic.
+        let map = try loadMap()
+        let route = try #require(GeoJSONRoute.build(
+            resource: "route_1_Hyatt_Place_To_Bangor_Savings_Bank",
+            departureName: "Hyatt Place", destinationName: "Bangor Savings Bank", map: map))
+        let real = try #require(route.departureInstruction, "the real route says nothing about setting off")
+        #expect(real.hasPrefix("Head "), "the departure instruction reads \(real)")
+        let compassPoints = ["north", "north-east", "east", "south-east",
+                             "south", "south-west", "west", "north-west"]
+        #expect(compassPoints.contains { real.contains($0) },
+                "\(real) names no compass direction")
+    }
+
     /// The bundled GeoJSON stand-in for a routing API's response has to land inside the actual
     /// map, not just decode — a projection bug puts every point somewhere real, just the
     /// wrong somewhere, which nothing but a bounds check would catch.
@@ -1639,12 +1766,13 @@ struct RouteModelTests {
 
             let onRoute = IntersectionScene.routeTurnMergeMeters * map.metrics.pointsPerMeter
             for turn in turns {
-                #expect(distanceToPolyline(turn, path) <= onRoute, "a turn was marked off the route")
+                #expect(distanceToPolyline(turn.position, path) <= onRoute, "a turn was marked off the route")
             }
             let merge = IntersectionScene.routeTurnMergeMeters * map.metrics.pointsPerMeter
             for (index, turn) in turns.enumerated() {
                 for other in turns.dropFirst(index + 1) {
-                    #expect(hypot(turn.x - other.x, turn.y - other.y) > merge,
+                    #expect(hypot(turn.position.x - other.position.x,
+                                  turn.position.y - other.position.y) > merge,
                             "two turn dots landed on top of each other")
                 }
             }
@@ -1876,6 +2004,221 @@ struct RouteInIntersectionCloseUpTests {
         for piece in routePieces {
             #expect(piece.points.count >= 2, "\(piece.id) has no drawable route geometry")
         }
+    }
+
+    /// One dot per place. A corner the route turns at is usually also a corner a crossing
+    /// lands on, and two landmarks a few millimetres apart is worse under a fingertip than
+    /// either alone — so the turn dot stays and the kerb dot beneath it goes.
+    @Test func aTurnDotReplacesTheKerbDotItWouldOtherwiseSitOn() throws {
+        let map = try loadMap()
+        let route = try #require(GeoJSONRoute.build(
+            resource: "route_1_Hyatt_Place_To_Bangor_Savings_Bank",
+            departureName: "Hyatt Place", destinationName: "Bangor Savings Bank", map: map))
+
+        for junction in map.intersections {
+            let scene = IntersectionScene.build(junction: junction, map: map, size: size, route: route)
+            let turns = scene.pieces.filter { $0.surface == .routeTurn }.compactMap(\.points.first)
+            guard !turns.isEmpty else { continue }
+
+            let kerbClearance = PhysicalDimensions.mmToPoints(IntersectionScene.routeTurnDiameterMM) / 2
+                + PhysicalDimensions.mmToPoints(IntersectionScene.crossingEndDiameterMM) / 2
+            for kerb in scene.pieces.filter({ $0.surface == .crossingEnd }).compactMap(\.points.first) {
+                for turn in turns {
+                    #expect(hypot(kerb.x - turn.x, kerb.y - turn.y) > kerbClearance,
+                            "a kerb dot and a turn dot are drawn on top of each other at \(junction.streetNames)")
+                }
+            }
+
+            // And the route's own end wins over a turn on the same footing.
+            let endpointClearance = PhysicalDimensions.mmToPoints(IntersectionScene.routeTurnDiameterMM) / 2
+                + PhysicalDimensions.mmToPoints(IntersectionScene.routeEndpointDiameterMM) / 2
+            for end in scene.pieces.filter({ $0.surface == .routeEndpoint }).compactMap(\.points.first) {
+                for turn in turns {
+                    #expect(hypot(end.x - turn.x, end.y - turn.y) > endpointClearance,
+                            "a turn dot and a route end are drawn on top of each other")
+                }
+            }
+        }
+    }
+
+    /// A turn dot marks the corner you turn at, not the point in mid-air where the drawn line
+    /// happens to bend.
+    ///
+    /// Turns are found geometrically, from where the route's own polyline changes direction —
+    /// which is out on the carriageway, in the middle of the junction. Nobody stands there, so
+    /// as a landmark it is worthless: a finger that finds it has found a place it cannot walk
+    /// to. The dot is moved onto the nearest corner, which is exactly where the crossing meets
+    /// the pavement and exactly where the turn is made from.
+    ///
+    /// A turn with no corner within reach is left where it really is rather than dragged onto
+    /// an unrelated one — a wrong landmark is worse than an awkward one, so that case is
+    /// allowed here explicitly instead of being quietly impossible.
+    @Test func everyTurnDotStandsOnACornerRatherThanOutOnTheRoadway() throws {
+        let map = try loadMap()
+        let route = try #require(GeoJSONRoute.build(
+            resource: "route_1_Hyatt_Place_To_Bangor_Savings_Bank",
+            departureName: "Hyatt Place", destinationName: "Bangor Savings Bank", map: map))
+
+        let viewScale = max(min(size.width, size.height) / 2, 1) / IntersectionScene.radiusMeters
+        let snapWithin = IntersectionScene.routeTurnSnapMeters * viewScale
+        var snapped = 0
+
+        for junction in map.intersections {
+            let withRoute = IntersectionScene.build(junction: junction, map: map, size: size, route: route)
+            // Real turns, by id — the crossing markers share the surface, and matching on
+            // wording would silently stop distinguishing them the moment the wording changed.
+            let turns = withRoute.pieces.filter {
+                $0.surface == .routeTurn && $0.id.hasPrefix("route_turn_")
+            }
+            guard !turns.isEmpty else { continue }
+
+            // The corners as they stand before the route touches them — the route removes and
+            // recolours kerb dots, so the route-less scene is the only honest list of them.
+            let corners = IntersectionScene.build(junction: junction, map: map, size: size)
+                .pieces.filter { $0.surface == .crossingEnd }.compactMap(\.points.first)
+            guard !corners.isEmpty else { continue }
+
+            for turn in turns.compactMap(\.points.first) {
+                let nearest = corners.map { hypot($0.x - turn.x, $0.y - turn.y) }.min() ?? .infinity
+                #expect(nearest < 0.01 || nearest > snapWithin,
+                        "a turn dot at \(junction.streetNames) sits \(nearest) pt from the corner it should stand on")
+                if nearest < 0.01 { snapped += 1 }
+            }
+        }
+        #expect(snapped > 0, "no turn dot was ever snapped to a corner — the feature is dead")
+    }
+
+    /// "Which of these crossings is mine?" has to be answerable by touch.
+    ///
+    /// A four-way junction offers four crossings and the route uses one of them. Sighted, that
+    /// is obvious — the cyan line runs down one of them. Without sight, four identical pink
+    /// kerb dots say nothing about which. So the kerb dots of the crossing the route actually
+    /// follows change to the route's own orange, and take the turn dot's ding, tap and
+    /// "Cross here" with them: the colour is the least of it, the sound is what tells them
+    /// apart. Crossings the route does not use stay pink, or the marking would mean nothing.
+    @Test func onlyTheCrossingTheRouteUsesIsMarkedAsTheOneToTake() throws {
+        let map = try loadMap()
+        let route = try #require(GeoJSONRoute.build(
+            resource: "route_1_Hyatt_Place_To_Bangor_Savings_Bank",
+            departureName: "Hyatt Place", destinationName: "Bangor Savings Bank", map: map))
+
+        let viewScale = max(min(size.width, size.height) / 2, 1) / IntersectionScene.radiusMeters
+        let reach = IntersectionScene.routeCrossingReachMeters * viewScale
+        var marked = 0, leftAlone = 0
+
+        for junction in map.intersections {
+            let scene = IntersectionScene.build(junction: junction, map: map, size: size, route: route)
+            let routeLines = scene.pieces.filter { $0.surface == .route }.map(\.points)
+            let crossings = scene.pieces.filter { $0.surface == .crossing }
+
+            func carriesTheRoute(_ crossing: IntersectionPiece) -> Bool {
+                crossing.points.count >= 2 && routeLines.contains {
+                    $0.count >= 2 && distanceToPolyline(polylineMidpoint(crossing.points), $0) <= reach
+                }
+            }
+            let onTheRoute = Set(crossings.filter(carriesTheRoute).map(\.id))
+
+            // Asked of where the dot stands, not of whose id it carries. Two crossings meeting
+            // at one corner share it, only one dot survives there, and which crossing owns the
+            // survivor is arbitrary — an id test passes while the corner is visibly the wrong
+            // colour, which is how the pink dot at Fore and Market went unnoticed.
+            let sharedCorner = PhysicalDimensions.mmToPoints(2.0)
+            func standsOnTheRoutesCrossing(_ dot: CGPoint) -> Bool {
+                crossings.filter { onTheRoute.contains($0.id) }.contains { crossing in
+                    [crossing.points.first, crossing.points.last].compactMap { $0 }
+                        .contains { hypot($0.x - dot.x, $0.y - dot.y) <= sharedCorner }
+                }
+            }
+
+            for dot in scene.pieces where dot.surface == .routeTurn && !dot.id.hasPrefix("route_turn_") {
+                let at = try #require(dot.points.first)
+                #expect(standsOnTheRoutesCrossing(at),
+                        "\(dot.id) is marked as the crossing to take but stands at no end of one")
+                marked += 1
+            }
+            // A crossing the route ignores keeps the ordinary pink dot, so the orange still
+            // means something when it turns up.
+            for dot in scene.pieces where dot.surface == .crossingEnd {
+                let at = try #require(dot.points.first)
+                #expect(!standsOnTheRoutesCrossing(at),
+                        "\(dot.id) stands on the route's own crossing but was left pink")
+                leftAlone += 1
+            }
+        }
+        #expect(marked > 0, "no crossing anywhere on the route was marked as the one to take")
+        #expect(leftAlone > 0, "every kerb dot in the extract turned orange — the marking says nothing")
+    }
+
+    /// Every dot on the route has to say what to *do*, not just what it is.
+    ///
+    /// A dot that announces "Turn" tells a blind traveller there is a decision here and refuses
+    /// to say what the decision is — which is worse than no dot, because they now have to stop
+    /// and work it out. Each kind carries its own instruction: a turn says which way and onto
+    /// what, a crossing marker says which way across, the start says which way to set off, and
+    /// only the end is allowed to be terse, because there is nothing left to do.
+    @Test func everyRouteDotSaysWhatToDoAndNotJustWhatItIs() throws {
+        let map = try loadMap()
+        // Both routes, because they exercise different halves of this. The imported one has the
+        // turns and the crossings; only the authored one has endpoints that land on a junction,
+        // since an API route starts at a street address rather than at a corner.
+        let routes = [try #require(GeoJSONRoute.build(
+                        resource: "route_1_Hyatt_Place_To_Bangor_Savings_Bank",
+                        departureName: "Hyatt Place", destinationName: "Bangor Savings Bank",
+                        map: map)),
+                      try #require(ForeStreetStudyRoute.build(map: map))]
+
+        var sawTurn = false, sawCrossing = false, sawDeparture = false
+        for (route, junction) in routes.flatMap({ route in map.intersections.map { (route, $0) } }) {
+            let scene = IntersectionScene.build(junction: junction, map: map, size: size, route: route)
+            for piece in scene.pieces {
+                switch piece.surface {
+                case .routeTurn where piece.id.hasPrefix("route_turn_"):
+                    sawTurn = true
+                    #expect(piece.name.contains("right") || piece.name.contains("left")
+                            || piece.name.hasPrefix("Turn around"),
+                            "a turn dot says \"\(piece.name)\", which does not say which way")
+                case .routeTurn:
+                    sawCrossing = true
+                    #expect(piece.name.hasPrefix("Cross here"),
+                            "a route crossing marker says \"\(piece.name)\"")
+                    #expect(piece.name.contains("Cross to the"),
+                            "\"\(piece.name)\" does not say which way across")
+                case .routeEndpoint where piece.id == "route_start":
+                    sawDeparture = true
+                    #expect(piece.name.contains("Your location"))
+                    #expect(piece.name.contains("Head "),
+                            "the start says \"\(piece.name)\" and never says which way to go")
+                default:
+                    continue
+                }
+            }
+        }
+        #expect(sawTurn, "the route has no turn dots at all, so nothing was really checked")
+        #expect(sawCrossing, "the route marks no crossing, so nothing was really checked")
+        #expect(sawDeparture, "the route has no departure dot, so nothing was really checked")
+    }
+
+    /// Arriving in the close-up is a change of screen — different scale, different gestures,
+    /// different things under the finger — and someone who cannot see the transition has
+    /// nothing but the announcement to tell them it happened.
+    @Test func openingAJunctionSaysItIsTheIntersectionViewAndWhichJunction() throws {
+        let map = try loadMap()
+        let junction = try junction(["Fore Street", "Union Street"], in: map)
+
+        let spoken = IntersectionScene.entryAnnouncement(for: junction)
+        #expect(spoken.hasPrefix("Intersection view."), "the close-up opens by saying \(spoken)")
+        #expect(spoken.contains("Fore Street"), "\(spoken) never names the junction")
+        #expect(spoken.contains("Union Street"), "\(spoken) names only one of the two streets")
+
+        // With VoiceOver on the label carries it instead, because `entryAnnouncement` is
+        // deliberately not used there — see `announceArrival`. It still has to say both things.
+        let view = IntersectionTouchView(frame: CGRect(origin: .zero, size: size))
+        view.isAudible = false
+        view.source = (junction, map)
+        view.layoutIfNeeded()
+        let label = try #require(view.accessibilityLabel)
+        #expect(label.hasPrefix("Intersection view."), "VoiceOver would read \(label)")
+        #expect(label.contains("Fore Street"), "\(label) never names the junction")
     }
 
     /// Every waypoint's announcement has to say the shape that junction actually is — a real

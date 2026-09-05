@@ -115,7 +115,11 @@ nonisolated enum GeoJSONRoute {
         }
         guard points.count >= 2 else { return nil }
 
-        let leg = RouteLeg(streetName: "Route", points: points, hitRadius: map.metrics.roadHitRadius)
+        // Deliberately unnamed. A `LineString` is one undifferentiated polyline with no idea
+        // which street any part of it is on, and `streetName` is read only by the spoken turn
+        // and departure instructions — so a placeholder here would come out of the speaker as
+        // "turn right onto Route", which is worse than saying nothing about the street at all.
+        let leg = RouteLeg(streetName: "", points: points, hitRadius: map.metrics.roadHitRadius)
         return RouteScene(departureName: departureName, destinationName: destinationName,
                           legs: [leg], waypointPositions: [points[0], points[points.count - 1]],
                           pointsPerMeter: map.metrics.pointsPerMeter)
@@ -132,6 +136,47 @@ nonisolated struct RouteLeg {
     /// real sidewalk (and, where the walk has to cross to reach it, a real marked crossing).
     let points: [CGPoint]
     let hitRadius: CGFloat
+}
+
+/// A place the route changes direction, and what a traveller is told when they find it.
+///
+/// The magnitude matters as much as the side. Told "turn right" at a 25° bend, someone goes
+/// looking for a corner that is not there and walks past the one they wanted; told "slight
+/// right", they know to expect the street to bend under them rather than to meet a kerb. So the
+/// angle is kept, not just its sign, and the wording is chosen from it.
+nonisolated struct RouteTurn {
+    let position: CGPoint
+
+    /// Change in the direction of travel, in degrees, signed. **Positive is a turn to the
+    /// right:** screen y grows south, so a clockwise sweep on the glass is a right turn on the
+    /// ground. Getting this backwards sends the traveller the wrong way, so it is pinned by
+    /// `aRightTurnOnTheGroundReadsAsRight`.
+    let angle: CGFloat
+
+    /// The street the walk continues on after the turn. Empty if the pavement is unnamed.
+    let streetName: String
+
+    /// Where the wording changes. Below `slight` is not reported as a turn at all — that is
+    /// `IntersectionScene.routeTurnMinimumAngleDegrees`, the detection floor.
+    static let slightUpperBound: CGFloat = 45
+    static let plainUpperBound: CGFloat = 115
+    static let sharpUpperBound: CGFloat = 160
+
+    var side: String { angle >= 0 ? "right" : "left" }
+
+    /// What is spoken when a finger finds the dot.
+    var instruction: String {
+        let magnitude = abs(angle)
+        let phrase: String
+        switch magnitude {
+        case ..<Self.slightUpperBound: phrase = "Slight \(side)"
+        case ..<Self.plainUpperBound: phrase = "Turn \(side)"
+        case ..<Self.sharpUpperBound: phrase = "Sharp \(side)"
+        // Past this the route has doubled back, and "sharp left" would understate it badly.
+        default: phrase = "Turn around"
+        }
+        return streetName.isEmpty ? "\(phrase)." : "\(phrase) onto \(streetName)."
+    }
 }
 
 /// A route, built against one loaded map.
@@ -156,6 +201,29 @@ nonisolated struct RouteScene {
     var departurePosition: CGPoint? { waypointPositions.first }
     var destinationPosition: CGPoint? { waypointPositions.last }
 
+    /// Which way to set off, and on what: "Head north-east on Fore Street."
+    ///
+    /// The one instruction on the route that has to be a compass bearing rather than a left or
+    /// a right. Standing at the start there is no incoming direction to be relative to — "turn
+    /// right" means nothing until you are already walking — and the map is north-up and cannot
+    /// rotate, so a bearing read off the drawing is a bearing on the ground.
+    ///
+    /// Measured over the same window the turn detector uses rather than to the next vertex.
+    /// Real pavement is ragged: the first vertex-to-vertex step can point tens of degrees off
+    /// the way the block actually runs, which would send someone off in the wrong direction on
+    /// the strength of one stray point.
+    var departureInstruction: String? {
+        guard let leg = legs.first, leg.points.count >= 2 else { return nil }
+        let reach = min(IntersectionScene.routeTurnWindowMeters * pointsPerMeter,
+                        polylineLength(leg.points))
+        guard let ahead = pointAlongPolyline(leg.points, distance: reach) else { return nil }
+        let direction = compassDirection(from: leg.points[0], to: ahead)
+        guard !direction.isEmpty else { return nil }
+        return leg.streetName.isEmpty
+            ? "Head \(direction)."
+            : "Head \(direction) on \(leg.streetName)."
+    }
+
     /// Where the route actually changes direction, in content points.
     ///
     /// Computed from the built geometry rather than authored, because the geometry is the only
@@ -163,11 +231,27 @@ nonisolated struct RouteScene {
     /// through, not which of them it turns at, and an imported route has no waypoints at all.
     /// See `IntersectionScene.routeTurnMinimumAngleDegrees` for why this needs an angle
     /// threshold rather than the reference app's "any non-collinear vertex" test.
-    var turns: [CGPoint] {
+    var turns: [RouteTurn] {
         // Walking every leg end-to-end as one path, so a turn made *at* a waypoint — where one
         // leg stops and the next starts — is caught the same as one made mid-block.
         let path = legs.flatMap(\.points)
         guard path.count >= 3 else { return [] }
+
+        // Which street each vertex belongs to, and how far along the path it sits, so a turn
+        // can name what it is turning *onto*. The connector between two legs is attributed to
+        // the leg it arrives at, which is what makes "onto" the right word.
+        let vertexNames = legs.flatMap { leg in leg.points.map { _ in leg.streetName } }
+        var reached: [CGFloat] = [0]
+        for index in 1..<path.count {
+            reached.append(reached[index - 1] + hypot(path[index].x - path[index - 1].x,
+                                                      path[index].y - path[index - 1].y))
+        }
+        func streetName(at distance: CGFloat) -> String {
+            guard let index = reached.firstIndex(where: { $0 >= distance }) else {
+                return vertexNames.last ?? ""
+            }
+            return vertexNames[min(index, vertexNames.count - 1)]
+        }
 
         let minimumAngle = IntersectionScene.routeTurnMinimumAngleDegrees * .pi / 180
         let window = IntersectionScene.routeTurnWindowMeters * pointsPerMeter
@@ -183,9 +267,16 @@ nonisolated struct RouteScene {
         // a route that runs dead straight down one street. Looking a few metres back and a few
         // metres on instead asks the question that actually matters — has the direction of
         // travel changed? — and that is flat along a straight block however ragged the vertices.
-        var found: [CGPoint] = []
+        // Paired with how far along the walk each one sits, so the peaks can be handed back in
+        // walking order at the end — the position alone cannot say, since every turn lies on
+        // the path and so is zero distance from it.
+        var candidates: [(along: CGFloat, turn: RouteTurn)] = []
         var distance = window
-        let step = max(window / 4, 1)
+        // Fine enough that a sample lands near the peak of a corner. The angle is now spoken
+        // aloud and not just thresholded, so how close the sampling gets to the true corner is
+        // the accuracy of the instruction — at window/4 a square corner read about 85°, which
+        // is only comfortably "turn right" by luck rather than by measurement.
+        let step = max(window / 8, 1)
         while distance <= total - window {
             guard let at = pointAlongPolyline(path, distance: distance),
                   let back = pointAlongPolyline(path, distance: distance - window),
@@ -193,15 +284,38 @@ nonisolated struct RouteScene {
             else { break }
             let incoming = atan2(at.y - back.y, at.x - back.x)
             let outgoing = atan2(ahead.y - at.y, ahead.x - at.x)
-            var change = abs(outgoing - incoming)
-            if change > .pi { change = 2 * .pi - change }
-            if change >= minimumAngle,
-               !found.contains(where: { hypot($0.x - at.x, $0.y - at.y) <= mergeWithin }) {
-                found.append(at)
+            // Signed, and wrapped into ±180° rather than folded with `abs`. Which side the
+            // walk turns to is the whole instruction; a magnitude on its own cannot be spoken.
+            var change = outgoing - incoming
+            while change > .pi { change -= 2 * .pi }
+            while change < -.pi { change += 2 * .pi }
+            if abs(change) >= minimumAngle {
+                candidates.append((distance,
+                                   RouteTurn(position: at, angle: change * 180 / .pi,
+                                             streetName: streetName(at: distance + window))))
             }
             distance += step
         }
-        return found
+
+        // Each corner is found several times over — the window starts straddling it a few
+        // metres early and stops a few metres late — and the samples either side of the corner
+        // read *shallower* than the corner itself, because the window is only part way round
+        // the bend. Keeping the first sample past the threshold therefore understated every
+        // turn: a square corner came out at about 35°, and was announced as "slight right".
+        //
+        // So take the sharpest sample in each cluster rather than the earliest. That is both
+        // the honest angle and the true position of the corner, which is also what the
+        // close-up's corner-snapping wants to start from.
+        var found: [(along: CGFloat, turn: RouteTurn)] = []
+        for candidate in candidates.sorted(by: { abs($0.turn.angle) > abs($1.turn.angle) })
+        where !found.contains(where: {
+            hypot($0.turn.position.x - candidate.turn.position.x,
+                  $0.turn.position.y - candidate.turn.position.y) <= mergeWithin
+        }) {
+            found.append(candidate)
+        }
+        // Sharpest-first is an artefact of picking the peaks; hand them back along the walk.
+        return found.sorted { $0.along < $1.along }.map(\.turn)
     }
 
     /// Which waypoint a position is, if it is one at all. Exact match (to a fraction of a

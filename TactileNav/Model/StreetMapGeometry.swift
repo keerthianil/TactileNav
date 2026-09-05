@@ -843,3 +843,18 @@ nonisolated func subpath(of points: [CGPoint], from start: CGFloat, to end: CGFl
 nonisolated func polylineLength(_ points: [CGPoint]) -> CGFloat {
     zip(points, points.dropFirst()).reduce(CGFloat.zero) { $0 + hypot($1.1.x - $1.0.x, $1.1.y - $1.0.y) }
 }
+
+/// The compass direction of `to` seen from `from`, as a traveller would say it — "north-east".
+///
+/// The map is north-up and cannot rotate, so a bearing read off the drawing is a bearing on the
+/// ground. `atan2(dx, -dy)` rather than the usual `atan2(dy, dx)` because screen y grows *south*
+/// and compass bearings are measured clockwise from north, not anticlockwise from east.
+///
+/// Empty for two points on top of each other, where no direction is meaningful — callers are
+/// expected to drop the phrase rather than say "to the north" about nothing.
+nonisolated func compassDirection(from: CGPoint, to: CGPoint) -> String {
+    let dx = to.x - from.x
+    let dy = to.y - from.y
+    guard hypot(dx, dy) > 0.5 else { return "" }
+    return IntersectionArm.compassName(for: CGFloat(atan2(dx, -dy) * 180 / .pi))
+}
