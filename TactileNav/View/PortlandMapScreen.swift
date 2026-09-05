@@ -15,9 +15,15 @@ struct PortlandMapScreen: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    /// Builds the study route against the loaded map, or `nil` for the plain Congress Square
+    /// screen. A function rather than a stored `RouteScene?`, because the route cannot be built
+    /// until the map has finished loading — see `load()`.
+    var routeBuilder: ((StreetMap) -> RouteScene?)?
+    var title = "Congress Square"
+
     private enum LoadPhase {
         case loading
-        case ready(StreetMap)
+        case ready(map: StreetMap, route: RouteScene?)
         case failed
     }
 
@@ -38,6 +44,7 @@ struct PortlandMapScreen: View {
         let id: String
         let junction: Intersection
         let map: StreetMap
+        let route: RouteScene?
 
         static func == (a: OpenJunction, b: OpenJunction) -> Bool { a.id == b.id }
         func hash(into hasher: inout Hasher) { hasher.combine(id) }
@@ -56,9 +63,10 @@ struct PortlandMapScreen: View {
             // The builder is unconditional for the same reason: see `OpenJunction`.
             .navigationDestination(item: $openJunction) { selection in
                 IntersectionDetailScreen(junction: selection.junction, map: selection.map,
+                                         route: selection.route,
                                          onLeave: { openJunction = nil })
             }
-            .navigationTitle("Congress Square")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if case .ready = phase {
@@ -94,10 +102,12 @@ struct PortlandMapScreen: View {
             ProgressView("Loading map")
                 .accessibilityLabel("Loading the Congress Square map")
 
-        case .ready(let map):
+        case .ready(let map, let route):
             PortlandMapView(map: map,
+                            route: route,
                             name: Self.mapName,
-                            introduction: Self.introduction(streetCount: map.features.count),
+                            introduction: Self.introduction(streetCount: map.features.count,
+                                                            routeGiven: route != nil),
                             commands: commands,
                             onBackGesture: { dismiss() },
                             onIntersectionDoubleTap: { junction in
@@ -107,7 +117,8 @@ struct PortlandMapScreen: View {
                                 // second emptied the stack out to the home screen.
                                 guard openJunction == nil else { return }
                                 openJunction = OpenJunction(id: junction.id,
-                                                            junction: junction, map: map)
+                                                            junction: junction, map: map,
+                                                            route: route)
                             })
                 .ignoresSafeArea(edges: .bottom)
 
@@ -127,6 +138,7 @@ struct PortlandMapScreen: View {
         // Read the device metrics and label font here, on the main actor, then project the
         // ~2,000-element extract off it.
         let context = PortlandMapLoader.LoadContext.current()
+        let routeBuilder = routeBuilder
         Task.detached(priority: .userInitiated) {
             let result = try? PortlandMapLoader.loadStreetMap(context: context)
             await MainActor.run {
@@ -134,7 +146,10 @@ struct PortlandMapScreen: View {
                     phase = .failed
                     return
                 }
-                phase = .ready(result)
+                // Built alongside the map rather than lazily on first touch: a route that fails
+                // to resolve should show as a plain map immediately, not partway through a
+                // participant's first exploration.
+                phase = .ready(map: result, route: routeBuilder?(result))
                 // The map introduces itself once it is on screen and laid out, in one place
                 // for both VoiceOver states — see `PortlandMapView.Coordinator.announceArrival`.
             }
@@ -148,9 +163,13 @@ struct PortlandMapScreen: View {
 
     /// The rest of it, said in the app's own voice once VoiceOver has finished with the name,
     /// and dropped the moment a finger arrives.
-    static func introduction(streetCount: Int) -> String {
-        "Congress Square, downtown Portland. \(streetCount) streets. "
+    static func introduction(streetCount: Int, routeGiven: Bool = false) -> String {
+        var text = "Congress Square, downtown Portland. \(streetCount) streets. "
         + "Drag one finger to explore, two fingers to pan. "
         + "Double tap an intersection to open it."
+        if routeGiven {
+            text += " A route is marked. Follow it by feel: it pulses, where a plain street buzzes."
+        }
+        return text
     }
 }

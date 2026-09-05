@@ -40,6 +40,13 @@ nonisolated enum StreetMapSizing {
     /// Width of one traffic lane, and the width every road line is drawn at.
     static let laneWidthMM: CGFloat = 4.0
 
+    /// Width of the route overlay line. Narrower than the road it runs on, so the blue still
+    /// shows either side of it and a route reads as a marking on the road rather than a
+    /// second, wider road drawn on top of the first.
+    /// The route overlay's width — the reference app's, and the same as the close-up's own
+    /// `IntersectionScene.routeWidthMM`, so the route is one recognisable thing on both screens.
+    static let routeWidthMM: CGFloat = 3.5
+
     /// How far apart two parallel streets should sit on the glass.
     ///
     /// This is the map's scale, expressed the way it is actually judged: by how far a finger
@@ -106,6 +113,16 @@ nonisolated enum StreetMapSizing {
     /// few millimetres twice inside half a second is the wrong test.
     static var intersectionOpenRadius: CGFloat { max(intersectionBoxWidth / 2, 36) }
 
+    // MARK: - Route landmark
+
+    /// The route's start/end dot, drawn directly on the overview map — same size as the
+    /// close-up's own dot (`IntersectionScene.routeEndpointDiameterMM`), so it reads as the
+    /// same landmark wherever it turns up.
+    static let routeEndpointDiameterMM: CGFloat = 6.0
+    static let routeEndpointBorderMM: CGFloat = 0.4
+    static var routeEndpointDiameter: CGFloat { PhysicalDimensions.mmToPoints(routeEndpointDiameterMM) }
+    static var routeEndpointHitRadius: CGFloat { max(routeEndpointDiameter / 2, 22) }
+
     // MARK: - Resolved metrics
 
     /// Every device-dependent size, resolved once.
@@ -123,6 +140,8 @@ nonisolated enum StreetMapSizing {
         let intersectionBoxWidth: CGFloat
         let intersectionHitRadius: CGFloat
         let intersectionOpenRadius: CGFloat
+        let routeEndpointDiameter: CGFloat
+        let routeEndpointHitRadius: CGFloat
     }
 
     /// Resolve the current device's metrics. Call on the main actor.
@@ -135,7 +154,9 @@ nonisolated enum StreetMapSizing {
             roadHitRadius: roadHitRadius,
             intersectionBoxWidth: intersectionBoxWidth,
             intersectionHitRadius: intersectionHitRadius,
-            intersectionOpenRadius: intersectionOpenRadius
+            intersectionOpenRadius: intersectionOpenRadius,
+            routeEndpointDiameter: routeEndpointDiameter,
+            routeEndpointHitRadius: routeEndpointHitRadius
         )
     }
 
@@ -147,6 +168,20 @@ nonisolated enum StreetMapSizing {
     /// The intersection marker: NFB's red (#c1121f) with a white outline.
     static let intersectionColor = CGColor(red: 0xC1 / 255, green: 0x12 / 255, blue: 0x1F / 255, alpha: 1)
     static let intersectionBorderColor = CGColor(gray: 1, alpha: 1)
+
+    /// The route overlay: NFB's cyan (#48cae4), drawn above the road it runs on.
+    static let routeColor = CGColor(red: 0x48 / 255, green: 0xCA / 255, blue: 0xE4 / 255, alpha: 1)
+
+    /// The route's start/end dot — the same yellow as the close-up's own
+    /// (`IntersectionPalette.routeEndpoint`), so the two screens agree on what this landmark
+    /// looks like.
+    static let routeEndpointColor = CGColor(red: 1, green: 0xD7 / 255, blue: 0, alpha: 1)
+    static let routeEndpointBorderColor = CGColor(gray: 1, alpha: 1)
+
+    /// The turn dot, matching the close-up's own orange — a turn is a thing to do, the ends
+    /// are things to arrive at, and the two should never be mistaken for each other.
+    static let routeTurnColor = CGColor(red: 1, green: 0x8C / 255, blue: 0, alpha: 1)
+    static let routeTurnBorderColor = CGColor(gray: 1, alpha: 1)
 
     /// Labels are drawn along road centrelines, so they always sit on the dark road colour.
     /// White gives roughly 8:1 contrast against it; a dark label would be near-illegible.

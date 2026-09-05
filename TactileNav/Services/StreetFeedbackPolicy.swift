@@ -350,6 +350,20 @@ final class StreetFeedbackController {
         speech.speak(announcement)
     }
 
+    /// A finger has entered a stretch of road the study route runs along. Plays the route's own
+    /// rhythmic pulse in place of the road's steady buzz — the same route/corridor distinction
+    /// the reference app makes — so a route can be followed by feel alone, distinct from the
+    /// rest of the street network under the same finger. Called only on a change of leg, so the
+    /// pulse is not restarted while the finger stays on one stretch of it.
+    func enterRoute(identifier: String, announcement: String) {
+        guard identifier != activeIdentifier else { return }
+        activeIdentifier = identifier
+        stopIntersectionTone()
+        haptics.stopAll()
+        haptics.start(pattern: .routePulse)
+        speech.speak(announcement)
+    }
+
     /// The finger is over empty space — between the streets, inside a block. Silence, and no
     /// vibration, is the correct feedback: it is how a blank area reads as blank.
     func leaveAll() {
@@ -382,13 +396,12 @@ final class StreetFeedbackController {
 
     // MARK: Junction ding
 
-    /// 1120 Hz, 0.16 s, repeating every 0.4 s while the finger stays on the junction — the
-    /// reference app's cadence. Left running until the finger moves onto a road, onto empty
-    /// space, or lifts.
+    /// 440 Hz, 0.16 s, repeating every 0.4 s while the finger stays on the junction. Left
+    /// running until the finger moves onto a road, onto empty space, or lifts.
     private func startIntersectionTone() {
         prepareToneSession()
         toneRunning = true
-        tone.playRepeatingTone(frequency: 1120, duration: 0.16, interval: 0.4, count: 0, amplitude: 0.7)
+        tone.playRepeatingTone(frequency: 440, duration: 0.16, interval: 0.4, count: 0, amplitude: 0.7)
     }
 
     private func stopIntersectionTone() {

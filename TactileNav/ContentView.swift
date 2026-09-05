@@ -6,7 +6,11 @@ struct ContentView: View {
             List {
                 Section("Maps") {
                     NavigationLink {
-                        PortlandMapScreen()
+                        PortlandMapScreen(routeBuilder: { map in
+                            GeoJSONRoute.build(resource: "route_1_Hyatt_Place_To_Bangor_Savings_Bank",
+                                              departureName: "Hyatt Place",
+                                              destinationName: "Bangor Savings Bank", map: map)
+                        })
                     } label: {
                         Label {
                             VStack(alignment: .leading, spacing: 4) {
@@ -21,7 +25,7 @@ struct ContentView: View {
                                 .foregroundColor(Color(red: 0x02/255, green: 0x3E/255, blue: 0x8A/255))
                         }
                     }
-                    .accessibilityHint("Opens the street map. Drag one finger to explore streets by touch, two fingers to pan")
+                    .accessibilityHint("Opens the street map. Drag one finger to explore streets by touch, two fingers to pan. The study route is marked: it pulses under a finger, where the rest of the street network buzzes")
 
                     NavigationLink {
                         SpatialAudioSimulationView()

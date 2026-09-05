@@ -163,6 +163,31 @@ nonisolated struct StreetLabel {
 
 // MARK: - The assembled map
 
+/// Converts a real-world latitude/longitude into this map's content-point space — the same
+/// projection the extract's own roads were built from (equirectangular, referenced to the
+/// request bounding box, then normalised to the content box the way `StreetMap.build` does).
+///
+/// Exists so geometry from outside the extract — a routing API's response, say — can be drawn
+/// in the same coordinate space as the map without inventing a second, separate alignment. `nil`
+/// on `StreetMap` only when the document shipped without the bounding-box metadata this needs.
+nonisolated struct GeographicProjection {
+    let bbox: StreetMapExtras.BoundingBox
+    /// Longitude's metres-per-degree at this bbox's latitude — narrower than latitude's fixed
+    /// 111,320 m/degree the further from the equator you are, so this has to be computed per
+    /// map rather than assumed constant.
+    let metersPerDegreeLongitude: CGFloat
+    let scale: CGFloat
+    let origin: CGPoint
+
+    private static let metersPerDegreeLatitude: CGFloat = 111_320.0
+
+    func project(lat: Double, lon: Double) -> CGPoint {
+        let xMeters = (CGFloat(lon) - CGFloat(bbox.west)) * metersPerDegreeLongitude
+        let yMeters = (CGFloat(bbox.north) - CGFloat(lat)) * Self.metersPerDegreeLatitude
+        return CGPoint(x: xMeters * scale - origin.x, y: yMeters * scale - origin.y)
+    }
+}
+
 nonisolated struct StreetMap {
 
     let features: [StreetFeature]
@@ -177,6 +202,8 @@ nonisolated struct StreetMap {
     let hitConfig: HitDetectionConfigValues
     /// The device metrics this map was projected with.
     let metrics: StreetMapSizing.Metrics
+    /// How to place a real lat/lon on this map — see `GeographicProjection`.
+    let geographicProjection: GeographicProjection?
 
     private let index: UniformGrid
     private let labelIndex: UniformGrid
@@ -341,6 +368,7 @@ nonisolated struct StreetMap {
                                  velocityBonusMax: hitConfig.velocityBonusMax,
                                  updateThreshold: hitConfig.updateThreshold),
                 metrics: metrics,
+                geographicProjection: nil,
                 index: UniformGrid(cellSize: 128, entries: []),
                 labelIndex: UniformGrid(cellSize: 512, entries: []),
                 intersectionIndex: UniformGrid(cellSize: 256, entries: []),
@@ -434,6 +462,13 @@ nonisolated struct StreetMap {
             center = nearest.position
         }
 
+        let projection = extras?.bbox.map { bbox -> GeographicProjection in
+            let midLat = (bbox.south + bbox.north) / 2.0
+            let metersPerDegreeLongitude = 111_320.0 * cos(midLat * .pi / 180.0)
+            return GeographicProjection(bbox: bbox, metersPerDegreeLongitude: CGFloat(metersPerDegreeLongitude),
+                                        scale: scale, origin: origin)
+        }
+
         return StreetMap(
             features: features,
             labels: labels,
@@ -445,6 +480,7 @@ nonisolated struct StreetMap {
                              velocityBonusMax: hitConfig.velocityBonusMax,
                              updateThreshold: hitConfig.updateThreshold),
             metrics: metrics,
+            geographicProjection: projection,
             index: UniformGrid(cellSize: 128, entries: entries),
             labelIndex: UniformGrid(cellSize: 512, entries: labelEntries),
             intersectionIndex: UniformGrid(cellSize: 256, entries: intersectionEntries),

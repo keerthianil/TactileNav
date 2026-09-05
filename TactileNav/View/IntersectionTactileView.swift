@@ -19,6 +19,17 @@
 //  rather than by intensity — a low-sharpness rumble and a high-sharpness vibration feel like
 //  different materials, where loud and quiet just feels like the same thing further away.
 //
+//  One more thing is named rather than felt: the centre, where the crossing roads overlap. It
+//  gets the roadway's own buzz, because that is still true — but it is also the one point in the
+//  whole junction that says "Center" out loud, so a traveller can find the middle on purpose
+//  rather than only ever discovering an edge.
+//
+//  When a study route runs through this junction, the stretch of roadway it follows gets the
+//  route's own rhythmic pulse instead of the plain road buzz — cut from the very same real
+//  geometry the city map's route overlay uses, not a second line drawn to match. Where the
+//  route actually begins or ends, a yellow dot sits at the junction's centre and speaks its own
+//  arrival: "Your location. Route to X." to start, "End of route" to finish.
+//
 //  **This works with VoiceOver off as well as on, and both need testing.** Exploration runs on
 //  raw touches rather than a gesture recognizer, which is what makes the two paths identical:
 //  inside a direct-interaction accessibility element VoiceOver hands touches straight to the
@@ -46,6 +57,15 @@ nonisolated enum IntersectionPalette {
     static let crossingEnd = CGColor(red: 1, green: 0x2D / 255, blue: 0x55 / 255, alpha: 1)
     /// White ring, so the dot reads against the grey pavement and the blue roadway alike.
     static let crossingEndBorder = CGColor(gray: 1, alpha: 1)
+    /// The study route overlay — the same cyan as the city map's.
+    static let route = CGColor(red: 0x48 / 255, green: 0xCA / 255, blue: 0xE4 / 255, alpha: 1)
+    /// The route's start and end dot — the reference app's yellow.
+    static let routeEndpoint = CGColor(red: 1, green: 0xD7 / 255, blue: 0, alpha: 1)
+    static let routeEndpointBorder = CGColor(gray: 1, alpha: 1)
+
+    /// The turn dot — the reference app's orange (#ff8c00), deliberately not the ends' yellow.
+    static let routeTurn = CGColor(red: 1, green: 0x8C / 255, blue: 0, alpha: 1)
+    static let routeTurnBorder = CGColor(gray: 1, alpha: 1)
 }
 
 // MARK: - Canvas
@@ -71,10 +91,19 @@ final class IntersectionCanvasView: UIView {
         let roads = scene.pieces.filter { $0.surface == .road }
         stroke(scene.pieces.filter { $0.surface == .sidewalk }, IntersectionPalette.sidewalk, in: ctx)
         stroke(roads, IntersectionPalette.road, in: ctx)
+        // The route sits above the road it runs on — same order as the city map's overlay —
+        // and under the crossing markings, which stay painted on the asphalt regardless of
+        // whether the route happens to cross it.
+        stroke(scene.pieces.filter { $0.surface == .route }, IntersectionPalette.route, in: ctx)
         drawCrossings(scene.pieces.filter { $0.surface == .crossing }, over: roads, in: ctx)
-        // Last, and clipped to nothing: a kerb dot marks where a crossing meets the pavement,
+        // Kerb dots, clipped to nothing: a kerb dot marks where a crossing meets the pavement,
         // which is by definition the one place it is *not* on the roadway.
         drawCrossingEnds(scene.pieces.filter { $0.surface == .crossingEnd }, in: ctx)
+        // Last of all: the route's own landmarks, which outrank even a kerb dot and so are
+        // never drawn underneath one. Turns first, then the ends over them — on the rare
+        // corner that is both, "this is where the walk stops" is the more important of the two.
+        drawRouteTurns(scene.pieces.filter { $0.surface == .routeTurn }, in: ctx)
+        drawRouteEndpoints(scene.pieces.filter { $0.surface == .routeEndpoint }, in: ctx)
     }
 
     /// Strokes a set of pieces, one pass per width.
@@ -120,7 +149,10 @@ final class IntersectionCanvasView: UIView {
 
         let bar = PhysicalDimensions.mmToPoints(IntersectionScene.crossingBarLengthMM)
         let pitch = PhysicalDimensions.mmToPoints(IntersectionScene.crossingBarPitchMM)
-        let barWidth = PhysicalDimensions.mmToPoints(IntersectionScene.crossingWidthMM) * 1.9
+        // The paint's own width, not a fattened version of it — the reference app strokes its
+        // stripes at exactly the crossing's width, and widening them here only made a zebra
+        // read as a solid patch.
+        let barWidth = PhysicalDimensions.mmToPoints(IntersectionScene.crossingWidthMM)
 
         // Painted the whole way across, pavement to pavement, and no longer clipped to the
         // roadway.
@@ -177,6 +209,38 @@ final class IntersectionCanvasView: UIView {
             ctx.strokeEllipse(in: box)
         }
     }
+
+    /// The route's start or end — a single yellow dot, at most one per screen.
+    private func drawRouteEndpoints(_ pieces: [IntersectionPiece], in ctx: CGContext) {
+        drawDots(pieces, fill: IntersectionPalette.routeEndpoint,
+                 stroke: IntersectionPalette.routeEndpointBorder,
+                 borderMM: IntersectionScene.routeEndpointBorderMM, in: ctx)
+    }
+
+    /// Every place the route turns, in orange — a different colour from its ends on purpose:
+    /// one means "do something here", the other means "this is where the walk stops".
+    private func drawRouteTurns(_ pieces: [IntersectionPiece], in ctx: CGContext) {
+        drawDots(pieces, fill: IntersectionPalette.routeTurn,
+                 stroke: IntersectionPalette.routeTurnBorder,
+                 borderMM: IntersectionScene.routeTurnBorderMM, in: ctx)
+    }
+
+    private func drawDots(_ pieces: [IntersectionPiece], fill: CGColor, stroke: CGColor,
+                          borderMM: CGFloat, in ctx: CGContext) {
+        guard !pieces.isEmpty else { return }
+        ctx.setFillColor(fill)
+        ctx.setStrokeColor(stroke)
+        ctx.setLineWidth(PhysicalDimensions.mmToPoints(borderMM))
+
+        for piece in pieces {
+            guard let centre = piece.points.first else { continue }
+            let radius = piece.width / 2
+            let box = CGRect(x: centre.x - radius, y: centre.y - radius,
+                             width: radius * 2, height: radius * 2)
+            ctx.fillEllipse(in: box)
+            ctx.strokeEllipse(in: box)
+        }
+    }
 }
 
 // MARK: - Feedback
@@ -213,6 +277,9 @@ final class IntersectionFeedbackController {
     /// never spins up an audio engine at all.
     private var tone: ToneGenerator?
     private var isDinging = false
+    /// Drives the tap that goes with each turn ding — the tone generator repeats the sound on
+    /// its own, but nothing repeats a haptic tap.
+    private var turnTapper: Timer?
 
     /// A sharp tap every 0.17 s. Transient rather than a short continuous pulse: a tap reads
     /// as a discrete marking, where a pulse blurs into the roadway buzz beside it.
@@ -256,13 +323,30 @@ final class IntersectionFeedbackController {
         guard id != activeID else { return }
         activeID = id
         haptics.stopAll()
-        stopKerbDing()
+        stopSound()
 
         currentSurface = surface
         switch surface {
-        case .road: haptics.start(pattern: .heavyBuzzContinuous)
+        // Still the roadway underfoot — the centre changes what is said, not what is felt.
+        case .road, .center: haptics.start(pattern: .heavyBuzzContinuous)
         case .sidewalk: haptics.start(pattern: .streetContinuous)
-        case .crossing: haptics.start(pattern: Self.crossingTick)
+        case .crossing:
+            haptics.start(pattern: Self.crossingTick)
+            // Painted markings get a sound of their own as well as a texture — a run of short
+            // clicks, which reads as a row of discrete marks rather than as one more vibration
+            // to tell apart from the three continuous surfaces around it.
+            if audible { startCrossingClicks() }
+        case .route: haptics.start(pattern: .routePulse)
+        // Faster and sharper than the route line it sits on, so arriving at an end is
+        // something the finger notices without waiting to be told.
+        case .routeEndpoint: haptics.start(pattern: .landmarkFastPulse)
+        // The turn: no continuous texture at all, just a repeating tap and ding, the way a
+        // kerb dot is a ding rather than a fourth surface.
+        case .routeTurn:
+            speech.cancelPending()
+            if audible { startTurnDing() }
+            speech.speak(name)
+            return
         case .crossingEnd:
             // No haptic at all, on purpose. The kerb dot is a landmark rather than a surface,
             // and a ding on its own is unmistakable next to three continuous textures — where
@@ -283,13 +367,13 @@ final class IntersectionFeedbackController {
         speech.speak(name)
     }
 
-    /// The finger is between things, or has lifted. Haptics and the ding stop at once;
+    /// The finger is between things, or has lifted. Haptics and any sound stop at once;
     /// whatever is mid-sentence is allowed to finish.
     func leave() {
         activeID = nil
         currentSurface = nil
         haptics.stopAll()
-        stopKerbDing()
+        stopSound()
         speech.cancelPending()
     }
 
@@ -299,24 +383,53 @@ final class IntersectionFeedbackController {
         speech.stopAll()
     }
 
-    // MARK: Kerb ding
+    // MARK: Sound
 
-    /// 1120 Hz for 0.16 s, once per dot. The same ding the reference app plays at a crossing
-    /// endpoint, and the same tone the street map uses for a junction — one sound meaning
-    /// "a named place, not a stretch of something".
-    private func playKerbDing() {
+    /// The one generator all three sounds share. Built on the first one a finger actually
+    /// reaches, so the audio session is configured before its engine starts and a screen that
+    /// never finds a crossing never spins an audio engine up at all. One is enough: a finger
+    /// is on exactly one surface at a time.
+    private func soundGenerator() -> ToneGenerator {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
         try? session.setActive(true)
         let generator = tone ?? ToneGenerator()
         tone = generator
         isDinging = true
-        generator.playTone(frequency: 1120, duration: 0.16, amplitude: 0.88)
+        return generator
     }
 
-    /// Guarded on having actually dinged, so the common path — a finger crossing surfaces that
-    /// have no ding — never builds an audio engine just to switch it off again.
-    private func stopKerbDing() {
+    /// 440 Hz for 0.16 s, once per dot — the same tone the street map uses for a junction, so
+    /// one sound means "a named place, not a stretch of something" everywhere it plays.
+    private func playKerbDing() {
+        soundGenerator().playTone(frequency: 440, duration: 0.16, amplitude: 0.88)
+    }
+
+    /// The crossing's own click train — the reference app's crosswalk sound, matched: a 12 ms
+    /// two-part tick every 0.17 s for as long as the finger stays on the markings.
+    private func startCrossingClicks() {
+        soundGenerator().playRepeatingClick()
+    }
+
+    /// The turn: the junction ding repeating every 0.4 s, each one paired with a tap, so a turn
+    /// is both heard and felt without borrowing any of the four surface textures.
+    private func startTurnDing() {
+        soundGenerator().playRepeatingTone(frequency: 440, duration: 0.16, interval: 0.4,
+                                           count: 0, amplitude: 0.88)
+        turnTapper?.invalidate()
+        let impact = UIImpactFeedbackGenerator(style: .medium)
+        impact.prepare()
+        impact.impactOccurred(intensity: 0.9)
+        turnTapper = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { _ in
+            MainActor.assumeIsolated { impact.impactOccurred(intensity: 0.9) }
+        }
+    }
+
+    /// Guarded on having actually made a sound, so the common path — a finger crossing surfaces
+    /// that are silent — never builds an audio engine just to switch it off again.
+    private func stopSound() {
+        turnTapper?.invalidate()
+        turnTapper = nil
         guard isDinging else { return }
         isDinging = false
         tone?.stop()
@@ -339,6 +452,12 @@ final class IntersectionTouchView: UIView {
 
     /// Set by the owner. Rebuilding the scene needs both this and a laid-out frame.
     var source: (junction: Intersection, map: StreetMap)? {
+        didSet { rebuild() }
+    }
+
+    /// The study route, if one is showing on the screen this close-up was opened from. `nil`
+    /// for a junction with no route, or for this screen used from the crossing-audio demo.
+    var route: RouteScene? {
         didSet { rebuild() }
     }
 
@@ -396,7 +515,7 @@ final class IntersectionTouchView: UIView {
     private func rebuild() {
         guard bounds.width > 0, bounds.height > 0, let source else { return }
         let built = IntersectionScene.build(junction: source.junction, map: source.map,
-                                            size: bounds.size)
+                                            size: bounds.size, route: route)
         scene = built
         canvas.scene = built
         applyAccessibility()
@@ -545,6 +664,7 @@ final class IntersectionTouchView: UIView {
             "sidewalks": "\(count(.sidewalk))",
             "crossings": "\(count(.crossing))",
             "kerbDots": "\(count(.crossingEnd))",
+            "centerZones": "\(count(.center))",
             // The two numbers a position has to be read through.
             "pointsPerMeter": String(format: "%.3f", scene.scale),
             "radiusMeters": String(format: "%.1f", IntersectionScene.radiusMeters),
@@ -575,6 +695,10 @@ final class IntersectionTouchView: UIView {
         case .sidewalk: name = piece!.name; kind = "sidewalk"
         case .crossing: name = piece!.name; kind = "crossing"
         case .crossingEnd: name = piece!.name; kind = "kerbDot"
+        case .center: name = piece!.name; kind = "center"
+        case .route: name = piece!.name; kind = "route"
+        case .routeEndpoint: name = piece!.name; kind = "routeEndpoint"
+        case .routeTurn: name = piece!.name; kind = "routeTurn"
         case nil: name = "Background"; kind = "background"
         }
         _ = logger.logEvent(TouchEvent(
@@ -607,6 +731,8 @@ struct IntersectionTactileView: UIViewRepresentable {
 
     let junction: Intersection
     let map: StreetMap
+    /// The study route, if this junction sits on one. See `IntersectionTouchView.route`.
+    var route: RouteScene?
     /// Silenced while traffic is playing — see `IntersectionTouchView.isAudible`.
     var isAudible: Bool = true
     var commands: IntersectionViewCommands?
@@ -615,6 +741,7 @@ struct IntersectionTactileView: UIViewRepresentable {
     func makeUIView(context: Context) -> IntersectionTouchView {
         let view = IntersectionTouchView(frame: .zero)
         view.source = (junction, map)
+        view.route = route
         view.isAudible = isAudible
         view.onDoubleTap = onDoubleTap
         commands?.announceArrival = { [weak view] in view?.announceArrival() }
@@ -625,6 +752,7 @@ struct IntersectionTactileView: UIViewRepresentable {
         if view.source?.junction.id != junction.id {
             view.source = (junction, map)
         }
+        view.route = route
         view.isAudible = isAudible
         view.onDoubleTap = onDoubleTap
         commands?.announceArrival = { [weak view] in view?.announceArrival() }

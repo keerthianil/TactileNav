@@ -23,6 +23,8 @@ struct IntersectionDetailScreen: View {
 
     let junction: Intersection
     let map: StreetMap
+    /// The study route, if the screen this junction was opened from had one showing.
+    var route: RouteScene?
 
     /// Clears the binding that pushed this screen, which is what pops it.
     ///
@@ -41,13 +43,9 @@ struct IntersectionDetailScreen: View {
         // The junction, and nothing else. Everything that was written underneath — the name,
         // the arms, the gesture hints — is said on arrival instead, so the drawing gets the
         // whole screen and there is nothing to read past to reach it.
-        IntersectionTactileView(junction: junction, map: map,
+        IntersectionTactileView(junction: junction, map: map, route: route,
                                 commands: commands, onDoubleTap: goBack)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(.separator)))
-            .padding(.horizontal)
-            .padding(.bottom, 12)
+            .ignoresSafeArea(edges: .bottom)
         .navigationTitle("Intersection")
         .navigationBarTitleDisplayMode(.inline)
         // The system's own button is hidden and replaced, so that pressing it runs the same

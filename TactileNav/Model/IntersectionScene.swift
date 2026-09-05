@@ -31,24 +31,55 @@ nonisolated enum IntersectionSurface {
     case crossing
     /// The kerb at one end of a crossing: where you wait, and where you arrive.
     case crossingEnd
+    /// The exact point where the crossing roads overlap — the middle of the junction.
+    case center
+    /// A stretch of this junction's roadway that the study route follows. Sits exactly on top
+    /// of a `.road` piece — same centreline, since it is cut from the very same real road — so
+    /// it has to outrank the road to be felt at all rather than being the same thing twice.
+    case route
+    /// The route's very first or very last waypoint — where a traveller starts or ends.
+    case routeEndpoint
+    /// A place the route changes direction. A turn is the one thing about a route a traveller
+    /// has to act on rather than just follow, so it is marked in its own right.
+    case routeTurn
 
     var elementType: TactileElementType {
         switch self {
         case .road: return .road
         case .sidewalk: return .street
         case .crossing, .crossingEnd: return .crosswalk
+        case .center: return .intersection
+        case .route, .routeEndpoint, .routeTurn: return .route
         }
     }
 
     /// Resolves an overlap. A crossing is painted over a roadway, so when the two are equally
     /// close the crossing is the honest answer — and it is the thinner, harder-to-find thing.
-    /// A kerb dot outranks everything: it is a single point deliberately placed where a
-    /// crossing, a sidewalk and often a roadway all meet, and it is the only one of the four
-    /// that tells you *where along* the crossing you are.
+    /// A kerb dot outranks everything on a crossing: it is a single point deliberately placed
+    /// where a crossing, a sidewalk and often a roadway all meet, and it is the only one of the
+    /// four that tells you *where along* the crossing you are. The centre outranks even that —
+    /// it sits on top of the roadway, well away from any kerb dot, so there is nothing for it to
+    /// actually compete with; it just needs to win the roadway underneath it. The route's start
+    /// or end is a single named place, same as the centre is, and outranks everything: it is
+    /// the one thing at that corner more specific than "you have arrived."
+    ///
+    /// A route stretch runs on the real pavement, not the road, so it competes with the plain
+    /// sidewalk beneath it (and, at a corner it has to cross, the plain road) — it wins both,
+    /// because "you are on the route" is the more useful thing to feel there than "you are on
+    /// pavement in general." It does not try to outrank a marked crossing or its kerb dot,
+    /// though: those are the two things a real pedestrian's safety can turn on, and staying
+    /// legible on their own is worth more than the route's pulse being felt through them too.
+    /// A turn ranks with the route's own ends rather than with the line between them: all three
+    /// are single points that say something a stretch cannot, and a turn sitting on top of a
+    /// crossing still has to be findable as a turn.
     var priority: Int {
         switch self {
-        case .crossingEnd: return 3
-        case .crossing: return 2
+        case .routeTurn: return 7
+        case .routeEndpoint: return 6
+        case .center: return 5
+        case .crossingEnd: return 4
+        case .crossing: return 3
+        case .route: return 2
         case .sidewalk: return 1
         case .road: return 0
         }
@@ -86,12 +117,23 @@ nonisolated struct IntersectionScene {
     /// at a fixed width instead pushes its edge across the sidewalk beside it, and the kerb —
     /// the single most important line at a junction — stops existing.
     ///
+    /// The ceiling is 12 mm to put the roadway at roughly three times `sidewalkWidthMM`, the
+    /// ratio asked for by the in-person study this screen is used for. Checked against the real
+    /// extract before being set, not assumed: at `radiusMeters` below, almost every corner on
+    /// the study route clears it with room to spare, and city-wide only about 3% of real
+    /// roadways cannot — see `onlyTheKnownThreeRouteCornersFallBelowTheRoadwayFloor` for exactly
+    /// which ones on the route do not, and why 26 m was kept anyway.
+    ///
     /// The floor is deliberately well under a fingertip. A roadway is found by its hit radius,
     /// which never drops below `minimumHitRadius` however narrow the drawing gets, so the drawn
     /// width is free to give ground to the kerb beside it — and a kerb that exists is worth far
-    /// more than the last millimetre of a roadway that is already unmistakable.
+    /// more than the last millimetre of a roadway that is already unmistakable. It is also the
+    /// backstop for the handful of corners the ceiling's clearance check above does not clear:
+    /// rather than disappearing, those roads hold this floor — and where the real clearance is
+    /// less than the floor itself, that road does touch the pavement beside it. That is a known
+    /// trade, not a bug; see `radiusMeters`.
     static let minimumRoadWidthMM: CGFloat = 6.0
-    static let maximumRoadWidthMM: CGFloat = 16.0
+    static let maximumRoadWidthMM: CGFloat = 12.0
     static let sidewalkWidthMM: CGFloat = 4.0
     /// A crossing is a thin line, the weight of the paint on the ground.
     static let crossingWidthMM: CGFloat = 2.8
@@ -104,6 +146,42 @@ nonisolated struct IntersectionScene {
     static let crossingEndDiameterMM: CGFloat = 5.0
     static let crossingEndBorderMM: CGFloat = 0.4
 
+    /// The study route overlay — the reference app's width, and the same on both screens, so
+    /// the route is one recognisable thing whether it is met on the city map or in here.
+    static let routeWidthMM: CGFloat = 3.5
+
+    /// The route's start and end dot, and its white ring. The reference app's yellow, sized to
+    /// match its own route-turn dot rather than the (smaller) crosswalk kerb dot: this is the
+    /// one landmark on the whole screen that means "this is where the walk begins or ends,"
+    /// and it should read as at least as important as any crossing on the corner.
+    static let routeEndpointDiameterMM: CGFloat = 6.0
+    static let routeEndpointBorderMM: CGFloat = 0.4
+
+    /// The turn dot, in the reference app's orange — deliberately a different colour from the
+    /// route's own yellow ends, because a turn is a thing to do, not a thing to arrive at.
+    static let routeTurnDiameterMM: CGFloat = 6.0
+    static let routeTurnBorderMM: CGFloat = 0.4
+
+    /// How sharply the route has to change direction at a vertex before it counts as a turn.
+    ///
+    /// Real pavement is not drawn straight: a sidewalk polyline bends a degree or two at almost
+    /// every vertex as it follows the kerb, and the reference app never had to deal with this
+    /// because its routes are hand-drawn from two or three points, where every vertex genuinely
+    /// is a corner. Marking those here would put a dot every few centimetres along the whole
+    /// route. 40 degrees is well past kerb noise and well under the ~90 a real street corner
+    /// turns through.
+    static let routeTurnMinimumAngleDegrees: CGFloat = 60
+
+    /// Two vertices this close together are the same corner rounded off in the data, not two
+    /// turns, and should not get a dot each.
+    static let routeTurnMergeMeters: CGFloat = 25
+
+    /// How far either side of a point the direction of travel is measured over — see
+    /// `RouteScene.turns`. Long enough to ignore how ragged real stitched pavement is between
+    /// neighbouring vertices, short enough that a genuine street corner still turns fully
+    /// within it.
+    static let routeTurnWindowMeters: CGFloat = 12
+
     /// How far a crossing may be stretched to reach the pavement it is meant to land on.
     ///
     /// Generous enough to close the gap left by a way that stops at the kerb, and short enough
@@ -115,22 +193,26 @@ nonisolated struct IntersectionScene {
     ///
     /// A kerb is the most important edge at a junction — it is the difference between standing
     /// on the footway and standing in traffic — so it is guaranteed rather than hoped for. See
-    /// `roadWidthLimit`.
-    static let kerbGapMM: CGFloat = 0.8
+    /// `roadWidthLimit`. Narrowed from 0.8 mm to leave more of each corner's real clearance
+    /// available to the roadway itself, since the gap only has to be findable, not wide — a
+    /// thin, guaranteed white line still reads as a kerb.
+    static let kerbGapMM: CGFloat = 0.4
 
     /// How much ground the close-up covers, measured from the junction centre. Far enough to
     /// take in the corners and the crossings, close enough that a kerb is a finger's width.
     ///
-    /// The second half of that sentence is what sets the number, and 42 m did not satisfy it.
-    /// Downtown Portland puts its pavements a median of 8.7 m from the road centreline — a
-    /// quarter of them closer than 6.7 m — while the roadway drawn over them needed about
-    /// 7.8 m of clearance to leave the pavement whole. So across the extract, two fifths of
-    /// every stretch of pavement running alongside a road was partly painted over, and the grey
-    /// line came out thinner than it should be or disappeared for a while. There is no way to
-    /// draw an 8 mm roadway, a 4 mm pavement and a real kerb offset in 6 m of ground: the only
-    /// fix is more glass per metre. At 26 m the same measurement falls to under a tenth, and
-    /// what is lost is block, not junction — 52 m across the short edge still holds the corners
-    /// and every crossing.
+    /// The second half of that sentence is what sets the number, and it is a genuine trade
+    /// against `maximumRoadWidthMM`: widening the roadway's ceiling asks more of the same
+    /// ground, since the real kerb offset a wider roadway has to clear does not grow with it.
+    /// A 16 m radius gives every corner on the study route enough clearance to hold the full
+    /// 12 mm ceiling without touching the pavement beside it. 26 m was chosen instead, for the
+    /// wider overview of each junction's arms, and the cost of that choice is known and
+    /// accepted rather than accidental: three real road/sidewalk pairs on the route — Fore
+    /// Street at Silver Street, and two at Fore Street and Market Street — cannot support the
+    /// full ceiling at this radius and fall back to `minimumRoadWidthMM` instead, which there
+    /// means the road does touch the pavement. See
+    /// `onlyTheKnownThreeRouteCornersFallBelowTheRoadwayFloor`, which pins down that this stays
+    /// exactly those three and does not quietly grow.
     static let radiusMeters: CGFloat = 26
 
     /// Below this a line is drawn but cannot reliably be found by a moving finger.
@@ -178,7 +260,12 @@ nonisolated struct IntersectionScene {
     /// Everything is translated so the junction sits at the centre and scaled so the chosen
     /// radius fills the shorter edge. North stays up, and the bearings are whatever the real
     /// streets do — a junction that meets at 43 degrees is drawn at 43 degrees.
-    static func build(junction: Intersection, map: StreetMap, size: CGSize) -> IntersectionScene {
+    ///
+    /// `route`, if given, is the same route the city map overlays — checked here against this
+    /// one junction's real position, so a close-up on the route shows the same stretch of it,
+    /// cut from the same real road geometry, rather than a second, separately-authored line.
+    static func build(junction: Intersection, map: StreetMap, size: CGSize,
+                      route: RouteScene? = nil) -> IntersectionScene {
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         let mm = { PhysicalDimensions.mmToPoints($0) }
 
@@ -258,8 +345,84 @@ nonisolated struct IntersectionScene {
         pieces.append(contentsOf: crossingEnds(of: pieces, sidewalks: sidewalkLines,
                                                sidewalkWidth: sidewalkWidth, mm: mm))
 
+        pieces.append(centerLandmark(of: pieces, at: center))
+
+        if let route {
+            let endpointTolerance = routeEndpointToleranceMeters * map.metrics.pointsPerMeter
+            pieces.append(contentsOf: routePieces(for: junction, route: route, place: place, mm: mm,
+                                                  searchRadius: radiusInContentPoints,
+                                                  endpointTolerance: endpointTolerance))
+        }
+
         return IntersectionScene(junction: junction, pieces: pieces,
                                  size: size, center: center, scale: viewScale)
+    }
+
+    // MARK: Route
+
+    /// How close the route's real departure or destination has to sit to a junction before
+    /// this counts as *the* corner where the walk begins or ends, not merely a corner the
+    /// route happens to pass through nearby. Tight, and deliberately much smaller than
+    /// `radiusMeters`: the landmark belongs to one corner, not every one in the close-up.
+    static let routeEndpointToleranceMeters: CGFloat = 5.0
+
+    /// The stretch(es) of the route that pass near this junction, plus a start or end dot if
+    /// the route's real departure or destination sits close enough to be this corner.
+    ///
+    /// Proximity-based, the same way sidewalks and roads are pulled into a close-up — not
+    /// "is this junction one of the route's authored waypoints," which only the hand-authored
+    /// route has an answer for. A route sourced from outside this app (a routing API's
+    /// response, say) knows nothing about this app's junctions at all; it is still cut from
+    /// the very same leg polylines the city map draws, so a finger that follows the route out
+    /// of a close-up and back onto the overview map is following one continuous piece of
+    /// geometry, not two that happen to line up.
+    private static func routePieces(for junction: Intersection, route: RouteScene,
+                                    place: (CGPoint) -> CGPoint, mm: (CGFloat) -> CGFloat,
+                                    searchRadius: CGFloat, endpointTolerance: CGFloat)
+        -> [IntersectionPiece] {
+        let routeWidth = mm(routeWidthMM)
+        var pieces: [IntersectionPiece] = []
+        for (index, leg) in route.legs.enumerated() where leg.points.count >= 2 {
+            guard distanceToPolyline(junction.position, leg.points) <= searchRadius else { continue }
+            pieces.append(IntersectionPiece(
+                id: "route_leg_\(index)", surface: .route, name: "Route",
+                points: leg.points.map(place), width: routeWidth,
+                hitRadius: max(routeWidth / 2, minimumHitRadius)))
+        }
+
+        let endpointDiameter = mm(routeEndpointDiameterMM)
+        let endpointHitRadius = max(mm(routeEndpointDiameterMM + routeEndpointBorderMM) / 2,
+                                    minimumHitRadius)
+        func isThisCorner(_ position: CGPoint?) -> CGPoint? {
+            guard let position,
+                  hypot(position.x - junction.position.x, position.y - junction.position.y) <= endpointTolerance
+            else { return nil }
+            return position
+        }
+        if let departure = isThisCorner(route.departurePosition) {
+            pieces.append(IntersectionPiece(
+                id: "route_start", surface: .routeEndpoint,
+                name: "Your location. Route to \(route.destinationName).",
+                points: [place(departure)], width: endpointDiameter,
+                hitRadius: endpointHitRadius))
+        }
+        if let destination = isThisCorner(route.destinationPosition) {
+            pieces.append(IntersectionPiece(
+                id: "route_end", surface: .routeEndpoint,
+                name: "End of route.",
+                points: [place(destination)], width: endpointDiameter,
+                hitRadius: endpointHitRadius))
+        }
+
+        let turnDiameter = mm(routeTurnDiameterMM)
+        let turnHitRadius = max(mm(routeTurnDiameterMM + routeTurnBorderMM) / 2, minimumHitRadius)
+        for (index, turn) in route.turns.enumerated()
+        where hypot(turn.x - junction.position.x, turn.y - junction.position.y) <= searchRadius {
+            pieces.append(IntersectionPiece(
+                id: "route_turn_\(index)", surface: .routeTurn, name: "Turn",
+                points: [place(turn)], width: turnDiameter, hitRadius: turnHitRadius))
+        }
+        return pieces
     }
 
     // MARK: Crossings
@@ -451,6 +614,29 @@ nonisolated struct IntersectionScene {
             }
         }
         return dots
+    }
+
+    // MARK: Centre
+
+    /// A landmark at the exact point the crossing roads overlap.
+    ///
+    /// Sweeping a finger across the roadway finds *a* road, but nothing marks the one point that
+    /// is every road at once — the middle of the junction itself, which is where a traveller
+    /// crossing diagonally, or just trying to find the far corner, actually needs to land. So
+    /// this adds a single named point there: silence otherwise reads as "still on some road,"
+    /// not "here is the centre."
+    ///
+    /// Sized to the roadway actually crossing here, not a fixed number — a wide arterial and a
+    /// narrow side street should not share one dead-zone size when only one of them is real at
+    /// this junction. Widest of the roads found, because the overlap a finger has to land in is
+    /// exactly as big as the widest thing crossing through it.
+    private static func centerLandmark(of pieces: [IntersectionPiece], at center: CGPoint)
+        -> IntersectionPiece {
+        let width = pieces.filter { $0.surface == .road }.map(\.width).max()
+            ?? PhysicalDimensions.mmToPoints(minimumRoadWidthMM)
+        return IntersectionPiece(
+            id: "center", surface: .center, name: "Center",
+            points: [center], width: width, hitRadius: max(width / 2, minimumHitRadius))
     }
 
     /// "North sidewalk" — which side of the junction it runs along.

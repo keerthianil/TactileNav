@@ -363,6 +363,8 @@ final class StreetMapCommands {
 struct PortlandMapView: UIViewRepresentable {
 
     let map: StreetMap
+    /// A route to overlay, for a study participant to follow. `nil` is the plain map.
+    var route: RouteScene?
     /// What VoiceOver reads when focus lands on the map — a name, not a description. See
     /// `PortlandStreetScrollView.mapName`.
     var name = "Tactile street map"
@@ -419,6 +421,7 @@ struct PortlandMapView: UIViewRepresentable {
         scrollView.delaysContentTouches = false
 
         container.canvas.map = map
+        container.canvas.route = route
         container.spacer.frame = CGRect(origin: .zero, size: map.contentSize)
         scrollView.contentSize = map.contentSize
         coordinator.container = container
@@ -586,12 +589,14 @@ struct PortlandMapView: UIViewRepresentable {
             let name: String
             let elementType: TactileElementType?
             let kind: String
+            var routeLeg: Int?
             switch probe {
             case .intersection(let junction):
                 name = junction.streetNames.joined(separator: " and ")
                 elementType = .intersection
                 kind = "intersection"
             case .road(let road):
+                routeLeg = parent.route?.leg(at: point)
                 name = road.name
                 elementType = .road
                 kind = "road"
@@ -615,6 +620,9 @@ struct PortlandMapView: UIViewRepresentable {
                     // across devices — the point scale differs with pixel density.
                     "metersX": String(format: "%.1f", point.x / scale),
                     "metersY": String(format: "%.1f", point.y / scale),
+                    // Whether this touch sample landed on the study route, and which leg —
+                    // empty when there is no route on this screen, or the finger is off it.
+                    "routeLeg": routeLeg.map(String.init) ?? "",
                 ]))
         }
 
@@ -920,12 +928,35 @@ struct PortlandMapView: UIViewRepresentable {
         /// inside the feedback controller. That split is what lets a fast sweep feel every
         /// street and junction it crosses while only naming the one the finger settles on.
         private func updateExploration(at point: CGPoint, velocity: CGFloat) {
+            // The route's own start or end outranks everything, a junction included — the one
+            // landmark on the whole map more specific than "you have arrived." Checked first,
+            // for exactly that reason.
+            if let route = parent.route, let endpoint = routeEndpoint(at: point, in: route) {
+                let id = "route_endpoint:\(endpoint.name)"
+                guard id != currentProbeID else { return }
+                currentProbeID = id
+                feedback.enterRoute(identifier: id, announcement: endpoint.announcement)
+                return
+            }
+
             let probe = parent.map.probe(at: point, velocity: velocity)
             currentProbe = probe
 
-            guard probe?.id != currentProbeID else { return }
-            currentProbeID = probe?.id
+            // The route only changes what a plain road feels and sounds like — a junction still
+            // wins over it, exactly as a junction wins over the road beneath it, so this is only
+            // ever checked once the probe has already ruled out being on one.
+            var routeLeg: Int?
+            if case .road = probe { routeLeg = parent.route?.leg(at: point) }
 
+            let effectiveID = routeLeg.map { "route:\($0)" } ?? probe?.id
+            guard effectiveID != currentProbeID else { return }
+            currentProbeID = effectiveID
+
+            if let routeLeg, let route = parent.route {
+                feedback.enterRoute(identifier: "route:\(routeLeg)",
+                                    announcement: route.announcement(forLeg: routeLeg))
+                return
+            }
             switch probe {
             case .intersection(let junction):
                 feedback.enterIntersection(identifier: junction.id, announcement: junction.announcement)
@@ -935,6 +966,22 @@ struct PortlandMapView: UIViewRepresentable {
                 // Empty space is silent: no haptic, nothing spoken.
                 feedback.leaveAll()
             }
+        }
+
+        /// The route's departure or destination, if `point` is within the dot's own hit radius
+        /// of one of them — the same landmark, and the same test, wherever it turns up.
+        private func routeEndpoint(at point: CGPoint, in route: RouteScene)
+            -> (name: String, announcement: String)? {
+            let radius = parent.map.metrics.routeEndpointHitRadius
+            if let departure = route.departurePosition,
+               hypot(point.x - departure.x, point.y - departure.y) <= radius {
+                return ("start", "Your location. Route to \(route.destinationName).")
+            }
+            if let destination = route.destinationPosition,
+               hypot(point.x - destination.x, point.y - destination.y) <= radius {
+                return ("end", "End of route.")
+            }
+            return nil
         }
     }
 }

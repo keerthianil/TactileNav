@@ -25,6 +25,11 @@ final class PortlandStreetCanvasView: UIView {
         didSet { setNeedsDisplay() }
     }
 
+    /// The study route, if this screen is showing one. `nil` draws the plain map.
+    var route: RouteScene? {
+        didSet { setNeedsDisplay() }
+    }
+
     /// Scroll position of the window to draw. Setting it repaints.
     var contentOffset: CGPoint = .zero {
         didSet {
@@ -64,9 +69,19 @@ final class PortlandStreetCanvasView: UIView {
         ctx.translateBy(x: -contentOffset.x, y: -contentOffset.y)
 
         strokeRoads(map.features(in: window), in: ctx)
+        // The route, if there is one, sits above the road it runs on — same order as the
+        // reference app's overlay — and under the junction markers, which stay the one thing
+        // that always wins the top of the stack.
+        strokeRoute(route, in: ctx)
         // Junction markers sit on top of the road network, the way a painted marking does, and
         // under the labels so a street name is never hidden behind a box.
         drawIntersections(map.intersections(in: window), in: ctx)
+        // The route's own landmarks outrank even a junction — same as the close-up, and for
+        // the same reason: they are the things on this map more specific than "you have
+        // arrived." Turns under the ends, so a turn that happens to be the destination reads
+        // as the destination.
+        drawRouteTurns(route, in: ctx)
+        drawRouteEndpoints(route, in: ctx)
         drawLabels(map.labels(in: window), in: ctx)
 
         ctx.restoreGState()
@@ -106,6 +121,55 @@ final class PortlandStreetCanvasView: UIView {
             ctx.move(to: feature.points[0])
             for point in feature.points.dropFirst() { ctx.addLine(to: point) }
             ctx.strokePath()
+        }
+    }
+
+    /// The study route: a thin cyan line over every leg's real road geometry. Never culled to
+    /// the viewport — a route is a handful of legs, not the whole network, so there is nothing
+    /// worth skipping.
+    private func strokeRoute(_ route: RouteScene?, in ctx: CGContext) {
+        guard let route, !route.legs.isEmpty else { return }
+        ctx.setStrokeColor(StreetMapSizing.routeColor)
+        ctx.setLineWidth(PhysicalDimensions.mmToPoints(StreetMapSizing.routeWidthMM))
+        ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
+        ctx.beginPath()
+        for leg in route.legs where leg.points.count >= 2 {
+            ctx.move(to: leg.points[0])
+            for point in leg.points.dropFirst() { ctx.addLine(to: point) }
+        }
+        ctx.strokePath()
+    }
+
+    /// The route's own start and end, marked once each — same yellow dot as the close-up's,
+    /// only ever two of them regardless of how long the route is.
+    private func drawRouteEndpoints(_ route: RouteScene?, in ctx: CGContext) {
+        guard let route else { return }
+        let points = [route.departurePosition, route.destinationPosition].compactMap { $0 }
+        drawRouteDots(points, fill: StreetMapSizing.routeEndpointColor,
+                      stroke: StreetMapSizing.routeEndpointBorderColor, in: ctx)
+    }
+
+    /// Every place the route turns, in orange — the same landmark, and the same colour, as the
+    /// close-up draws, so a turn found on the overview is recognisably the same thing when the
+    /// junction it belongs to is opened.
+    private func drawRouteTurns(_ route: RouteScene?, in ctx: CGContext) {
+        guard let route else { return }
+        drawRouteDots(route.turns, fill: StreetMapSizing.routeTurnColor,
+                      stroke: StreetMapSizing.routeTurnBorderColor, in: ctx)
+    }
+
+    private func drawRouteDots(_ points: [CGPoint], fill: CGColor, stroke: CGColor, in ctx: CGContext) {
+        guard !points.isEmpty else { return }
+        let radius = StreetMapSizing.routeEndpointDiameter / 2
+        let border = max(PhysicalDimensions.mmToPoints(StreetMapSizing.routeEndpointBorderMM), 1)
+        ctx.setFillColor(fill)
+        ctx.setStrokeColor(stroke)
+        ctx.setLineWidth(border)
+        for point in points {
+            let box = CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2)
+            ctx.fillEllipse(in: box)
+            ctx.strokeEllipse(in: box.insetBy(dx: border / 2, dy: border / 2))
         }
     }
 
