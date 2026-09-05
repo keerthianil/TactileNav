@@ -1038,6 +1038,38 @@ struct IntersectionSceneTests {
         #expect(roadNames.contains("High Street"))
     }
 
+    /// The data having sidewalks and crossings is not the same as the canvas actually painting
+    /// them — this renders the real screen and looks at the pixels, and saves the frame so it
+    /// can be looked at directly.
+    @Test func sidewalksAndCrossingsAreActuallyPaintedOnTheCanvas() throws {
+        let map = try loadMap()
+        let junction = try congressAtHigh(map)
+        let scene = IntersectionScene.build(junction: junction, map: map, size: size)
+        let image = try Self.render(scene)
+
+        let cgImage = try #require(image.cgImage)
+        var pixels = [UInt8](repeating: 0, count: cgImage.width * cgImage.height * 4)
+        let ctx = try #require(CGContext(
+            data: &pixels, width: cgImage.width, height: cgImage.height,
+            bitsPerComponent: 8, bytesPerRow: cgImage.width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height))
+
+        var grey = 0, pink = 0
+        for index in stride(from: 0, to: pixels.count, by: 4) {
+            let r = Int(pixels[index]), g = Int(pixels[index + 1]), b = Int(pixels[index + 2])
+            if abs(r - g) < 14, abs(g - b) < 14, (110...190).contains(r) { grey += 1 }       // sidewalk
+            if r > 200, g < 100, b > 60, b < 160 { pink += 1 }                               // kerb dot
+        }
+        #expect(grey > 0, "no sidewalk-grey pixels were painted")
+        #expect(pink > 0, "no kerb-dot pixels were painted")
+
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        try #require(image.pngData()).write(to: dir.appendingPathComponent("intersection_render.png"))
+        print("INTERSECTION_RENDER_DIR \(dir.path)")
+    }
+
     /// The arms run at their true bearings — this is not a schematic plus.
     @Test func theArmsRunAtTheirRealBearings() throws {
         let map = try loadMap()
@@ -1079,8 +1111,8 @@ struct IntersectionSceneTests {
         #expect(found.contains("sidewalk"))
         #expect(found.contains("crossing"))
 
-        // The middle of a junction is roadway.
-        #expect(scene.piece(at: scene.center)?.surface == .road)
+        // The exact middle of a junction is its own named landmark, not just "some road."
+        #expect(scene.piece(at: scene.center)?.surface == .center)
 
         // And there is blank ground between the arms. Not a specific corner — the streets here
         // run at an angle and one of them really does cross the top-left — but somewhere.
@@ -1118,8 +1150,32 @@ struct IntersectionSceneTests {
                 #expect(piece.points.count == 1)
                 #expect(abs(piece.width - PhysicalDimensions.mmToPoints(IntersectionScene.crossingEndDiameterMM)) < 0.01)
                 #expect(piece.name.hasPrefix("Kerb"))
+            case .center:
+                // A single named point, sized to the widest roadway crossing here.
+                #expect(piece.points.count == 1)
+                #expect(piece.width >= PhysicalDimensions.mmToPoints(IntersectionScene.minimumRoadWidthMM) - 0.01)
+                #expect(piece.name == "Center")
+            case .route, .routeEndpoint, .routeTurn:
+                // This scene was built with no route, so none of these can actually appear
+                // here — see `RouteInIntersectionCloseUpTests` for the route-built cases.
+                Issue.record(Comment(rawValue: "a route piece appeared on a scene built without a route"))
             }
         }
+    }
+
+    /// The centre is a landmark, not a road you happen to be standing in the middle of.
+    @Test func theJunctionCentreIsItsOwnLandmark() throws {
+        let map = try loadMap()
+        let scene = IntersectionScene.build(junction: try congressAtHigh(map), map: map, size: size)
+
+        let center = try #require(scene.piece(at: scene.center))
+        #expect(center.surface == .center)
+        #expect(center.name == "Center")
+
+        // It outranks the roadway underneath it, but not so wide that a finger a full lane away
+        // still reads as "centre" instead of "roadway."
+        let widestRoad = scene.pieces.filter { $0.surface == .road }.map(\.width).max() ?? 0
+        #expect(abs(center.width - widestRoad) < 0.01)
     }
 
     /// The waiting dots — the pink markers where a crossing meets each pavement.
@@ -1250,7 +1306,7 @@ struct IntersectionSceneTests {
 
         let scene = try #require(view.scene)
         view.explore(at: scene.center)
-        #expect(view.currentSurface == .road, "the roadway gave no feedback")
+        #expect(view.currentSurface == .center, "the junction centre gave no feedback")
 
         // A point on a real sidewalk in this scene.
         let sidewalk = try #require(scene.pieces.first { $0.surface == .sidewalk })
@@ -1475,5 +1531,515 @@ struct IntersectionSceneTests {
         #expect(text.contains("High Street"))
         // The arms are given with a compass direction, which is the thing a traveller needs.
         #expect(text.contains("to the "))
+    }
+
+    /// The 12mm ceiling only matters where a corner can actually support it without the road
+    /// eating the pavement beside it — and at `radiusMeters` = 26 m, three real road/sidewalk
+    /// pairs on the study route cannot: Fore Street at Silver Street (as tight as 3.2 mm of
+    /// real clearance) and two pairs at Fore Street and Market Street (4.4 mm and 5.7 mm). This
+    /// was checked and reported before being accepted — a 16 m radius clears all three, but
+    /// was traded back for the wider overview at 26 m. The road holds `minimumRoadWidthMM`
+    /// there regardless, which is what actually overlaps the pavement — a known, deliberate
+    /// exception, not a bug this test is failing to catch.
+    ///
+    /// So this does not assert zero overlap. It asserts the overlap is exactly this one,
+    /// already-seen list — anywhere else on the route, or any corner beyond these three at
+    /// Silver and Market, is a real regression and should fail here.
+    @Test func onlyTheKnownThreeRouteCornersFallBelowTheRoadwayFloor() throws {
+        let map = try loadMap()
+        let mmPerPoint = 1 / PhysicalDimensions.mmToPoints(1)
+        let sidewalkWidth = PhysicalDimensions.mmToPoints(IntersectionScene.sidewalkWidthMM)
+        let gap = PhysicalDimensions.mmToPoints(IntersectionScene.kerbGapMM)
+        let screenSize = CGSize(width: 390, height: 844)
+
+        func clearanceMM(_ road: IntersectionPiece, sidewalks: [[CGPoint]]) -> CGFloat {
+            let limit = IntersectionScene.roadWidthLimit(
+                centreline: road.points, sidewalks: sidewalks,
+                sidewalkWidth: sidewalkWidth, gap: gap)
+            return limit.isFinite ? limit * mmPerPoint : .infinity
+        }
+
+        // Accepted exceptions: (junction street names, how many road/sidewalk pairs there fall
+        // below the floor). Anything not on this list has to clear it.
+        let acceptedShortfalls: [Set<String>: Int] = [
+            ["Fore Street", "Silver Street"]: 1,
+            ["Fore Street", "Market Street"]: 2,
+        ]
+        var actualShortfalls: [Set<String>: Int] = [:]
+
+        for spec in ForeStreetStudyRoute.waypoints {
+            guard let junction = map.intersections.first(where: { Set($0.streetNames) == spec.streetNames })
+            else { continue }
+            let scene = IntersectionScene.build(junction: junction, map: map, size: screenSize)
+            let sidewalks = scene.pieces.filter { $0.surface == .sidewalk }.map(\.points)
+            for road in scene.pieces where road.surface == .road {
+                let mm = clearanceMM(road, sidewalks: sidewalks)
+                guard mm < IntersectionScene.minimumRoadWidthMM else { continue }
+                let key = Set(junction.streetNames)
+                actualShortfalls[key, default: 0] += 1
+                #expect(acceptedShortfalls[key] != nil,
+                        "\(road.name) at \(junction.announcement) newly clears only \(mm)mm — not one of the known exceptions")
+            }
+        }
+        for (streets, count) in acceptedShortfalls {
+            #expect(actualShortfalls[streets] == count,
+                    "expected \(count) shortfall(s) at \(streets), found \(actualShortfalls[streets] ?? 0)")
+        }
+
+        // The rest of the extract: allowed a handful of exceptions, not a normal case.
+        var checked = 0, underFloor = 0
+        for junction in map.intersections {
+            let scene = IntersectionScene.build(junction: junction, map: map, size: screenSize)
+            let sidewalks = scene.pieces.filter { $0.surface == .sidewalk }.map(\.points)
+            for road in scene.pieces where road.surface == .road {
+                checked += 1
+                if clearanceMM(road, sidewalks: sidewalks) < IntersectionScene.minimumRoadWidthMM {
+                    underFloor += 1
+                }
+            }
+        }
+        // 55 of 1,941 (2.8%) at the current 26 m radius — measured, not guessed. A generous
+        // multiple of that, so a real jump in how often the floor is needed still fails here.
+        #expect(underFloor * 10 < checked, "far more than the measured ~3% of corners can't clear the floor")
+    }
+
+}
+
+// MARK: - Route
+
+@MainActor
+struct RouteModelTests {
+
+    private func loadMap() throws -> StreetMap {
+        try PortlandMapLoader.loadStreetMap(context: PortlandMapLoader.LoadContext.current())
+    }
+
+    /// The bundled GeoJSON stand-in for a routing API's response has to land inside the actual
+    /// map, not just decode — a projection bug puts every point somewhere real, just the
+    /// wrong somewhere, which nothing but a bounds check would catch.
+    /// A turn has to be a turn, not a vertex.
+    ///
+    /// The reference app can treat every non-collinear vertex as a corner because its routes
+    /// are hand-drawn from two or three points. Ours are stitched out of real pavement, where
+    /// consecutive vertices disagree by tens of degrees all along a straight block — testing
+    /// neighbours found nine "turns" on a route that runs dead straight down one street. This
+    /// pins the property that actually matters: far fewer turns than vertices, every one of
+    /// them sitting on the route itself, and none of them stacked on top of another.
+    @Test func turnsAreCornersRatherThanEveryVertex() throws {
+        let map = try loadMap()
+        for route in [try #require(ForeStreetStudyRoute.build(map: map)),
+                      try #require(GeoJSONRoute.build(
+                        resource: "route_1_Hyatt_Place_To_Bangor_Savings_Bank",
+                        departureName: "Hyatt Place", destinationName: "Bangor Savings Bank",
+                        map: map))] {
+            let path = route.legs.flatMap(\.points)
+            let turns = route.turns
+            #expect(turns.count * 4 < path.count,
+                    "\(turns.count) turns out of \(path.count) vertices — that is vertex noise, not corners")
+
+            let onRoute = IntersectionScene.routeTurnMergeMeters * map.metrics.pointsPerMeter
+            for turn in turns {
+                #expect(distanceToPolyline(turn, path) <= onRoute, "a turn was marked off the route")
+            }
+            let merge = IntersectionScene.routeTurnMergeMeters * map.metrics.pointsPerMeter
+            for (index, turn) in turns.enumerated() {
+                for other in turns.dropFirst(index + 1) {
+                    #expect(hypot(turn.x - other.x, turn.y - other.y) > merge,
+                            "two turn dots landed on top of each other")
+                }
+            }
+        }
+    }
+
+    @Test func theGeoJSONRouteProjectsOntoTheRealMap() throws {
+        let map = try loadMap()
+        #expect(map.geographicProjection != nil, "the map was built without bbox metadata")
+
+        let route = try #require(GeoJSONRoute.build(
+            resource: "route_1_Hyatt_Place_To_Bangor_Savings_Bank",
+            departureName: "Hyatt Place", destinationName: "Bangor Savings Bank", map: map))
+
+        #expect(route.legs.count == 1)
+        let points = try #require(route.legs.first).points
+        #expect(points.count > 2, "the geojson had only its two endpoints, not a real path")
+
+        let mapBounds = CGRect(origin: .zero, size: map.contentSize).insetBy(dx: -500, dy: -500)
+        for point in points {
+            #expect(mapBounds.contains(point),
+                    "\(point) is nowhere near the map's own content area \(map.contentSize) — the projection is wrong")
+        }
+
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let size = CGSize(width: 900, height: 900)
+        let center = polylineMidpoint(points)
+        let canvas = PortlandStreetCanvasView(frame: CGRect(origin: .zero, size: size))
+        canvas.map = map
+        canvas.route = route
+        canvas.contentOffset = CGPoint(x: center.x - size.width / 2, y: center.y - size.height / 2)
+        let image = UIGraphicsImageRenderer(size: size).image { _ in canvas.draw(canvas.bounds) }
+        try #require(image.pngData()).write(to: dir.appendingPathComponent("geojson_route_render.png"))
+        print("GEOJSON_ROUTE_DIR \(dir.path)")
+    }
+
+    /// The route has to actually exist against the real map before anything else about it
+    /// matters — every waypoint a real junction, every leg a real stretch of road connecting
+    /// two consecutive ones.
+    @Test func theStudyRouteResolvesAgainstTheRealMap() throws {
+        let map = try loadMap()
+        let route = try #require(ForeStreetStudyRoute.build(map: map),
+                                 "the study route did not resolve against the loaded map")
+
+        #expect(route.departureName == "Fore Street and Pearl Street")
+        #expect(route.destinationName == "Fore Street and Union Street")
+        // One leg between each pair of consecutive waypoints.
+        #expect(route.legs.count == ForeStreetStudyRoute.waypoints.count - 1)
+
+        for leg in route.legs {
+            #expect(leg.points.count >= 2, "\(leg.streetName) has no drawable geometry")
+        }
+        // Every leg runs along Fore Street — this route never leaves it.
+        #expect(route.legs.allSatisfy { $0.streetName == "Fore Street" })
+    }
+
+    /// Each leg's polyline has to actually run between its two waypoints, in the right order —
+    /// a leg that runs the wrong way round would draw correctly but announce arriving before
+    /// departing.
+    @Test func eachLegRunsFromItsWaypointToTheNext() throws {
+        let map = try loadMap()
+        let route = try #require(ForeStreetStudyRoute.build(map: map))
+
+        let junctions = try ForeStreetStudyRoute.waypoints.map { spec in
+            try #require(map.intersections.first { Set($0.streetNames) == spec.streetNames },
+                        "no real junction matches \(spec.streetNames)")
+        }
+
+        // A leg ends at the real sidewalk nearest its waypoint, not at the waypoint's own
+        // position — so "close enough" is the same real-world matching distance the geometry
+        // itself is built against, not an arbitrary point count.
+        let closeEnough = 20 * map.metrics.pointsPerMeter
+        for (index, leg) in route.legs.enumerated() {
+            let start = try #require(leg.points.first)
+            let end = try #require(leg.points.last)
+            #expect(hypot(start.x - junctions[index].position.x, start.y - junctions[index].position.y) <= closeEnough,
+                    "leg \(index) does not start at its waypoint")
+            #expect(hypot(end.x - junctions[index + 1].position.x, end.y - junctions[index + 1].position.y) <= closeEnough,
+                    "leg \(index) does not end at the next waypoint")
+        }
+    }
+
+    /// A finger on the route feels the route, not a plain road — and a finger a block away,
+    /// still on Fore Street but off this route, feels the plain road.
+    @Test func aFingerOnTheRouteFindsItsLeg() throws {
+        let map = try loadMap()
+        let route = try #require(ForeStreetStudyRoute.build(map: map))
+
+        let midpoint = try #require(route.legs.first).points
+        let onRoute = polylineMidpoint(midpoint)
+        #expect(route.leg(at: onRoute) == 0)
+
+        // Far from every leg: the middle of the map's whole content area is not on Fore Street
+        // at all, let alone on this specific stretch of it.
+        let farAway = CGPoint(x: map.contentSize.width * 0.02, y: map.contentSize.height * 0.02)
+        #expect(route.leg(at: farAway) == nil)
+    }
+
+    @Test func theFirstLegAnnouncesTheDestinationAndLaterLegsJustSayRoute() throws {
+        let map = try loadMap()
+        let route = try #require(ForeStreetStudyRoute.build(map: map))
+
+        #expect(route.announcement(forLeg: 0).contains("Fore Street and Union Street"))
+        #expect(route.announcement(forLeg: 1) == "Route")
+    }
+
+    /// The route actually has to show up on the canvas, in its own colour — not just resolve
+    /// correctly as data. Renders a window centred on the first leg and looks for cyan
+    /// (`StreetMapSizing.routeColor`, high green *and* blue, unlike the road's dark blue, which
+    /// is low-green) rather than reusing the map's own blue/grey/white classifier, which the
+    /// route's colour would otherwise be counted under as "road."
+    @Test func theRouteIsActuallyDrawnOnTheCanvas() throws {
+        let map = try loadMap()
+        let route = try #require(ForeStreetStudyRoute.build(map: map))
+        let firstLeg = try #require(route.legs.first)
+        let center = polylineMidpoint(firstLeg.points)
+
+        let size = CGSize(width: 500, height: 500)
+        let canvas = PortlandStreetCanvasView(frame: CGRect(origin: .zero, size: size))
+        canvas.map = map
+        canvas.route = route
+        canvas.contentOffset = CGPoint(x: center.x - size.width / 2, y: center.y - size.height / 2)
+
+        let image = UIGraphicsImageRenderer(size: size).image { _ in
+            canvas.draw(canvas.bounds)
+        }
+        let cgImage = try #require(image.cgImage)
+        var pixels = [UInt8](repeating: 0, count: cgImage.width * cgImage.height * 4)
+        let ctx = try #require(CGContext(
+            data: &pixels, width: cgImage.width, height: cgImage.height,
+            bitsPerComponent: 8, bytesPerRow: cgImage.width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height))
+
+        var cyanPixels = 0
+        for index in stride(from: 0, to: pixels.count, by: 4) {
+            let r = Int(pixels[index]), g = Int(pixels[index + 1]), b = Int(pixels[index + 2])
+            if g > 150, b > 150, r < 150 { cyanPixels += 1 }
+        }
+        #expect(cyanPixels > 0, "no route-coloured pixels were drawn near the first leg")
+
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        try #require(image.pngData()).write(to: dir.appendingPathComponent("route_render.png"))
+        print("ROUTE_RENDER_DIR \(dir.path)")
+    }
+
+    /// The route's departure and destination each get a yellow landmark dot directly on the
+    /// overview map — not only inside an intersection close-up, since a route's real endpoint
+    /// (a building, say) may not be at a junction at all. One dot per end, painted where the
+    /// route actually starts and stops.
+    @Test func theRoutesDepartureAndDestinationAreLandmarkedOnTheOverviewMap() throws {
+        let map = try loadMap()
+        let route = try #require(GeoJSONRoute.build(
+            resource: "route_1_Hyatt_Place_To_Bangor_Savings_Bank",
+            departureName: "Hyatt Place", destinationName: "Bangor Savings Bank", map: map))
+        let departure = try #require(route.departurePosition)
+        let destination = try #require(route.destinationPosition)
+
+        func yellowPixelCount(centeredOn point: CGPoint) throws -> Int {
+            let size = CGSize(width: 200, height: 200)
+            let canvas = PortlandStreetCanvasView(frame: CGRect(origin: .zero, size: size))
+            canvas.map = map
+            canvas.route = route
+            canvas.contentOffset = CGPoint(x: point.x - size.width / 2, y: point.y - size.height / 2)
+            let image = UIGraphicsImageRenderer(size: size).image { _ in canvas.draw(canvas.bounds) }
+            let cgImage = try #require(image.cgImage)
+            var pixels = [UInt8](repeating: 0, count: cgImage.width * cgImage.height * 4)
+            let ctx = try #require(CGContext(
+                data: &pixels, width: cgImage.width, height: cgImage.height,
+                bitsPerComponent: 8, bytesPerRow: cgImage.width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height))
+            var count = 0
+            for index in stride(from: 0, to: pixels.count, by: 4) {
+                let r = Int(pixels[index]), g = Int(pixels[index + 1]), b = Int(pixels[index + 2])
+                if r > 200, g > 180, b < 60 { count += 1 }
+            }
+            return count
+        }
+
+        #expect(try yellowPixelCount(centeredOn: departure) > 0, "no yellow dot at the departure")
+        #expect(try yellowPixelCount(centeredOn: destination) > 0, "no yellow dot at the destination")
+
+        let size = CGSize(width: 300, height: 300)
+        let canvas = PortlandStreetCanvasView(frame: CGRect(origin: .zero, size: size))
+        canvas.map = map
+        canvas.route = route
+        canvas.contentOffset = CGPoint(x: departure.x - size.width / 2, y: departure.y - size.height / 2)
+        let image = UIGraphicsImageRenderer(size: size).image { _ in canvas.draw(canvas.bounds) }
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        try #require(image.pngData()).write(to: dir.appendingPathComponent("landmark_departure.png"))
+        print("LANDMARK_DIR \(dir.path)")
+    }
+}
+
+// MARK: - Route inside the intersection close-up
+
+@MainActor
+struct RouteInIntersectionCloseUpTests {
+
+    private let size = CGSize(width: 390, height: 844)
+
+    private func loadMap() throws -> StreetMap {
+        try PortlandMapLoader.loadStreetMap(context: PortlandMapLoader.LoadContext.current())
+    }
+
+    private func junction(_ streetNames: Set<String>, in map: StreetMap) throws -> Intersection {
+        try #require(map.intersections.first { Set($0.streetNames) == streetNames })
+    }
+
+    /// A route this app never authored — a GeoJSON stand-in for a routing API's response,
+    /// which knows nothing about this app's junctions — still shows up correctly in a
+    /// close-up, because that is proximity to the real geometry, not membership in an
+    /// authored waypoint list. This is the case `ForeStreetStudyRoute` alone could not prove:
+    /// its own legs were built to end exactly at a junction, so an exact-match implementation
+    /// would have passed that test and still failed here.
+    @Test func aRouteWithNoAuthoredWaypointsStillShowsUpNearARealJunction() throws {
+        let map = try loadMap()
+        let route = try #require(GeoJSONRoute.build(
+            resource: "route_1_Hyatt_Place_To_Bangor_Savings_Bank",
+            departureName: "Hyatt Place", destinationName: "Bangor Savings Bank", map: map))
+
+        let customHouseAndFore = try junction(["Custom House Street", "Fore Street"], in: map)
+        let scene = IntersectionScene.build(junction: customHouseAndFore, map: map, size: size, route: route)
+        let routePieces = scene.pieces.filter { $0.surface == .route }
+        #expect(!routePieces.isEmpty, "the imported route passes near this junction but was not shown")
+        for piece in routePieces {
+            #expect(piece.points.count >= 2, "\(piece.id) has no drawable route geometry")
+        }
+    }
+
+    /// Every waypoint's announcement has to say the shape that junction actually is — a real
+    /// three-way is not a four-way with a street missing, and getting this wrong is exactly
+    /// the kind of thing that reads as broken to someone who cannot see the drawing to check.
+    /// Checked against the real leg count OpenStreetMap gives each one, not asserted from a
+    /// list — a change to the extract that altered a junction's shape would be caught here.
+    @Test func everyRouteWaypointAnnouncesItsRealShape() throws {
+        let map = try loadMap()
+        let shapeWords: [Int: String] = [2: "Two-way", 3: "Three-way", 4: "Four-way",
+                                         5: "Five-way", 6: "Six-way"]
+        for spec in ForeStreetStudyRoute.waypoints {
+            let point = try junction(spec.streetNames, in: map)
+            let expectedShape = try #require(shapeWords[point.legs.count],
+                                             "\(point.streetNames) has an unhandled leg count \(point.legs.count)")
+            #expect(point.announcement.hasPrefix(expectedShape),
+                    "\(point.streetNames) has \(point.legs.count) legs but announces \(point.announcement), not \(expectedShape)")
+        }
+    }
+
+    /// Every waypoint on the route shows the route inside its close-up too — the stretch(es)
+    /// of roadway it actually follows, cut from the same geometry as the city map's overlay.
+    /// A waypoint in the middle of the route touches two legs (arriving and leaving); the two
+    /// ends touch only one.
+    @Test func everyWaypointsCloseUpShowsTheRoutePassingThrough() throws {
+        let map = try loadMap()
+        let route = try #require(ForeStreetStudyRoute.build(map: map))
+
+        for (index, spec) in ForeStreetStudyRoute.waypoints.enumerated() {
+            let point = try junction(spec.streetNames, in: map)
+            let scene = IntersectionScene.build(junction: point, map: map, size: size, route: route)
+            let routePieces = scene.pieces.filter { $0.surface == .route }
+
+            // The leg(s) immediately touching this waypoint always have to be present — one at
+            // either end of the route, two everywhere in between. Proximity can add a further
+            // leg beyond that (a short block can bring a third one within the close-up's own
+            // search radius, the same way it can for a road or a sidewalk), so this checks the
+            // required legs are there rather than asserting an exact, brittle total.
+            let expectedLegIndices = Set(route.legIndices(at: index))
+            let shownLegIndices = Set(routePieces.compactMap { piece -> Int? in
+                guard piece.id.hasPrefix("route_leg_") else { return nil }
+                return Int(piece.id.dropFirst("route_leg_".count))
+            })
+            #expect(expectedLegIndices.isSubset(of: shownLegIndices),
+                    "\(point.streetNames) is missing leg(s) \(expectedLegIndices.subtracting(shownLegIndices))")
+            for piece in routePieces {
+                #expect(piece.points.count >= 2, "\(piece.id) has no drawable route geometry")
+            }
+        }
+    }
+
+    /// The route's start gets a yellow dot that speaks where it goes; the end gets one that
+    /// says the walk is over; every waypoint in between gets neither.
+    @Test func onlyTheDepartureAndDestinationGetTheYellowDot() throws {
+        let map = try loadMap()
+        let route = try #require(ForeStreetStudyRoute.build(map: map))
+
+        for (index, spec) in ForeStreetStudyRoute.waypoints.enumerated() {
+            let point = try junction(spec.streetNames, in: map)
+            let scene = IntersectionScene.build(junction: point, map: map, size: size, route: route)
+            let endpoints = scene.pieces.filter { $0.surface == .routeEndpoint }
+
+            if index == 0 {
+                #expect(endpoints.count == 1, "the departure has no yellow dot")
+                #expect(endpoints.first?.name.contains("Your location") == true)
+                #expect(endpoints.first?.name.contains(route.destinationName) == true)
+            } else if index == ForeStreetStudyRoute.waypoints.count - 1 {
+                #expect(endpoints.count == 1, "the destination has no yellow dot")
+                #expect(endpoints.first?.name.contains("End of route") == true)
+            } else {
+                #expect(endpoints.isEmpty, "\(point.streetNames) has a yellow dot but is not an endpoint")
+            }
+        }
+    }
+
+    /// A finger on the route line feels the route, not the plain road underneath it — and at
+    /// the departure, a finger at the exact centre finds the yellow dot, not the plain centre
+    /// landmark that would otherwise be there.
+    @Test func theRouteAndItsEndpointWinTheHitTestOverWhatIsBeneathThem() throws {
+        let map = try loadMap()
+        let route = try #require(ForeStreetStudyRoute.build(map: map))
+        let departure = try junction(ForeStreetStudyRoute.waypoints[0].streetNames, in: map)
+        let scene = IntersectionScene.build(junction: departure, map: map, size: size, route: route)
+
+        #expect(scene.piece(at: scene.center)?.surface == .routeEndpoint)
+
+        let routeLeg = try #require(scene.pieces.first { $0.surface == .route })
+        let onRoute = polylineMidpoint(routeLeg.points)
+        #expect(scene.piece(at: onRoute)?.surface == .route)
+    }
+
+    /// A junction the route does not pass through gets none of this — the feature has to be
+    /// opt-in per junction, not something that leaks onto every close-up once a route exists.
+    @Test func aJunctionOffTheRouteGetsNoRouteGeometryAtAll() throws {
+        let map = try loadMap()
+        let route = try #require(ForeStreetStudyRoute.build(map: map))
+        let congressAtHigh = try junction(["Congress Street", "High Street"], in: map)
+        let scene = IntersectionScene.build(junction: congressAtHigh, map: map, size: size, route: route)
+
+        #expect(!scene.pieces.contains { $0.surface == .route || $0.surface == .routeEndpoint })
+    }
+
+    private func render(_ scene: IntersectionScene) -> UIImage {
+        let canvas = IntersectionCanvasView(frame: CGRect(origin: .zero, size: scene.size))
+        canvas.scene = scene
+        return UIGraphicsImageRenderer(size: scene.size).image { _ in
+            canvas.draw(canvas.bounds)
+        }
+    }
+
+    private func countPixels(of image: UIImage, matching test: ((r: Int, g: Int, b: Int)) -> Bool) throws -> Int {
+        let cgImage = try #require(image.cgImage)
+        var pixels = [UInt8](repeating: 0, count: cgImage.width * cgImage.height * 4)
+        let ctx = try #require(CGContext(
+            data: &pixels, width: cgImage.width, height: cgImage.height,
+            bitsPerComponent: 8, bytesPerRow: cgImage.width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height))
+
+        var count = 0
+        for index in stride(from: 0, to: pixels.count, by: 4) {
+            if test((Int(pixels[index]), Int(pixels[index + 1]), Int(pixels[index + 2]))) { count += 1 }
+        }
+        return count
+    }
+
+    /// The route actually paints, in its own colours, at both a route end and a waypoint in
+    /// the middle of it — cyan for the road it follows, and yellow only at the end. Rendered
+    /// and saved rather than only measured in pixels, so the drawing can be looked at directly.
+    @Test func theRouteAndItsYellowDotAreActuallyPaintedOnTheCloseUp() throws {
+        let map = try loadMap()
+        let route = try #require(ForeStreetStudyRoute.build(map: map))
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+
+        let departure = try junction(ForeStreetStudyRoute.waypoints[0].streetNames, in: map)
+        let departureImage = render(IntersectionScene.build(junction: departure, map: map,
+                                                            size: size, route: route))
+        try #require(departureImage.pngData())
+            .write(to: dir.appendingPathComponent("route_closeup_departure.png"))
+        let cyanAtDeparture = try countPixels(of: departureImage) { $0.g > 150 && $0.b > 150 && $0.r < 150 }
+        let yellowAtDeparture = try countPixels(of: departureImage) { $0.r > 200 && $0.g > 190 && $0.b < 40 }
+        #expect(cyanAtDeparture > 0, "no route-coloured pixels at the departure")
+        #expect(yellowAtDeparture > 0, "no yellow dot painted at the departure")
+
+        let mid = try junction(ForeStreetStudyRoute.waypoints[2].streetNames, in: map)
+        let midImage = render(IntersectionScene.build(junction: mid, map: map, size: size, route: route))
+        try #require(midImage.pngData())
+            .write(to: dir.appendingPathComponent("route_closeup_mid.png"))
+        let cyanAtMid = try countPixels(of: midImage) { $0.g > 150 && $0.b > 150 && $0.r < 150 }
+        let yellowAtMid = try countPixels(of: midImage) { $0.r > 200 && $0.g > 190 && $0.b < 40 }
+        #expect(cyanAtMid > 0, "no route-coloured pixels at a mid-route waypoint")
+        #expect(yellowAtMid == 0, "a mid-route waypoint painted a yellow dot it should not have")
+
+        let destination = try junction(ForeStreetStudyRoute.waypoints.last!.streetNames, in: map)
+        let destinationImage = render(IntersectionScene.build(junction: destination, map: map,
+                                                               size: size, route: route))
+        try #require(destinationImage.pngData())
+            .write(to: dir.appendingPathComponent("route_closeup_destination.png"))
+        let cyanAtDestination = try countPixels(of: destinationImage) { $0.g > 150 && $0.b > 150 && $0.r < 150 }
+        let yellowAtDestination = try countPixels(of: destinationImage) { $0.r > 200 && $0.g > 190 && $0.b < 40 }
+        #expect(cyanAtDestination > 0, "no route-coloured pixels at the destination")
+        #expect(yellowAtDestination > 0, "no yellow dot painted at the destination")
+
+        print("ROUTE_CLOSEUP_DIR \(dir.path)")
     }
 }

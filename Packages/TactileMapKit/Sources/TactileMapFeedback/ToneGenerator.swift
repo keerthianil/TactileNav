@@ -106,6 +106,46 @@ public final class ToneGenerator {
 
     // MARK: - Stop
 
+    // MARK: - Repeating click
+
+    /// Play a repeating two-component click — a short percussive tick rather than a tone.
+    ///
+    /// A sine long enough to have a pitch reads as a *note*; painted markings under a finger
+    /// want something that reads as an *edge*. This is the reference app's crosswalk click: a
+    /// low body for weight and an octave-up snap for the attack, both decaying inside about a
+    /// hundredth of a second, so a run of them reads as a row of discrete marks rather than a
+    /// warble.
+    ///
+    /// - Parameters:
+    ///   - bodyFrequency:  Lower component, carrying the click's weight.
+    ///   - snapFrequency:  Upper component, carrying its attack. Decays faster than the body.
+    ///   - duration:       Length of one click in seconds.
+    ///   - interval:       Time between the start of successive clicks.
+    ///   - amplitude:      Peak amplitude 0.0 ... 1.0.
+    public func playRepeatingClick(
+        bodyFrequency: Double = 820,
+        snapFrequency: Double = 1640,
+        duration: Double = 0.012,
+        interval: TimeInterval = 0.17,
+        amplitude: Float = 0.14
+    ) {
+        stop()
+        guard isEngineRunning else { return }
+        guard let buffer = synthesizeClickBuffer(bodyFrequency: bodyFrequency, snapFrequency: snapFrequency,
+                                                 duration: duration, amplitude: amplitude) else { return }
+
+        scheduleBuffer(buffer)
+        repeatTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] timer in
+            Task { @MainActor in
+                guard let self else {
+                    timer.invalidate()
+                    return
+                }
+                self.scheduleBuffer(buffer)
+            }
+        }
+    }
+
     /// Stop any playing or repeating tone.
     public func stop() {
         repeatTimer?.invalidate()
@@ -158,6 +198,30 @@ public final class ToneGenerator {
             channelData[frame] = sample * amplitude
         }
 
+        return buffer
+    }
+
+    /// One click: body plus a faster-decaying octave-up snap, no fade-in.
+    ///
+    /// Deliberately *not* using `synthesizeBuffer`'s 5 ms fade — at 12 ms long, a 5 ms ramp in
+    /// and out would leave almost no click at all, and the instant onset is the whole point of
+    /// a tick. The exponential decay is what keeps it from popping instead.
+    private func synthesizeClickBuffer(bodyFrequency: Double, snapFrequency: Double,
+                                       duration: Double, amplitude: Float) -> AVAudioPCMBuffer? {
+        let sampleRate = format.sampleRate
+        let frameCount = AVAudioFrameCount(sampleRate * duration)
+        guard frameCount > 0, let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount)
+        else { return nil }
+        buffer.frameLength = frameCount
+        guard let channelData = buffer.floatChannelData?[0] else { return nil }
+
+        for frame in 0..<Int(frameCount) {
+            let time = Double(frame) / sampleRate
+            let envelope = exp(-time * 280)
+            let body = sin(2.0 * .pi * bodyFrequency * time) * 0.6
+            let snap = sin(2.0 * .pi * snapFrequency * time) * 0.4 * exp(-time * 520)
+            channelData[frame] = Float((body + snap) * envelope) * amplitude
+        }
         return buffer
     }
 
