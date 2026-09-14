@@ -195,4 +195,48 @@ final class TactileNavUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Street Crossing Audio"].waitForExistence(timeout: 20))
         attach(app, named: "03-intersection")
     }
+    /// The whole explorer loop: ask for a place, go to it, come back, ask for another.
+    ///
+    /// The return leg is the part worth a test. This app has twice shipped a push-after-pop that
+    /// emptied the navigation stack out to the home screen, so a second search after a first one
+    /// is exactly the shape that has failed before.
+    @MainActor
+    func testSearchingForAPlaceOpensItAndComingBackLetsYouSearchAgain() throws {
+        let app = launch()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Portland Explorer"))
+            .firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Portland Explorer"].waitForExistence(timeout: 20))
+
+        let field = app.textFields["Search Portland"]
+        XCTAssertTrue(field.waitForExistence(timeout: 20), "the search field never appeared")
+
+        field.tap()
+        field.typeText("congress and high")
+
+        let result = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "Congress Street and High Street")).firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 10), "the junction was not found")
+        result.tap()
+
+        XCTAssertTrue(app.navigationBars["Congress Street and High Street"]
+            .waitForExistence(timeout: 10), "the explorer map did not open")
+
+        app.navigationBars["Congress Street and High Street"].buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Portland Explorer"].waitForExistence(timeout: 10),
+                      "going back did not return to the search")
+        XCTAssertFalse(app.navigationBars["TactileNav"].exists,
+                       "going back fell through to the home screen")
+
+        // And a second, different place still works — the stack is intact.
+        field.tap()
+        field.typeText(XCUIKeyboardKey.delete.rawValue)
+        let second = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", "Congress Street")).firstMatch
+        XCTAssertTrue(second.waitForExistence(timeout: 10))
+        second.tap()
+        XCTAssertTrue(app.navigationBars.element(boundBy: 0).waitForExistence(timeout: 10))
+        XCTAssertFalse(app.navigationBars["TactileNav"].exists,
+                       "opening a second place landed on the home screen")
+    }
+
 }

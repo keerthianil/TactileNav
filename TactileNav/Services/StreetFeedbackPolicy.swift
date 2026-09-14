@@ -364,6 +364,21 @@ final class StreetFeedbackController {
         speech.speak(announcement)
     }
 
+    /// A finger has found the place the map was sent to.
+    ///
+    /// A fast pulse — the reference app's landmark signature. It has to be tellable apart from
+    /// everything it can sit on without being read: the road under it is a steady rumble, the
+    /// junction a slow pulse, and the route a rhythm of its own, so what is left for "this is
+    /// the thing you asked for" is a beat quicker than any of them.
+    func enterLocator(identifier: String, announcement: String) {
+        guard identifier != activeIdentifier else { return }
+        activeIdentifier = identifier
+        stopIntersectionTone()
+        haptics.stopAll()
+        haptics.start(pattern: .landmarkFastPulse)
+        speech.speak(announcement)
+    }
+
     /// The finger is over empty space — between the streets, inside a block. Silence, and no
     /// vibration, is the correct feedback: it is how a blank area reads as blank.
     func leaveAll() {

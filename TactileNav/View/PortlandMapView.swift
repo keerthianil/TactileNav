@@ -334,6 +334,20 @@ struct PortlandMapView: UIViewRepresentable {
     /// Double tap on a junction: open it.
     var onIntersectionDoubleTap: ((Intersection) -> Void)?
 
+    /// Where a search sent this map, if it was sent by one.
+    ///
+    /// Nil for Congress Square, which opens at a fixed place rather than an answer — so that
+    /// screen draws no dot, feels no dot, and recentres on the same point it always did.
+    var locator: MapLocator?
+    /// Where the viewport opens and what Recenter returns to. Defaults to the document's own
+    /// opening point.
+    var homeCenter: CGPoint?
+    /// What the Recenter action is called. "Recenter on Congress Square" by default.
+    var homeName = "Congress Square"
+
+    /// The point the viewport opens on and returns to.
+    var openingCenter: CGPoint { homeCenter ?? map.initialCenter }
+
     func makeUIView(context: Context) -> PortlandStreetMapContainerView {
         makeContainer(coordinator: context.coordinator)
     }
@@ -380,6 +394,7 @@ struct PortlandMapView: UIViewRepresentable {
 
         container.canvas.map = map
         container.canvas.route = route
+        container.canvas.locator = locator
         container.spacer.frame = CGRect(origin: .zero, size: map.contentSize)
         scrollView.contentSize = map.contentSize
         coordinator.container = container
@@ -432,6 +447,7 @@ struct PortlandMapView: UIViewRepresentable {
         let coordinator = context.coordinator
         coordinator.parent = self
         container.scrollView.mapName = name
+        container.canvas.locator = locator
         container.scrollView.applyAccessibility()
         container.scrollView.onBackGesture = { [weak coordinator] in coordinator?.triggerBack() }
         container.scrollView.panActions = coordinator.makePanActions()
@@ -627,7 +643,7 @@ struct PortlandMapView: UIViewRepresentable {
         func centerOnInitialLocationIfNeeded() {
             guard !hasCentered, let scrollView, scrollView.bounds.width > 0 else { return }
             hasCentered = true
-            center(on: parent.map.initialCenter, animated: false)
+            center(on: parent.openingCenter, animated: false)
         }
 
         private func center(on point: CGPoint, animated: Bool) {
@@ -658,7 +674,7 @@ struct PortlandMapView: UIViewRepresentable {
                 ("Pan south", { [weak self] in self?.step(dx: 0, dy: 0.5) }),
                 ("Pan east", { [weak self] in self?.step(dx: 0.5, dy: 0) }),
                 ("Pan west", { [weak self] in self?.step(dx: -0.5, dy: 0) }),
-                ("Recenter on Congress Square", { [weak self] in self?.recenter() }),
+                ("Recenter on \(parent.homeName)", { [weak self] in self?.recenter() }),
             ]
         }
 
@@ -668,7 +684,7 @@ struct PortlandMapView: UIViewRepresentable {
         /// the thread of where you are. This is the equivalent of the "back to my location"
         /// button on a visual map: one known place you can always return to.
         func recenter() {
-            center(on: parent.map.initialCenter, animated: true)
+            center(on: parent.openingCenter, animated: true)
             feedback.playTap()
             announceViewportCenter(prefix: "Recentered")
         }
@@ -886,9 +902,24 @@ struct PortlandMapView: UIViewRepresentable {
         /// inside the feedback controller. That split is what lets a fast sweep feel every
         /// street and junction it crosses while only naming the one the finger settles on.
         private func updateExploration(at point: CGPoint, velocity: CGFloat) {
-            // The route's own start or end outranks everything, a junction included — the one
-            // landmark on the whole map more specific than "you have arrived." Checked first,
-            // for exactly that reason.
+            // The searched place outranks everything, the route's own ends included. It is the
+            // only mark on the map whose position is not a fact about the city but an answer to
+            // a question the user asked a moment ago, and losing it under a finger is how that
+            // answer stops being useful. Handled before the probe rather than as another probe
+            // case, so the city map's own hit testing is left exactly as it was.
+            if let locator = parent.locator,
+               hypot(point.x - locator.position.x, point.y - locator.position.y)
+                   <= StreetMapSizing.locatorHitRadius {
+                currentProbe = nil
+                let identifier = "locator:" + locator.name
+                guard identifier != currentProbeID else { return }
+                currentProbeID = identifier
+                feedback.enterLocator(identifier: identifier, announcement: locator.name)
+                return
+            }
+
+            // The route's own start or end outranks a junction — the one landmark on the whole
+            // map more specific than "you have arrived."
             if let route = parent.route, let endpoint = routeEndpoint(at: point, in: route) {
                 let id = "route_endpoint:\(endpoint.name)"
                 guard id != currentProbeID else { return }

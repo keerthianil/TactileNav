@@ -2386,3 +2386,126 @@ struct RouteInIntersectionCloseUpTests {
         print("ROUTE_CLOSEUP_DIR \(dir.path)")
     }
 }
+
+// MARK: - Portland Explorer
+
+/// Searching the map by name, and the dot that marks what was found.
+///
+/// The index is built from the same bundled extract the map is, so these run against the real
+/// 274 street names and 643 junctions rather than a fixture.
+@MainActor
+struct PlaceSearchTests {
+
+    private func loadMap() throws -> StreetMap {
+        try PortlandMapLoader.loadStreetMap(context: PortlandMapLoader.LoadContext.current())
+    }
+
+    private func index() throws -> PlaceSearchIndex {
+        PlaceSearchIndex(map: try loadMap())
+    }
+
+    @Test func theIndexCoversEveryStreetAndJunction() throws {
+        let map = try loadMap()
+        let index = PlaceSearchIndex(map: map)
+        let streetNames = Set(map.features.map(\.name)).filter { !$0.isEmpty }
+        // One entry per *name*, not per way: a street split into a piece per block is still one
+        // street to anyone looking for it.
+        #expect(index.count == streetNames.count + map.intersections.count)
+        #expect(index.count > 800)
+    }
+
+    @Test func aStreetIsFoundByName() throws {
+        let results = try index().results(for: "Congress Street")
+        let street = try #require(results.first { $0.kind == .street })
+        #expect(street.name == "Congress Street")
+        // The exact match is the top answer overall, not merely present somewhere below the fold.
+        #expect(results.first?.name == "Congress Street")
+    }
+
+    /// Typing part of a word finds the word, and each word may be abbreviated.
+    ///
+    /// This is the whole reason matching is by token prefix: "congress st" works without a table
+    /// of abbreviations, because "st" is simply the start of "Street".
+    @Test func aPartialNameAndAnAbbreviationBothFindTheStreet() throws {
+        let index = try index()
+        for query in ["cong", "congress st", "Congress St"] {
+            let names = index.results(for: query).map(\.name)
+            #expect(names.contains("Congress Street"),
+                    Comment(rawValue: "\(query) did not find Congress Street"))
+        }
+    }
+
+    /// The junction of two streets, asked for the way a person would ask.
+    @Test func aJunctionIsFoundByItsTwoStreets() throws {
+        let index = try index()
+        // Word order is not significant, and the joining word is not something to be matched.
+        for query in ["congress and high", "Congress & High", "high congress"] {
+            let junctions = index.results(for: query).filter { $0.kind == .junction }
+            let found = junctions.contains {
+                $0.name.contains("Congress Street") && $0.name.contains("High Street")
+            }
+            #expect(found, Comment(rawValue: "\(query) did not find Congress at High"))
+        }
+    }
+
+    /// A junction result lands on the junction, and a street result lands on the street.
+    ///
+    /// A result that centres the map somewhere other than the thing it names is worse than no
+    /// result at all — the user has no way to tell they are in the wrong place.
+    @Test func everyResultLandsOnTheThingItNames() throws {
+        let map = try loadMap()
+        let index = PlaceSearchIndex(map: map)
+
+        let junction = try #require(index.results(for: "congress and high")
+            .first { $0.kind == .junction })
+        let nearest = try #require(map.intersection(at: junction.position, within: 4))
+        #expect(nearest.streetNames.contains("Congress Street"))
+
+        let street = try #require(index.results(for: "Congress Street").first { $0.kind == .street })
+        let under = try #require(map.feature(at: street.position, velocity: 0))
+        #expect(under.name == "Congress Street")
+    }
+
+    @Test func aQueryTooShortToMeanAnythingReturnsNothing() throws {
+        let index = try index()
+        #expect(index.results(for: "").isEmpty)
+        #expect(index.results(for: "c").isEmpty)
+        #expect(!index.results(for: "co").isEmpty)
+    }
+
+    @Test func aNameNoStreetHasFindsNothing() throws {
+        #expect(try index().results(for: "Lombard Street").isEmpty)
+    }
+
+    /// Congress Square is untouched by any of this.
+    ///
+    /// The explorer shares the map engine rather than forking it, so the guard that the shared
+    /// parts still default to exactly what that screen had is part of the feature.
+    @Test func theCongressSquareMapHasNoLocatorAndOpensWhereItAlwaysDid() throws {
+        let map = try loadMap()
+        let asItWas = PortlandMapView(map: map)
+
+        #expect(asItWas.locator == nil, "Congress Square must not draw a searched-place dot")
+        #expect(asItWas.openingCenter == map.initialCenter)
+        #expect(asItWas.homeName == "Congress Square")
+
+        // And the explorer overrides both, without changing the map it was given.
+        let place = try #require(PlaceSearchIndex(map: map).results(for: "congress and high").first)
+        let explorer = PortlandMapView(map: map, locator: MapLocator(position: place.position,
+                                                                    name: place.name),
+                                       homeCenter: place.position, homeName: place.name)
+        #expect(explorer.openingCenter == place.position)
+        #expect(explorer.locator != nil)
+    }
+
+    /// The dot has to be findable by a finger that does not already know where it is.
+    @Test func theLocatorIsBigEnoughToLandOn() throws {
+        // Physical millimetres, like everything else on this map — and at least the 24 pt floor
+        // that stops a small dot on a dense grid from being a pixel hunt.
+        #expect(StreetMapSizing.locatorDiameter
+                == PhysicalDimensions.mmToPoints(StreetMapSizing.locatorDiameterMM))
+        #expect(StreetMapSizing.locatorHitRadius >= 24)
+        // Wider than the junction box it commonly sits on, so it wins the touch.
+        #expect(StreetMapSizing.locatorHitRadius >= StreetMapSizing.intersectionHitRadius)
+    }
+}

@@ -123,6 +123,20 @@ nonisolated enum StreetMapSizing {
     static var routeEndpointDiameter: CGFloat { PhysicalDimensions.mmToPoints(routeEndpointDiameterMM) }
     static var routeEndpointHitRadius: CGFloat { max(routeEndpointDiameter / 2, 22) }
 
+    // MARK: - The searched place
+
+    /// The dot marking where a search sent the map.
+    ///
+    /// A hair larger than the junction box it usually sits beside, and larger than the route's
+    /// own landmarks, because it has to be findable by someone who does not yet know where on
+    /// the grid they are — it is the one thing on the screen whose position is not implied by
+    /// the street network.
+    static let locatorDiameterMM: CGFloat = 6.5
+    static let locatorBorderMM: CGFloat = 0.6
+
+    static var locatorDiameter: CGFloat { PhysicalDimensions.mmToPoints(locatorDiameterMM) }
+    static var locatorHitRadius: CGFloat { max(locatorDiameter / 2, 24) }
+
     // MARK: - Resolved metrics
 
     /// Every device-dependent size, resolved once.
@@ -177,6 +191,15 @@ nonisolated enum StreetMapSizing {
     /// looks like.
     static let routeEndpointColor = CGColor(red: 1, green: 0xD7 / 255, blue: 0, alpha: 1)
     static let routeEndpointBorderColor = CGColor(gray: 1, alpha: 1)
+
+    /// The searched place: green, ringed in white.
+    ///
+    /// Green because everything nearer the warm end is already spoken for and means something
+    /// else — red is a junction, yellow the end of a route, orange a turn in one, pink a kerb.
+    /// A dot that means "the thing you asked for" has to be the one colour on the map that
+    /// cannot be mistaken for a piece of the route, since one day it will sit on top of one.
+    static let locatorColor = CGColor(red: 0x00 / 255, green: 0x9E / 255, blue: 0x4F / 255, alpha: 1)
+    static let locatorBorderColor = CGColor(gray: 1, alpha: 1)
 
     /// Labels are drawn along road centrelines, so they always sit on the dark road colour.
     /// White gives roughly 8:1 contrast against it; a dark label would be near-illegible.

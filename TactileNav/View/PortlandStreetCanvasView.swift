@@ -30,6 +30,15 @@ final class PortlandStreetCanvasView: UIView {
         didSet { setNeedsDisplay() }
     }
 
+    /// Where a search sent the map, if it was sent there by one. Nil on the Congress Square
+    /// map, which is not the answer to a question and so has nothing to mark.
+    var locator: MapLocator? {
+        didSet {
+            guard locator != oldValue else { return }
+            setNeedsDisplay()
+        }
+    }
+
     /// Scroll position of the window to draw. Setting it repaints.
     var contentOffset: CGPoint = .zero {
         didSet {
@@ -83,6 +92,8 @@ final class PortlandStreetCanvasView: UIView {
         // close-up, where there is room for them to mean something.
         drawRouteEndpoints(route, in: ctx)
         drawLabels(map.labels(in: window), in: ctx)
+        // Last, so nothing is drawn over the one thing the user asked to be shown.
+        drawLocator(in: ctx)
 
         ctx.restoreGState()
     }
@@ -105,6 +116,25 @@ final class PortlandStreetCanvasView: UIView {
             // Stroke inside the fill so the white ring does not eat into the neighbouring road.
             ctx.stroke(box.insetBy(dx: border / 2, dy: border / 2))
         }
+    }
+
+    /// The searched place, as a filled disc with a white ring.
+    ///
+    /// A disc among squares: the junction markers are the only other thing on this map, and a
+    /// different shape survives being looked at with very little vision, where a different
+    /// colour alone may not.
+    private func drawLocator(in ctx: CGContext) {
+        guard let locator else { return }
+        let diameter = StreetMapSizing.locatorDiameter
+        let border = max(PhysicalDimensions.mmToPoints(StreetMapSizing.locatorBorderMM), 1)
+        let box = CGRect(x: locator.position.x - diameter / 2,
+                         y: locator.position.y - diameter / 2,
+                         width: diameter, height: diameter)
+        ctx.setFillColor(StreetMapSizing.locatorColor)
+        ctx.fillEllipse(in: box)
+        ctx.setStrokeColor(StreetMapSizing.locatorBorderColor)
+        ctx.setLineWidth(border)
+        ctx.strokeEllipse(in: box.insetBy(dx: border / 2, dy: border / 2))
     }
 
     /// Round caps and joins, so a road ends in a semicircle and turns without a notch. On a

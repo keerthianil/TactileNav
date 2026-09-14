@@ -60,6 +60,8 @@ nonisolated struct StreetMapExtras: Decodable {
 
 nonisolated enum PortlandMapLoader {
 
+    /// The map Congress Square opens. Also the default for anything else that does not ask
+    /// for a different one, so existing callers are unaffected.
     static let resourceName = "congress_square"
 
     enum LoadError: Error {
@@ -85,15 +87,19 @@ nonisolated enum PortlandMapLoader {
         }
     }
 
-    /// Loads and projects the street map. Safe to call off the main thread — the context
+    /// Loads and projects a street map. Safe to call off the main thread — the context
     /// carries the only two things that had to be read on the main actor.
-    static func loadStreetMap(context: LoadContext) throws -> StreetMap {
-        guard let document = try? TactileMapDocument.load(from: resourceName, bundle: .main) else {
+    ///
+    /// `resource` defaults to the Congress Square extract, so every existing call site keeps
+    /// loading exactly the file it always did.
+    static func loadStreetMap(context: LoadContext,
+                              resource: String = resourceName) throws -> StreetMap {
+        guard let document = try? TactileMapDocument.load(from: resource, bundle: .main) else {
             throw LoadError.missingDocument
         }
         return StreetMap.build(
             document: document,
-            extras: StreetMapExtras.load(resource: resourceName),
+            extras: StreetMapExtras.load(resource: resource),
             metrics: context.metrics,
             labelFont: context.labelFont
         )

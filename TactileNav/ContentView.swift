@@ -44,6 +44,24 @@ struct ContentView: View {
                         }
                     }
                     .accessibilityHint("Listen to traffic on all four legs of a real intersection and work out when it is safe to cross. Headphones needed")
+
+                    NavigationLink {
+                        PlaceSearchScreen()
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Portland Explorer")
+                                    .font(.headline)
+                                Text("Search a street or junction, then read it by touch")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "magnifyingglass.circle.fill")
+                                .foregroundColor(.orange)
+                        }
+                    }
+                    .accessibilityHint("Opens a searchable tactile map of Portland. Find a place by name, then explore around it by touch")
                 }
 
                 Section("Tools") {
