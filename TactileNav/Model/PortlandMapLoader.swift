@@ -64,6 +64,10 @@ nonisolated enum PortlandMapLoader {
     /// for a different one, so existing callers are unaffected.
     static let resourceName = "congress_square"
 
+    /// The wider extract the Portland Explorer uses: the whole peninsula, and carrying the
+    /// service roads and railways the Congress Square file deliberately does not have.
+    static let peninsulaResourceName = "portland_peninsula"
+
     enum LoadError: Error {
         case missingDocument
     }
@@ -78,10 +82,10 @@ nonisolated enum PortlandMapLoader {
         let labelFont: CTFont
 
         @MainActor
-        static func current() -> LoadContext {
+        static func current(scale: MapScale = .standard) -> LoadContext {
             let font = UIFont.systemFont(ofSize: StreetMapSizing.labelFontSize, weight: .medium)
             return LoadContext(
-                metrics: StreetMapSizing.currentMetrics(),
+                metrics: StreetMapSizing.currentMetrics(scale: scale),
                 labelFont: CTFontCreateWithName(font.fontName as CFString, font.pointSize, nil)
             )
         }
@@ -93,7 +97,8 @@ nonisolated enum PortlandMapLoader {
     /// `resource` defaults to the Congress Square extract, so every existing call site keeps
     /// loading exactly the file it always did.
     static func loadStreetMap(context: LoadContext,
-                              resource: String = resourceName) throws -> StreetMap {
+                              resource: String = resourceName,
+                              features: MapFeatureSet = .default) throws -> StreetMap {
         guard let document = try? TactileMapDocument.load(from: resource, bundle: .main) else {
             throw LoadError.missingDocument
         }
@@ -101,7 +106,8 @@ nonisolated enum PortlandMapLoader {
             document: document,
             extras: StreetMapExtras.load(resource: resource),
             metrics: context.metrics,
-            labelFont: context.labelFont
+            labelFont: context.labelFont,
+            features: features
         )
     }
 }

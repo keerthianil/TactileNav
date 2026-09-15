@@ -218,10 +218,18 @@ final class TactileNavUITests: XCTestCase {
         XCTAssertTrue(result.waitForExistence(timeout: 10), "the junction was not found")
         result.tap()
 
-        XCTAssertTrue(app.navigationBars["Congress Street and High Street"]
-            .waitForExistence(timeout: 10), "the explorer map did not open")
+        // The options step: what the map will be, before it is made.
+        XCTAssertTrue(app.navigationBars["Map Options"].waitForExistence(timeout: 10),
+                      "the options screen did not open")
+        app.buttons["createMap"].firstMatch.tap()
 
-        app.navigationBars["Congress Street and High Street"].buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Congress Street and High Street"]
+            .waitForExistence(timeout: 30), "the explorer map did not open")
+
+        app.navigationBars["Congress Street and High Street"].buttons["BackButton"].tap()
+        XCTAssertTrue(app.navigationBars["Map Options"].waitForExistence(timeout: 10),
+                      "going back did not return to the options")
+        app.navigationBars["Map Options"].buttons["BackButton"].tap()
         XCTAssertTrue(app.navigationBars["Portland Explorer"].waitForExistence(timeout: 10),
                       "going back did not return to the search")
         XCTAssertFalse(app.navigationBars["TactileNav"].exists,
@@ -234,9 +242,52 @@ final class TactileNavUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "Congress Street")).firstMatch
         XCTAssertTrue(second.waitForExistence(timeout: 10))
         second.tap()
-        XCTAssertTrue(app.navigationBars.element(boundBy: 0).waitForExistence(timeout: 10))
+        XCTAssertTrue(app.navigationBars["Map Options"].waitForExistence(timeout: 10),
+                      "a second place did not reach the options screen")
         XCTAssertFalse(app.navigationBars["TactileNav"].exists,
                        "opening a second place landed on the home screen")
     }
+    /// The options screen offers what the reference tool offers, and every control is reachable.
+    ///
+    /// Scale, units and the four feature categories are the whole of that tool's configuration,
+    /// and all of them change the map rather than decorating it — so all of them have to be
+    /// operable, which for this app's readers means operable without looking.
+    @MainActor
+    func testTheMapOptionsOfferScaleUnitsAndFeatures() throws {
+        let app = launch()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Portland Explorer"))
+            .firstMatch.tap()
+        let field = app.textFields["Search Portland"]
+        XCTAssertTrue(field.waitForExistence(timeout: 20))
+        field.tap()
+        field.typeText("congress and high")
+
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Congress Street and High Street"))
+            .firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Map Options"].waitForExistence(timeout: 10))
+
+        // Every scale the app offers, as ratios — the same vocabulary the reference tool uses.
+        for ratio in ["1:1500", "1:3000", "1:5000"] {
+            XCTAssertTrue(app.buttons[ratio].exists, "\(ratio) is missing from the scale picker")
+        }
+        XCTAssertTrue(app.buttons["Feet"].exists)
+        XCTAssertTrue(app.buttons["Meters"].exists)
+
+        // The four categories, with Streets on and the rest off to start.
+        for category in ["Streets", "Paths", "Service Roads", "Railways"] {
+            XCTAssertTrue(app.switches[category].exists, "\(category) toggle is missing")
+        }
+        XCTAssertEqual(app.switches["Streets"].value as? String, "1", "Streets should start on")
+        XCTAssertEqual(app.switches["Paths"].value as? String, "0", "Paths should start off")
+
+        // Turning one on and changing the scale still produces a map.
+        app.switches["Paths"].tap()
+        app.buttons["1:1500"].tap()
+        app.buttons["createMap"].firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Congress Street and High Street"]
+            .waitForExistence(timeout: 30), "the map was not built from the chosen options")
+        attach(app, named: "05-explorer-map-with-paths")
+    }
+
 
 }

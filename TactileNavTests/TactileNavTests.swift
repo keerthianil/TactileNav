@@ -2509,3 +2509,263 @@ struct PlaceSearchTests {
         #expect(StreetMapSizing.locatorHitRadius >= StreetMapSizing.intersectionHitRadius)
     }
 }
+
+// MARK: - Scale, units and what is on the map
+
+/// The three things the options screen decides, and the promise none of them may break.
+@MainActor
+struct MapOptionsTests {
+
+    private func peninsula(_ features: MapFeatureSet, _ scale: MapScale = .standard) throws -> StreetMap {
+        try PortlandMapLoader.loadStreetMap(
+            context: PortlandMapLoader.LoadContext.current(scale: scale),
+            resource: PortlandMapLoader.peninsulaResourceName,
+            features: features)
+    }
+
+    /// **Changing scale must not change how wide a line is.**
+    ///
+    /// This is the whole difference between a scale setting and a zoom, and the reason the
+    /// former is allowed here at all. A road is 4 mm under the finger because that is about the
+    /// narrowest line a fingertip can follow; if picking a wider view shaved it to 2 mm the map
+    /// would stop being readable exactly when it got harder to read. Only the ground-to-points
+    /// ratio may move.
+    @Test func scaleChangesTheGroundPerPointAndNothingElse() throws {
+        var widths: Set<CGFloat> = []
+        var scales: Set<CGFloat> = []
+
+        for scale in MapScale.allCases {
+            let metrics = StreetMapSizing.currentMetrics(scale: scale)
+            widths.insert(metrics.roadWidth)
+            scales.insert(metrics.pointsPerMeter)
+            #expect(metrics.roadWidth == PhysicalDimensions.mmToPoints(StreetMapSizing.laneWidthMM))
+        }
+        #expect(widths.count == 1, "the line width moved with the scale")
+        #expect(scales.count == MapScale.allCases.count, "the scales are not actually different")
+
+        // And the ratios are the ones the options screen offers.
+        #expect(MapScale.close.ratio == 1500)
+        #expect(MapScale.standard.ratio == 3000)
+        #expect(MapScale.wide.ratio == 5000)
+        // Closer means more points per metre, which is the direction that has been got
+        // backwards before now.
+        #expect(StreetMapSizing.pointsPerMeter(at: .close)
+                > StreetMapSizing.pointsPerMeter(at: .wide))
+    }
+
+    /// A category that is switched off is not on the map at all — not drawn, not felt, not named.
+    @Test func switchingACategoryOffRemovesItEntirely() throws {
+        let streetsOnly = try peninsula(.streets)
+        #expect(streetsOnly.features.allSatisfy { $0.category == .street })
+
+        let withPaths = try peninsula([.streets, .paths])
+        #expect(withPaths.features.contains { $0.category == .path })
+        #expect(withPaths.features.count > streetsOnly.features.count)
+
+        let everything = try peninsula([.streets, .paths, .serviceRoads, .railways])
+        for category in MapSurfaceCategory.allCases {
+            #expect(everything.features.contains { $0.category == category },
+                    Comment(rawValue: "\(category.label) never made it onto the map"))
+        }
+    }
+
+    /// The coordinate space is a property of the city, not of what was switched on.
+    ///
+    /// If a footpath running past the last street could widen the content box, the same junction
+    /// would sit at a different point with paths on than with them off — a saved position would
+    /// be wrong and two logs of the same place could not be compared.
+    @Test func whatIsSwitchedOnDoesNotMoveTheMapUnderneath() throws {
+        let streetsOnly = try peninsula(.streets)
+        let everything = try peninsula([.streets, .paths, .serviceRoads, .railways])
+
+        #expect(streetsOnly.contentSize == everything.contentSize)
+        #expect(streetsOnly.initialCenter == everything.initialCenter)
+
+        // And a junction is at the same point either way.
+        let a = try #require(streetsOnly.intersections.first)
+        let b = try #require(everything.intersections.first { $0.id == a.id })
+        #expect(a.position == b.position)
+    }
+
+    /// Each kind of line is drawn at its own physical width, and none is too thin to follow.
+    @Test func everyKindOfLineIsPhysicallySizedAndWideEnoughToTrace() throws {
+        let map = try peninsula([.streets, .paths, .serviceRoads, .railways])
+        for category in MapSurfaceCategory.allCases {
+            let width = StreetMapSizing.widthMM(of: category)
+            #expect(width >= 2.5, "\(category.label) is too thin for a fingertip to follow")
+            #expect(width <= StreetMapSizing.laneWidthMM,
+                    "\(category.label) is drawn wider than a street")
+        }
+        // A street stays the widest thing on the map, so the backbone is the easiest to find.
+        let byCategory = Dictionary(grouping: map.features) { $0.category }
+        let streetWidth = try #require(byCategory[.street]?.first?.strokeWidth)
+        for (category, group) in byCategory where category != .street {
+            #expect(group.first!.strokeWidth < streetWidth)
+        }
+    }
+
+    /// Anything that is not a street says what kind of thing it is.
+    ///
+    /// A street can get away with its bare name — there was only one kind of thing on the map.
+    /// Once there are four, "Vaughan Street" and the path beside it are different places to be
+    /// standing and the name alone cannot tell them apart.
+    @Test func everythingThatIsNotAStreetNamesItsKind() throws {
+        let map = try peninsula([.streets, .paths, .serviceRoads, .railways])
+        for category in MapSurfaceCategory.allCases where category != .street {
+            let feature = try #require(map.features.first { $0.category == category })
+            #expect(feature.announcement.lowercased().contains(category.unnamed.lowercased()),
+                    Comment(rawValue: "\(feature.announcement) does not say it is a \(category.unnamed)"))
+        }
+        let street = try #require(map.features.first { $0.category == .street })
+        #expect(street.announcement == street.name)
+    }
+
+    @Test func distancesAreSpokenInTheChosenUnit() {
+        #expect(DistanceUnit.meters.spell(120) == "120 m")
+        #expect(DistanceUnit.meters.spell(1500) == "1.5 km")
+        // 120 m is a shade under 400 ft.
+        #expect(DistanceUnit.feet.spell(120) == "390 ft")
+        #expect(DistanceUnit.feet.spell(3000).hasSuffix("miles"))
+    }
+
+    @Test func theFeatureSetSaysWhatIsOnTheMap() {
+        #expect(MapFeatureSet.default == .streets)
+        #expect(MapFeatureSet([.street]).spoken == "streets")
+        #expect(MapFeatureSet([.street, .path]).spoken == "streets and paths")
+        #expect(MapFeatureSet([.street, .path, .railway]).spoken
+                == "streets, paths and railways")
+    }
+
+    /// Congress Square is not affected by any of it.
+    /// The north arrow and the scale bar reach a reader who cannot see them.
+    ///
+    /// They are drawn in the corners for everyone else. A VoiceOver reader gets the same two
+    /// facts — which way is up, how much ground is on the screen — as an Actions rotor entry,
+    /// because a painted arrow is worth nothing to somebody who is not looking at it. Without
+    /// this the map would be *less* informative with VoiceOver on than with it off, which is
+    /// backwards for this app.
+    @Test func theOrientationFactsAreOnTheRotorNotJustInTheCorner() throws {
+        let map = try PortlandMapLoader.loadStreetMap(
+            context: PortlandMapLoader.LoadContext.current())
+
+        let plain = PortlandMapView(map: map)
+        let plainActions = plain.makeCoordinator().makePanActions()
+        #expect(plainActions.count == 5, "Congress Square gained an action it never had")
+
+        var spoken: [String] = []
+        let explorer = PortlandMapView(map: map, homeName: "Congress Street",
+                                       extraActions: [("Map details", { spoken.append("said") })])
+        let actions = explorer.makeCoordinator().makePanActions()
+        #expect(actions.count == 6)
+        let details = try #require(actions.first { $0.0 == "Map details" })
+        details.1()
+        #expect(spoken == ["said"], "the rotor action is listed but does nothing")
+
+        // And Recenter names the place searched for, not a fixed point across town.
+        #expect(actions.contains { $0.0 == "Recenter on Congress Street" })
+    }
+
+    @Test func theCongressSquareMapIsUnmovedByAllOfThis() throws {
+        let asItWas = try PortlandMapLoader.loadStreetMap(
+            context: PortlandMapLoader.LoadContext.current())
+        // Streets only, at the standard scale, exactly as before.
+        #expect(asItWas.features.allSatisfy { $0.category == .street })
+        #expect(asItWas.metrics.pointsPerMeter == StreetMapSizing.pointsPerMeter(at: .standard))
+        #expect(asItWas.intersections.count == 643)
+    }
+}
+
+// MARK: - What the toggles actually draw
+
+@MainActor
+struct MapFeatureDrawingTests {
+
+    private let size = CGSize(width: 402, height: 700)
+
+    private func map(_ features: MapFeatureSet) throws -> StreetMap {
+        try PortlandMapLoader.loadStreetMap(
+            context: PortlandMapLoader.LoadContext.current(),
+            resource: PortlandMapLoader.peninsulaResourceName,
+            features: features)
+    }
+
+    /// Switching a category on changes what is on the screen.
+    ///
+    /// Deliberately a *diff* rather than a hunt for a particular colour. The renderer works in
+    /// a wider gamut than the bitmap it is read back into, so matching an exact colour tests
+    /// colour conversion rather than the map — it failed even for streets, which plainly do
+    /// draw. What matters is what a reader would notice: with the category on there is ink that
+    /// was not there with it off.
+    ///
+    /// The window is centred on a feature *of that category*, not on the map's opening point.
+    /// Railways run along the waterfront and the opening view is Congress Square a kilometre
+    /// inland, so looking there and finding no rails would say nothing at all.
+    @Test func switchingACategoryOnChangesWhatIsDrawn() throws {
+        let everything = try map([.streets, .paths, .serviceRoads, .railways])
+        let streetsOnly = try map(.streets)
+
+        for category in MapSurfaceCategory.allCases where category != .street {
+            let example = try #require(everything.features.first { $0.category == category },
+                                       "the extract has no \(category.label)")
+            let centre = polylineMidpoint(example.points)
+            let off = try Self.render(streetsOnly, size: size, centredOn: centre)
+            let on = try Self.render(try map([.streets, MapFeatureSet(category: category)]),
+                                     size: size, centredOn: centre)
+            #expect(Self.differs(off, on),
+                    Comment(rawValue: "\(category.label) was switched on but nothing changed"))
+        }
+    }
+
+    /// And the streets themselves reach the screen at all.
+    @Test func theStreetsAreActuallyDrawn() throws {
+        let drawn = try Self.render(try map(.streets), size: size)
+        #expect(Self.differs([UInt8](repeating: 255, count: drawn.count), drawn),
+                "the street network drew nothing")
+    }
+
+
+    /// Congress Square's own canvas draws neither the arrow nor the bar.
+    @Test func theOrientationFurnitureIsOptAndOffByDefault() throws {
+        let plain = PortlandStreetCanvasView(frame: CGRect(origin: .zero, size: size))
+        #expect(!plain.showsOrientation)
+
+        let map = try map(.streets)
+        let without = try Self.render(map, size: size, orientation: false)
+        let with = try Self.render(map, size: size, orientation: true)
+        #expect(Self.differs(without, with), "the north arrow and scale bar drew nothing")
+    }
+
+    // MARK: Rendering
+
+    private static func render(_ map: StreetMap, size: CGSize,
+                               orientation: Bool = false,
+                               centredOn centre: CGPoint? = nil) throws -> [UInt8] {
+        let canvas = PortlandStreetCanvasView(frame: CGRect(origin: .zero, size: size))
+        canvas.map = map
+        canvas.showsOrientation = orientation
+        let middle = centre ?? map.initialCenter
+        canvas.contentOffset = CGPoint(x: middle.x - size.width / 2,
+                                       y: middle.y - size.height / 2)
+        let image = UIGraphicsImageRenderer(size: size).image { _ in
+            canvas.draw(canvas.bounds)
+        }
+        let cgImage = try #require(image.cgImage)
+        var data = [UInt8](repeating: 0, count: cgImage.width * cgImage.height * 4)
+        let context = try #require(CGContext(
+            data: &data, width: cgImage.width, height: cgImage.height, bitsPerComponent: 8,
+            bytesPerRow: cgImage.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height))
+        return data
+    }
+
+    private static func differs(_ a: [UInt8], _ b: [UInt8]) -> Bool {
+        guard a.count == b.count else { return true }
+        var changed = 0
+        for index in stride(from: 0, to: a.count, by: 4) where a[index] != b[index] {
+            changed += 1
+            if changed > 50 { return true }
+        }
+        return false
+    }
+}

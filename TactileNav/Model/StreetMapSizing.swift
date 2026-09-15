@@ -76,12 +76,58 @@ nonisolated enum StreetMapSizing {
     /// file. Both terms are physical, so the scale is the same on every device; only the
     /// point count changes with pixel density.
     static var pointsPerMeter: CGFloat {
-        PhysicalDimensions.mmToPoints(blockSpacingMM) / blockLengthMeters
+        pointsPerMeter(at: .standard)
+    }
+
+    /// The same, at a chosen scale. **Only this number moves when the scale changes** — the
+    /// lane width above does not, which is what keeps a road 4 mm wide under the finger at every
+    /// setting. See `MapScale`.
+    static func pointsPerMeter(at scale: MapScale) -> CGFloat {
+        PhysicalDimensions.mmToPoints(scale.blockSpacingMM) / blockLengthMeters
     }
 
     /// Stroke width for a road. The same for every road — see the note at the top of the file
     /// on why this deliberately does not scale with lane count.
     static var roadWidth: CGFloat { laneWidthPoints }
+
+    // MARK: - Width by category
+
+    /// How wide each kind of line is drawn, in millimetres on the glass.
+    ///
+    /// A street is the widest because it is the backbone and has to be the easiest thing to
+    /// find and follow. The rest are narrower so that a finger crossing from one to another
+    /// feels the change as a change of *size* as well as of texture — two cues for the same
+    /// fact, which is what makes it readable at speed. None goes below 2.5 mm: under that a
+    /// line stops being reliably traceable at all, and a line you cannot follow is worse than
+    /// one that is not drawn.
+    static func widthMM(of category: MapSurfaceCategory) -> CGFloat {
+        switch category {
+        case .street: return laneWidthMM
+        case .path: return 2.5
+        case .serviceRoad: return 2.5
+        case .railway: return 3.0
+        }
+    }
+
+    /// The same, in points, with the street's own width passed in so the caller's resolved
+    /// metrics stay the single source of truth for it.
+    static func width(of category: MapSurfaceCategory, streetWidth: CGFloat) -> CGFloat {
+        category == .street ? streetWidth : PhysicalDimensions.mmToPoints(widthMM(of: category))
+    }
+
+    /// The colour each kind is drawn in.
+    ///
+    /// Paths take the same grey the junction close-up already uses for pavement, so the two
+    /// screens agree about what grey means. Railways are near-black, service roads a washed-out
+    /// blue that reads as a lesser relative of the street it branches off.
+    static func color(of category: MapSurfaceCategory) -> CGColor {
+        switch category {
+        case .street: return roadColor
+        case .path: return CGColor(red: 0x9E / 255, green: 0x9E / 255, blue: 0x9E / 255, alpha: 1)
+        case .serviceRoad: return CGColor(red: 0x7F / 255, green: 0x9C / 255, blue: 0xC4 / 255, alpha: 1)
+        case .railway: return CGColor(red: 0x33 / 255, green: 0x33 / 255, blue: 0x33 / 255, alpha: 1)
+        }
+    }
 
     // MARK: - Hit-test radius (screen points)
 
@@ -160,10 +206,10 @@ nonisolated enum StreetMapSizing {
 
     /// Resolve the current device's metrics. Call on the main actor.
     @MainActor
-    static func currentMetrics() -> Metrics {
+    static func currentMetrics(scale: MapScale = .standard) -> Metrics {
         Metrics(
             laneWidthPoints: laneWidthPoints,
-            pointsPerMeter: pointsPerMeter,
+            pointsPerMeter: pointsPerMeter(at: scale),
             roadWidth: roadWidth,
             roadHitRadius: roadHitRadius,
             intersectionBoxWidth: intersectionBoxWidth,
@@ -200,6 +246,10 @@ nonisolated enum StreetMapSizing {
     /// cannot be mistaken for a piece of the route, since one day it will sit on top of one.
     static let locatorColor = CGColor(red: 0x00 / 255, green: 0x9E / 255, blue: 0x4F / 255, alpha: 1)
     static let locatorBorderColor = CGColor(gray: 1, alpha: 1)
+
+    /// The north arrow and scale bar. Dark enough to read on the white background without
+    /// competing with the street network for attention.
+    static let orientationColor = CGColor(gray: 0.25, alpha: 1)
 
     /// Labels are drawn along road centrelines, so they always sit on the dark road colour.
     /// White gives roughly 8:1 contrast against it; a dark label would be near-illegible.

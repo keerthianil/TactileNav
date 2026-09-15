@@ -54,8 +54,7 @@ struct PlaceSearchScreen: View {
         content
             // Unconditional, and total — see `OpenPlace`.
             .navigationDestination(item: $openPlace) { place in
-                ExplorerMapScreen(map: place.map, place: place.result,
-                                  onLeave: { openPlace = nil })
+                MapOptionsScreen(place: place.result)
             }
             .navigationTitle("Portland Explorer")
             .navigationBarTitleDisplayMode(.inline)
@@ -183,7 +182,9 @@ struct PlaceSearchScreen: View {
     private func load() {
         let context = PortlandMapLoader.LoadContext.current()
         Task.detached(priority: .userInitiated) {
-            guard let map = try? PortlandMapLoader.loadStreetMap(context: context) else {
+            guard let map = try? PortlandMapLoader.loadStreetMap(
+                context: context,
+                resource: PortlandMapLoader.peninsulaResourceName) else {
                 await MainActor.run { phase = .failed }
                 return
             }

@@ -344,6 +344,12 @@ struct PortlandMapView: UIViewRepresentable {
     var homeCenter: CGPoint?
     /// What the Recenter action is called. "Recenter on Congress Square" by default.
     var homeName = "Congress Square"
+    /// Draw the north arrow and scale bar. Off for Congress Square, which has never had them.
+    var showsOrientation = false
+    /// What the scale bar counts in, and what spoken distances are given in.
+    var distanceUnit: DistanceUnit = .feet
+    /// Extra entries for the VoiceOver Actions rotor, after the pan and recentre ones.
+    var extraActions: [(name: String, run: () -> Void)] = []
 
     /// The point the viewport opens on and returns to.
     var openingCenter: CGPoint { homeCenter ?? map.initialCenter }
@@ -395,6 +401,8 @@ struct PortlandMapView: UIViewRepresentable {
         container.canvas.map = map
         container.canvas.route = route
         container.canvas.locator = locator
+        container.canvas.showsOrientation = showsOrientation
+        container.canvas.distanceUnit = distanceUnit
         container.spacer.frame = CGRect(origin: .zero, size: map.contentSize)
         scrollView.contentSize = map.contentSize
         coordinator.container = container
@@ -448,6 +456,8 @@ struct PortlandMapView: UIViewRepresentable {
         coordinator.parent = self
         container.scrollView.mapName = name
         container.canvas.locator = locator
+        container.canvas.showsOrientation = showsOrientation
+        container.canvas.distanceUnit = distanceUnit
         container.scrollView.applyAccessibility()
         container.scrollView.onBackGesture = { [weak coordinator] in coordinator?.triggerBack() }
         container.scrollView.panActions = coordinator.makePanActions()
@@ -675,7 +685,7 @@ struct PortlandMapView: UIViewRepresentable {
                 ("Pan east", { [weak self] in self?.step(dx: 0.5, dy: 0) }),
                 ("Pan west", { [weak self] in self?.step(dx: -0.5, dy: 0) }),
                 ("Recenter on \(parent.homeName)", { [weak self] in self?.recenter() }),
-            ]
+            ] + parent.extraActions.map { ($0.name, $0.run) }
         }
 
         /// Jump back to Congress Square.
@@ -950,7 +960,8 @@ struct PortlandMapView: UIViewRepresentable {
             case .intersection(let junction):
                 feedback.enterIntersection(identifier: junction.id, announcement: junction.announcement)
             case .road(let road):
-                feedback.enter(identifier: road.id, announcement: road.announcement)
+                feedback.enter(identifier: road.id, announcement: road.announcement,
+                               category: road.category)
             case nil:
                 // Empty space is silent: no haptic, nothing spoken.
                 feedback.leaveAll()

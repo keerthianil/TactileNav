@@ -39,6 +39,23 @@ final class PortlandStreetCanvasView: UIView {
         }
     }
 
+    /// Whether to draw the north arrow and scale bar. Off for Congress Square, which has
+    /// neither and should keep rendering exactly as it always has.
+    var showsOrientation = false {
+        didSet {
+            guard showsOrientation != oldValue else { return }
+            setNeedsDisplay()
+        }
+    }
+
+    /// What the scale bar counts in.
+    var distanceUnit: DistanceUnit = .feet {
+        didSet {
+            guard distanceUnit != oldValue else { return }
+            setNeedsDisplay()
+        }
+    }
+
     /// Scroll position of the window to draw. Setting it repaints.
     var contentOffset: CGPoint = .zero {
         didSet {
@@ -96,6 +113,9 @@ final class PortlandStreetCanvasView: UIView {
         drawLocator(in: ctx)
 
         ctx.restoreGState()
+
+        // Outside the scroll transform: these describe the map, they do not sit on it.
+        drawOrientation(in: ctx)
     }
 
     /// A red square at each junction, with a thin white outline.
@@ -142,16 +162,104 @@ final class PortlandStreetCanvasView: UIView {
     /// spike of ink pointing away from the street.
     private func strokeRoads(_ features: [StreetFeature], in ctx: CGContext) {
         guard !features.isEmpty else { return }
-        ctx.setStrokeColor(StreetMapSizing.roadColor)
         ctx.setLineCap(.round)
         ctx.setLineJoin(.round)
-        for feature in features where feature.points.count >= 2 {
-            ctx.setLineWidth(feature.strokeWidth)
+
+        // Narrowest kinds first, streets last, so the backbone is never buried under the
+        // service lanes hanging off it. Grouping by category also means one colour change per
+        // kind instead of one per line.
+        let order: [MapSurfaceCategory] = [.railway, .serviceRoad, .path, .street]
+        let byCategory = Dictionary(grouping: features) { $0.category }
+        for category in order {
+            guard let group = byCategory[category], !group.isEmpty else { continue }
+            ctx.setStrokeColor(StreetMapSizing.color(of: category))
+            for feature in group where feature.points.count >= 2 {
+                ctx.setLineWidth(feature.strokeWidth)
+                ctx.beginPath()
+                ctx.move(to: feature.points[0])
+                for point in feature.points.dropFirst() { ctx.addLine(to: point) }
+                ctx.strokePath()
+            }
+        }
+    }
+
+    // MARK: - Orientation
+
+    /// A north arrow and a scale bar, in the corners.
+    ///
+    /// Both are drawn in *screen* space, outside the scrolled transform — they describe the
+    /// map rather than sitting on it, so they stay put while it moves underneath. They are for
+    /// sighted and low-vision readers; the same two facts reach a VoiceOver reader as words, in
+    /// the map's arrival announcement and on the Actions rotor, because an arrow is no use to
+    /// somebody who is not looking at it.
+    private func drawOrientation(in ctx: CGContext) {
+        guard showsOrientation, let map else { return }
+        let inset: CGFloat = 12
+
+        // North arrow, top right. The map never rotates — north is always up — so this is a
+        // fixed mark, not a compass.
+        let tip = CGPoint(x: bounds.maxX - inset - 10, y: inset + 6)
+        let foot = CGPoint(x: tip.x, y: tip.y + 26)
+        ctx.setStrokeColor(StreetMapSizing.orientationColor)
+        ctx.setFillColor(StreetMapSizing.orientationColor)
+        ctx.setLineWidth(2)
+        ctx.setLineCap(.round)
+        ctx.beginPath()
+        ctx.move(to: foot)
+        ctx.addLine(to: tip)
+        ctx.strokePath()
+        ctx.beginPath()
+        ctx.move(to: tip)
+        ctx.addLine(to: CGPoint(x: tip.x - 5, y: tip.y + 8))
+        ctx.addLine(to: CGPoint(x: tip.x + 5, y: tip.y + 8))
+        ctx.closePath()
+        ctx.fillPath()
+        draw("N", at: CGPoint(x: tip.x - 5, y: foot.y + 2), in: ctx)
+
+        // Scale bar, bottom left.
+        let (groundMeters, text) = scaleBarStep(pointsPerMeter: map.metrics.pointsPerMeter)
+        let barWidth = groundMeters * map.metrics.pointsPerMeter
+        let barY = bounds.maxY - inset - 14
+        ctx.setLineWidth(2)
+        ctx.beginPath()
+        ctx.move(to: CGPoint(x: inset, y: barY))
+        ctx.addLine(to: CGPoint(x: inset + barWidth, y: barY))
+        ctx.strokePath()
+        for end in [inset, inset + barWidth] {
             ctx.beginPath()
-            ctx.move(to: feature.points[0])
-            for point in feature.points.dropFirst() { ctx.addLine(to: point) }
+            ctx.move(to: CGPoint(x: end, y: barY - 4))
+            ctx.addLine(to: CGPoint(x: end, y: barY + 4))
             ctx.strokePath()
         }
+        draw(text, at: CGPoint(x: inset, y: barY + 6), in: ctx)
+    }
+
+    /// A round number of ground units whose bar comes out a readable length on screen.
+    ///
+    /// Returned in metres along with the words for it, because the bar is drawn in the map's
+    /// own units and labelled in the reader's.
+    private func scaleBarStep(pointsPerMeter: CGFloat) -> (meters: CGFloat, text: String) {
+        let candidates: [CGFloat] = distanceUnit == .feet
+            ? [50, 100, 250, 500, 1000, 2000].map { $0 / 3.280_84 }   // feet -> metres
+            : [10, 25, 50, 100, 250, 500]
+        let widest: CGFloat = 96
+        let fits = candidates.last { $0 * pointsPerMeter <= widest } ?? candidates[0]
+        return (fits, distanceUnit.spell(fits))
+    }
+
+    private func draw(_ text: String, at origin: CGPoint, in ctx: CGContext) {
+        let attributed = NSAttributedString(string: text, attributes: [
+            .font: UIFont.systemFont(ofSize: 11, weight: .semibold),
+            .foregroundColor: UIColor(cgColor: StreetMapSizing.orientationColor),
+        ])
+        let line = CTLineCreateWithAttributedString(attributed)
+        ctx.saveGState()
+        ctx.textMatrix = .identity
+        ctx.translateBy(x: origin.x, y: origin.y + 11)
+        ctx.scaleBy(x: 1, y: -1)
+        ctx.textPosition = .zero
+        CTLineDraw(line, ctx)
+        ctx.restoreGState()
     }
 
     /// The study route: a thin cyan line over every leg's real road geometry. Never culled to

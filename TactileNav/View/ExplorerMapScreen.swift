@@ -19,7 +19,8 @@ import UIKit
 struct ExplorerMapScreen: View {
 
     let map: StreetMap
-    let place: SearchResult
+    let configuration: MapConfiguration
+    private var place: SearchResult { configuration.place }
     /// Clears the binding that pushed this screen. Same single-writer rule as the junction
     /// close-up — see `IntersectionDetailScreen.onLeave`.
     let onLeave: () -> Void
@@ -49,7 +50,17 @@ struct ExplorerMapScreen: View {
             },
             locator: MapLocator(position: place.position, name: place.name),
             homeCenter: place.position,
-            homeName: place.name
+            homeName: place.name,
+            showsOrientation: true,
+            distanceUnit: configuration.units,
+            // The rotor's copy of the north arrow and the scale bar.
+            //
+            // Those two are drawn in the corners for anyone who can see them, and a reader who
+            // cannot has exactly the same right to know which way the map is turned and how much
+            // ground is on it. It is an action rather than part of the map's label because it is
+            // a thing you ask for when you have lost your bearings, not something to hear every
+            // time focus lands on the map.
+            extraActions: [("Map details", speakDetails)]
         )
         .ignoresSafeArea(edges: .bottom)
         .navigationDestination(item: $openJunction) { selection in
@@ -81,9 +92,23 @@ struct ExplorerMapScreen: View {
     /// North is stated outright because nothing else on the screen says which way is up, and
     /// every direction the map gives afterwards depends on knowing it.
     private var introduction: String {
-        "\(place.name). \(place.detail). Tactile street map, north up. "
-        + "Drag one finger to explore, two fingers to pan. "
-        + "The searched place is marked with a dot."
+        configuration.arrivalSummary
+        + " Drag one finger to explore, two fingers to pan. "
+        + "The place you searched for is marked with a dot."
+    }
+
+    /// Everything about this map that a finger cannot discover by touching it.
+    private func speakDetails() {
+        let scale = configuration.scale
+        StreetFeedbackController.shared.announceImmediately(
+            "\(place.name). North is up. "
+            + "Scale \(scale.label), about \(configuration.units.spell(groundAcross)) across the screen. "
+            + "Showing \(configuration.features.spoken).")
+    }
+
+    /// How much ground the screen holds at this scale, in metres.
+    private var groundAcross: CGFloat {
+        UIScreen.main.bounds.width / map.metrics.pointsPerMeter
     }
 
     private func goBack() {

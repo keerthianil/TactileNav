@@ -45,6 +45,11 @@ OVERPASS_ENDPOINTS = (
 
 METERS_PER_DEGREE_LATITUDE = 111_320.0
 
+# What this run is building. Overridden from the command line — see `main`. The
+# defaults are the original document's, so a bare run still reproduces it exactly.
+DOCUMENT_NAME = "Congress Square - Portland, ME"
+INCLUDE_EXTRAS = False
+
 # Drivable classes we keep. `highway=service` is excluded on purpose: in this
 # bounding box it is overwhelmingly parking-lot aisles and driveways, which read
 # as an unnamed thicket under a finger rather than as streets.
@@ -92,6 +97,16 @@ TYPE_ROAD = "road"
 TYPE_SIDEWALK = "street"
 TYPE_CROSSWALK = "crosswalk"
 TYPE_INTERSECTION = "intersection"
+#   service   -> a back lane, a car park aisle, a delivery yard
+#   railway   -> rails, which a pedestrian crosses but never walks along
+TYPE_SERVICE = "service"
+TYPE_RAILWAY = "railway"
+
+# Classes fetched only with --extras, so the default run reproduces the original
+# document byte for byte. They exist because the app lets a reader switch whole
+# categories off: a map you can declutter is worth more under a finger than a
+# complete one, and you cannot switch off what was never in the file.
+RAILWAY_CLASSES = ("rail", "light_rail", "tram", "subway", "narrow_gauge")
 
 SIMPLIFY_EPSILON_M = 1.0
 
@@ -105,6 +120,11 @@ CLIP_MARGIN_M = 25.0
 def overpass_query() -> str:
     bbox = f"{SOUTH},{WEST},{NORTH},{EAST}"
     classes = "|".join(ROAD_CLASSES)
+    railways = "|".join(RAILWAY_CLASSES)
+    extras = (
+        f'  way["highway"="service"]({bbox});\n'
+        f'  way["railway"~"^({railways})$"]({bbox});'
+    ) if INCLUDE_EXTRAS else ""
     # Footways are asked for by `highway` rather than by `footway`, because the `footway`
     # subtag is optional and frequently absent. Asking only for `footway=sidewalk` missed 295
     # plain `highway=footway` ways in this bbox — real, mapped pavement that simply had not
@@ -117,6 +137,7 @@ def overpass_query() -> str:
   way["highway"="pedestrian"]({bbox});
   way["footway"="sidewalk"]({bbox});
   way["footway"="crossing"]({bbox});
+{extras}
 );
 out body geom;
 """
@@ -278,7 +299,8 @@ def crossing_name(tags: dict) -> str:
 
 def build_elements(raw: dict, width: float, height: float) -> list[dict]:
     elements: list[dict] = []
-    counts = {TYPE_ROAD: 0, TYPE_SIDEWALK: 0, TYPE_CROSSWALK: 0}
+    counts = {TYPE_ROAD: 0, TYPE_SIDEWALK: 0, TYPE_CROSSWALK: 0,
+              TYPE_SERVICE: 0, TYPE_RAILWAY: 0}
     dropped_unnamed = 0
 
     for way in raw.get("elements", []):
@@ -309,6 +331,17 @@ def build_elements(raw: dict, width: float, height: float) -> list[dict]:
             custom = {}
             if footway:
                 custom["footway"] = footway
+        elif INCLUDE_EXTRAS and highway == "service":
+            # Named where OpenStreetMap bothers to name them, which is rarely. An unnamed
+            # back lane is still worth drawing when asked for — it is a gap in a terrace
+            # you can feel — so unlike a road it is not dropped for wanting a name.
+            element_type = TYPE_SERVICE
+            name = (tags.get("name") or "").strip() or "Service road"
+            custom = {"osm_service": tags.get("service", "")} if tags.get("service") else {}
+        elif INCLUDE_EXTRAS and tags.get("railway") in RAILWAY_CLASSES:
+            element_type = TYPE_RAILWAY
+            name = (tags.get("name") or "").strip() or "Railway"
+            custom = {"osm_railway": tags["railway"]}
         elif highway in ROAD_CLASSES:
             element_type = TYPE_ROAD
             name = road_name(tags)
@@ -355,7 +388,8 @@ def build_elements(raw: dict, width: float, height: float) -> list[dict]:
     elements.sort(key=lambda element: element["id"])
     print(
         f"  roads {counts[TYPE_ROAD]}  sidewalks {counts[TYPE_SIDEWALK]}  "
-        f"crossings {counts[TYPE_CROSSWALK]}  (dropped {dropped_unnamed} unnamed roads)",
+        f"crossings {counts[TYPE_CROSSWALK]}  service {counts[TYPE_SERVICE]}  "
+        f"railways {counts[TYPE_RAILWAY]}  (dropped {dropped_unnamed} unnamed roads)",
         file=sys.stderr,
     )
     return elements
@@ -478,7 +512,7 @@ def build_document(elements: list[dict], width: float, height: float) -> dict:
         "version": "2.0",
         "type": "TactileMapDocument",
         "metadata": {
-            "name": "Congress Square - Portland, ME",
+            "name": DOCUMENT_NAME,
             "scale": "1 unit = 1 meter",
             "coordinate_unit": "meters",
             "coordinate_origin": "SW corner; y grows south",
@@ -544,7 +578,33 @@ def main() -> None:
         type=Path,
         help="Reuse a saved Overpass response instead of querying (for reproducible reruns).",
     )
+    parser.add_argument(
+        "--bbox",
+        help="south,west,north,east in degrees. Defaults to the downtown Portland box.",
+    )
+    parser.add_argument(
+        "--center",
+        help="lat,lon of the opening viewport. Defaults to Congress Square.",
+    )
+    parser.add_argument("--name", help="Document name written into the metadata.")
+    parser.add_argument(
+        "--extras",
+        action="store_true",
+        help="Also fetch service roads and railways, as separate element types. Off by "
+             "default so a bare run reproduces the original document exactly.",
+    )
     args = parser.parse_args()
+
+    # The geometry helpers read these as module globals, so the command line is applied
+    # here, once, before anything is projected.
+    global SOUTH, WEST, NORTH, EAST, CENTER_LAT, CENTER_LON, DOCUMENT_NAME, INCLUDE_EXTRAS
+    if args.bbox:
+        SOUTH, WEST, NORTH, EAST = (float(part) for part in args.bbox.split(","))
+    if args.center:
+        CENTER_LAT, CENTER_LON = (float(part) for part in args.center.split(","))
+    if args.name:
+        DOCUMENT_NAME = args.name
+    INCLUDE_EXTRAS = args.extras
 
     if args.cache and args.cache.exists():
         print(f"reading cached Overpass response {args.cache}", file=sys.stderr)

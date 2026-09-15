@@ -31,6 +31,9 @@ import TactileMapView
 nonisolated struct StreetFeature {
     let id: String
     let name: String
+    /// What kind of line this is. Decides its width, its colour and how it feels.
+    /// Defaults to `.street` so every existing construction site means what it always did.
+    var category: MapSurfaceCategory = .street
     /// Polyline in content points.
     let points: [CGPoint]
     let strokeWidth: CGFloat
@@ -334,7 +337,10 @@ nonisolated struct StreetMap {
         extras: StreetMapExtras?,
         metrics: StreetMapSizing.Metrics,
         hitConfig: HitDetectionConfig = .default,
-        labelFont: CTFont
+        labelFont: CTFont,
+        /// What to put on it. Defaults to streets alone, which is what this map has always
+        /// drawn — so every existing caller gets exactly the map it got before.
+        features: MapFeatureSet = .default
     ) -> StreetMap {
         let scale = metrics.pointsPerMeter
 
@@ -348,6 +354,13 @@ nonisolated struct StreetMap {
 
         // Roads set the content box. Sidewalks and crossings are collected separately below,
         // for the close-up view only — they are never drawn at city scale.
+        // The content box is set by the *streets* alone, always, whatever else is switched on.
+        //
+        // That is deliberate and load-bearing: it makes the coordinate space a property of the
+        // city rather than of the reader's choices. Let a footpath that runs out past the last
+        // street widen the box and every point on the map shifts the moment paths are switched
+        // on — the same junction would land somewhere else, a saved position would be wrong,
+        // and two logs of the same place could not be compared.
         for element in document.features where element.elementType == .road {
             guard case .lineString(let coordinates) = element.geometry, coordinates.count >= 2 else { continue }
             let points = coordinates.map {
@@ -357,7 +370,24 @@ nonisolated struct StreetMap {
                 minX = min(minX, point.x); maxX = max(maxX, point.x)
                 minY = min(minY, point.y); maxY = max(maxY, point.y)
             }
-            raws.append(ProjectedElement(element: element, points: points))
+            if features.contains(.street) {
+                raws.append(ProjectedElement(element: element, points: points, category: .street))
+            }
+        }
+
+        // Everything else the reader asked for, in the same space.
+        for category in MapSurfaceCategory.allCases where category != .street {
+            guard features.contains(category) else { continue }
+            for element in document.features where element.elementType == category.documentType {
+                guard case .lineString(let coordinates) = element.geometry,
+                      coordinates.count >= 2 else { continue }
+                raws.append(ProjectedElement(
+                    element: element,
+                    points: coordinates.map {
+                        CGPoint(x: CGFloat($0.x) * scale, y: CGFloat($0.y) * scale)
+                    },
+                    category: category))
+            }
         }
 
         guard !raws.isEmpty else {
@@ -392,25 +422,36 @@ nonisolated struct StreetMap {
         for raw in raws {
             let points = raw.points.map { CGPoint(x: $0.x - origin.x, y: $0.y - origin.y) }
             let box = boundingBox(points)
+            let width = StreetMapSizing.width(of: raw.category, streetWidth: stroke)
+            let radius = max(width / 2, metrics.roadHitRadius)
+            let name = raw.element.properties.name.isEmpty
+                ? raw.category.unnamed : raw.element.properties.name
+            // A street says its bare name — there was only ever one kind of thing here, so
+            // saying what it is added nothing a finger had not been told. Once other kinds are
+            // on the map that stops being true: "Vaughan Street" and "Vaughan Street path" are
+            // different places to be standing, and the finger cannot tell which from the name.
+            let announcement = raw.category == .street ? name : "\(name), \(raw.category.unnamed.lowercased())"
             features.append(StreetFeature(
                 id: raw.element.id,
-                name: raw.element.properties.name,
+                name: name,
+                category: raw.category,
                 points: points,
-                strokeWidth: stroke,
-                hitRadius: hitRadius,
+                strokeWidth: width,
+                hitRadius: radius,
                 lanes: Int(raw.element.properties.custom["lanes"] ?? "") ?? 1,
-                // The bare street name. There is only one kind of thing on this map, so
-                // saying what it is adds nothing a finger has not already been told.
-                announcement: raw.element.properties.name,
-                touchBounds: box.insetBy(dx: -hitRadius, dy: -hitRadius),
-                drawBounds: box.insetBy(dx: -stroke, dy: -stroke)
+                announcement: raw.category == .street ? name : announcement,
+                touchBounds: box.insetBy(dx: -radius, dy: -radius),
+                drawBounds: box.insetBy(dx: -width, dy: -width)
             ))
         }
 
         let entries = features.enumerated().map {
             UniformGrid.Entry(index: $0.offset, bounds: $0.element.touchBounds)
         }
-        let labels = buildLabels(features: features, font: labelFont)
+        // Streets only. The other categories are mostly unnamed or all share one name, and a
+        // thousand labels reading "Service road" is not a label, it is a smear across the map.
+        let labels = buildLabels(features: features.filter { $0.category == .street },
+                                 font: labelFont)
         let labelEntries = labels.enumerated().map {
             UniformGrid.Entry(index: $0.offset, bounds: $0.element.bounds)
         }
@@ -612,6 +653,7 @@ nonisolated struct StreetMap {
 nonisolated private struct ProjectedElement {
     let element: MapElement
     let points: [CGPoint]
+    let category: MapSurfaceCategory
 }
 
 // MARK: - Uniform grid

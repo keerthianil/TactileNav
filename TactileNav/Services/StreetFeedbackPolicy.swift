@@ -320,17 +320,39 @@ final class StreetFeedbackController {
         }
     }
 
-    /// A finger has entered a road. Called only on an actual change of road, so the buzz is
+    /// A finger has entered a line. Called only on an actual change of line, so the buzz is
     /// never restarted while a finger stays on one street — which is what keeps it a steady
     /// rumble rather than a stutter.
-    func enter(identifier: String, announcement: String) {
+    ///
+    /// **One signature per kind, and they have to be tellable apart without being named.** A
+    /// street is the deep rumble it always was. A path is the softer, brighter texture the
+    /// junction close-up already gives pavement, so the two screens agree on what a pavement
+    /// feels like. A service road is quieter again — it is a lesser thing, and feeling like one
+    /// is the point. A railway is discrete ticks rather than any kind of buzz, because the one
+    /// thing a pedestrian needs to know about rails is that they are a series of things to get
+    /// across, not a surface to follow.
+    func enter(identifier: String, announcement: String,
+               category: MapSurfaceCategory = .street) {
         guard identifier != activeIdentifier else { return }
         activeIdentifier = identifier
         stopIntersectionTone()
         haptics.stopAll()
-        policy.onEnter(
-            element: StreetSurfaceElement(id: identifier, announcement: announcement),
-            touchType: .direct)
+
+        switch category {
+        case .street:
+            policy.onEnter(
+                element: StreetSurfaceElement(id: identifier, announcement: announcement),
+                touchType: .direct)
+        case .path:
+            haptics.start(pattern: .streetContinuous)
+            speech.speak(announcement)
+        case .serviceRoad:
+            haptics.start(pattern: .corridorContinuous)
+            speech.speak(announcement)
+        case .railway:
+            haptics.start(pattern: .crosswalkTick)
+            speech.speak(announcement)
+        }
     }
 
     /// A finger has entered a junction. Three cues at once, matching the overview map in the
