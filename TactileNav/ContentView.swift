@@ -50,9 +50,9 @@ struct ContentView: View {
                     } label: {
                         Label {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Portland Explorer")
+                                Text("Find a Place")
                                     .font(.headline)
-                                Text("Search a street or junction, then read it by touch")
+                                Text("Search anywhere by postcode, street or landmark")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -61,7 +61,7 @@ struct ContentView: View {
                                 .foregroundColor(.orange)
                         }
                     }
-                    .accessibilityHint("Opens a searchable tactile map of Portland. Find a place by name, then explore around it by touch")
+                    .accessibilityHint("Searches OpenStreetMap for anywhere in the world, downloads the streets around it, and opens them as a tactile map. Needs an internet connection the first time")
                 }
 
                 Section("Tools") {

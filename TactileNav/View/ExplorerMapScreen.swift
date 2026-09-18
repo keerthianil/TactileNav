@@ -20,7 +20,15 @@ struct ExplorerMapScreen: View {
 
     let map: StreetMap
     let configuration: MapConfiguration
-    private var place: SearchResult { configuration.place }
+    private var place: GeocodedPlace { configuration.place }
+
+    /// Where the searched place ended up on this map.
+    ///
+    /// `StreetMap.build` was handed the searched point and snapped it to the nearest junction
+    /// within eighty metres, which is a better place to land a first finger than a spot
+    /// mid-block — so the dot goes where the map actually opened, not where the geocoder
+    /// pointed.
+    private var locatorPosition: CGPoint { map.initialCenter }
     /// Clears the binding that pushed this screen. Same single-writer rule as the junction
     /// close-up — see `IntersectionDetailScreen.onLeave`.
     let onLeave: () -> Void
@@ -48,8 +56,8 @@ struct ExplorerMapScreen: View {
                 guard openJunction == nil else { return }
                 openJunction = OpenJunction(id: junction.id, junction: junction, map: map)
             },
-            locator: MapLocator(position: place.position, name: place.name),
-            homeCenter: place.position,
+            locator: MapLocator(position: locatorPosition, name: place.name),
+            homeCenter: locatorPosition,
             homeName: place.name,
             showsOrientation: true,
             distanceUnit: configuration.units,

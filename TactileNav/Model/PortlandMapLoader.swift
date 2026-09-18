@@ -23,6 +23,12 @@ nonisolated struct StreetMapExtras: Decodable {
         let x: Double
         let y: Double
 
+        /// For a document built in memory rather than decoded from a file — see `LiveMapService`.
+        init(x: Double, y: Double) {
+            self.x = x
+            self.y = y
+        }
+
         init(from decoder: Decoder) throws {
             var container = try decoder.unkeyedContainer()
             x = try container.decode(Double.self)
@@ -40,6 +46,14 @@ nonisolated struct StreetMapExtras: Decodable {
     let initialCenter: Point?
     let bbox: BoundingBox?
     let source: String?
+
+    /// Only the opening point is needed for a live document: it has no file to be read back
+    /// from, and the bounding box it was cut to is already baked into its coordinates.
+    init(initialCenter: Point?, bbox: BoundingBox? = nil, source: String? = nil) {
+        self.initialCenter = initialCenter
+        self.bbox = bbox
+        self.source = source
+    }
 
     private enum CodingKeys: String, CodingKey {
         case initialCenter = "initial_center"

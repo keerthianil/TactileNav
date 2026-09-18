@@ -2387,129 +2387,6 @@ struct RouteInIntersectionCloseUpTests {
     }
 }
 
-// MARK: - Portland Explorer
-
-/// Searching the map by name, and the dot that marks what was found.
-///
-/// The index is built from the same bundled extract the map is, so these run against the real
-/// 274 street names and 643 junctions rather than a fixture.
-@MainActor
-struct PlaceSearchTests {
-
-    private func loadMap() throws -> StreetMap {
-        try PortlandMapLoader.loadStreetMap(context: PortlandMapLoader.LoadContext.current())
-    }
-
-    private func index() throws -> PlaceSearchIndex {
-        PlaceSearchIndex(map: try loadMap())
-    }
-
-    @Test func theIndexCoversEveryStreetAndJunction() throws {
-        let map = try loadMap()
-        let index = PlaceSearchIndex(map: map)
-        let streetNames = Set(map.features.map(\.name)).filter { !$0.isEmpty }
-        // One entry per *name*, not per way: a street split into a piece per block is still one
-        // street to anyone looking for it.
-        #expect(index.count == streetNames.count + map.intersections.count)
-        #expect(index.count > 800)
-    }
-
-    @Test func aStreetIsFoundByName() throws {
-        let results = try index().results(for: "Congress Street")
-        let street = try #require(results.first { $0.kind == .street })
-        #expect(street.name == "Congress Street")
-        // The exact match is the top answer overall, not merely present somewhere below the fold.
-        #expect(results.first?.name == "Congress Street")
-    }
-
-    /// Typing part of a word finds the word, and each word may be abbreviated.
-    ///
-    /// This is the whole reason matching is by token prefix: "congress st" works without a table
-    /// of abbreviations, because "st" is simply the start of "Street".
-    @Test func aPartialNameAndAnAbbreviationBothFindTheStreet() throws {
-        let index = try index()
-        for query in ["cong", "congress st", "Congress St"] {
-            let names = index.results(for: query).map(\.name)
-            #expect(names.contains("Congress Street"),
-                    Comment(rawValue: "\(query) did not find Congress Street"))
-        }
-    }
-
-    /// The junction of two streets, asked for the way a person would ask.
-    @Test func aJunctionIsFoundByItsTwoStreets() throws {
-        let index = try index()
-        // Word order is not significant, and the joining word is not something to be matched.
-        for query in ["congress and high", "Congress & High", "high congress"] {
-            let junctions = index.results(for: query).filter { $0.kind == .junction }
-            let found = junctions.contains {
-                $0.name.contains("Congress Street") && $0.name.contains("High Street")
-            }
-            #expect(found, Comment(rawValue: "\(query) did not find Congress at High"))
-        }
-    }
-
-    /// A junction result lands on the junction, and a street result lands on the street.
-    ///
-    /// A result that centres the map somewhere other than the thing it names is worse than no
-    /// result at all — the user has no way to tell they are in the wrong place.
-    @Test func everyResultLandsOnTheThingItNames() throws {
-        let map = try loadMap()
-        let index = PlaceSearchIndex(map: map)
-
-        let junction = try #require(index.results(for: "congress and high")
-            .first { $0.kind == .junction })
-        let nearest = try #require(map.intersection(at: junction.position, within: 4))
-        #expect(nearest.streetNames.contains("Congress Street"))
-
-        let street = try #require(index.results(for: "Congress Street").first { $0.kind == .street })
-        let under = try #require(map.feature(at: street.position, velocity: 0))
-        #expect(under.name == "Congress Street")
-    }
-
-    @Test func aQueryTooShortToMeanAnythingReturnsNothing() throws {
-        let index = try index()
-        #expect(index.results(for: "").isEmpty)
-        #expect(index.results(for: "c").isEmpty)
-        #expect(!index.results(for: "co").isEmpty)
-    }
-
-    @Test func aNameNoStreetHasFindsNothing() throws {
-        #expect(try index().results(for: "Lombard Street").isEmpty)
-    }
-
-    /// Congress Square is untouched by any of this.
-    ///
-    /// The explorer shares the map engine rather than forking it, so the guard that the shared
-    /// parts still default to exactly what that screen had is part of the feature.
-    @Test func theCongressSquareMapHasNoLocatorAndOpensWhereItAlwaysDid() throws {
-        let map = try loadMap()
-        let asItWas = PortlandMapView(map: map)
-
-        #expect(asItWas.locator == nil, "Congress Square must not draw a searched-place dot")
-        #expect(asItWas.openingCenter == map.initialCenter)
-        #expect(asItWas.homeName == "Congress Square")
-
-        // And the explorer overrides both, without changing the map it was given.
-        let place = try #require(PlaceSearchIndex(map: map).results(for: "congress and high").first)
-        let explorer = PortlandMapView(map: map, locator: MapLocator(position: place.position,
-                                                                    name: place.name),
-                                       homeCenter: place.position, homeName: place.name)
-        #expect(explorer.openingCenter == place.position)
-        #expect(explorer.locator != nil)
-    }
-
-    /// The dot has to be findable by a finger that does not already know where it is.
-    @Test func theLocatorIsBigEnoughToLandOn() throws {
-        // Physical millimetres, like everything else on this map — and at least the 24 pt floor
-        // that stops a small dot on a dense grid from being a pixel hunt.
-        #expect(StreetMapSizing.locatorDiameter
-                == PhysicalDimensions.mmToPoints(StreetMapSizing.locatorDiameterMM))
-        #expect(StreetMapSizing.locatorHitRadius >= 24)
-        // Wider than the junction box it commonly sits on, so it wins the touch.
-        #expect(StreetMapSizing.locatorHitRadius >= StreetMapSizing.intersectionHitRadius)
-    }
-}
-
 // MARK: - Scale, units and what is on the map
 
 /// The three things the options screen decides, and the promise none of them may break.
@@ -2767,5 +2644,315 @@ struct MapFeatureDrawingTests {
             if changed > 50 { return true }
         }
         return false
+    }
+}
+
+// MARK: - Building a map from a live OpenStreetMap answer
+
+/// The on-device builder, against a network whose right answer is known by construction.
+///
+/// Deliberately a hand-written Overpass reply rather than a recorded one. What has to be true
+/// here is topological — this node is a junction, that crossing is not, this way is dropped —
+/// and a fixture small enough to reason about proves it in a way that counting features in a
+/// captured city never could. It is also offline and deterministic, which a test that talks to
+/// OpenStreetMap could not be.
+@MainActor
+struct OSMDocumentBuilderTests {
+
+    /// Congress Square, and the 3 km box the app fetches around a searched point.
+    private let centre = (latitude: 43.6537, longitude: -70.2635)
+    private var box: OSMDocumentBuilder.Box {
+        OSMDocumentBuilder.Box(centreLatitude: centre.latitude,
+                               centreLongitude: centre.longitude,
+                               halfSpanMeters: LiveMapService.halfSpanMeters)
+    }
+
+    /// An Overpass `out body geom` reply: ways with node ids and lat/lon vertices.
+    private func reply(_ ways: String) -> Data {
+        Data("{\"elements\":[\(ways)]}".utf8)
+    }
+
+    private func way(id: Int, nodes: [Int], points: [(Double, Double)],
+                     tags: [String: String]) -> String {
+        let nodeList = nodes.map(String.init).joined(separator: ",")
+        let geometry = points
+            .map { "{\"lat\":\($0.0),\"lon\":\($0.1)}" }
+            .joined(separator: ",")
+        let tagList = tags.map { "\"\($0.key)\":\"\($0.value)\"" }.joined(separator: ",")
+        return """
+        {"type":"way","id":\(id),"nodes":[\(nodeList)],"geometry":[\(geometry)],"tags":{\(tagList)}}
+        """
+    }
+
+    /// Two named streets sharing a node: one junction, four legs, at the right bearings.
+    private func crossroads() -> Data {
+        let (lat, lon) = centre
+        let step = 0.002
+        return reply([
+            // West to east through the middle.
+            way(id: 1, nodes: [1, 2, 3],
+                points: [(lat, lon - step), (lat, lon), (lat, lon + step)],
+                tags: ["highway": "residential", "name": "Alpha Street"]),
+            // South to north through the same middle node.
+            way(id: 2, nodes: [4, 2, 5],
+                points: [(lat - step, lon), (lat, lon), (lat + step, lon)],
+                tags: ["highway": "residential", "name": "Beta Street"]),
+        ].joined(separator: ","))
+    }
+
+    @Test func aSharedNodeBetweenTwoNamedStreetsIsAJunction() throws {
+        let document = try OSMDocumentBuilder.build(overpass: crossroads(), box: box, name: "Test")
+        let junctions = document.features.filter { $0.elementType == .intersection }
+        #expect(junctions.count == 1)
+
+        let junction = try #require(junctions.first)
+        #expect(junction.properties.name == "Alpha Street and Beta Street")
+        #expect(junction.properties.custom["legs"] == "4")
+        // Sorted by bearing: north, east, south, west. 0 is north because y grows south.
+        #expect(junction.properties.custom["leg_bearings"] == "0.0|90.0|180.0|270.0")
+        #expect(junction.properties.custom["leg_names"]
+                == "Beta Street|Alpha Street|Beta Street|Alpha Street")
+    }
+
+    /// The junction lands at the centre of the box, which is where the two streets cross.
+    @Test func theProjectionPutsTheCentreOfTheBoxAtTheCentreOfTheMap() throws {
+        let document = try OSMDocumentBuilder.build(overpass: crossroads(), box: box, name: "Test")
+        let junction = try #require(document.features.first { $0.elementType == .intersection })
+        guard case .point(let at) = junction.geometry else {
+            Issue.record("a junction should be a point"); return
+        }
+        #expect(abs(at.x - box.width / 2) < 0.5)
+        #expect(abs(at.y - box.height / 2) < 0.5)
+        // 1.5 km each way from the centre is a 3 km square.
+        #expect(abs(box.width - 3000) < 1)
+        #expect(abs(box.height - 3000) < 1)
+    }
+
+    /// **Two roads that cross on a bridge are not a junction.**
+    ///
+    /// This is the whole reason junctions come from node topology rather than from geometry.
+    /// The same two lines, crossing at the same place, but with no node in common — which is
+    /// exactly how OpenStreetMap records one road passing over another.
+    @Test func crossingWithoutASharedNodeIsNotAJunction() throws {
+        let (lat, lon) = centre
+        let step = 0.002
+        let data = reply([
+            way(id: 1, nodes: [1, 2, 3],
+                points: [(lat, lon - step), (lat, lon), (lat, lon + step)],
+                tags: ["highway": "residential", "name": "Alpha Street"]),
+            // Same geometry through the middle, different node ids: an overpass.
+            way(id: 2, nodes: [7, 8, 9],
+                points: [(lat - step, lon), (lat, lon), (lat + step, lon)],
+                tags: ["highway": "primary", "name": "Flyover Road"]),
+        ].joined(separator: ","))
+
+        let document = try OSMDocumentBuilder.build(overpass: data, box: box, name: "Test")
+        #expect(!document.features.contains { $0.elementType == .intersection })
+    }
+
+    /// A node shared by two pieces of the *same* street is not a junction either.
+    @Test func aStreetSplitIntoPiecesIsNotAJunctionWithItself() throws {
+        let (lat, lon) = centre
+        let data = reply([
+            way(id: 1, nodes: [1, 2], points: [(lat, lon - 0.002), (lat, lon)],
+                tags: ["highway": "residential", "name": "Alpha Street"]),
+            way(id: 2, nodes: [2, 3], points: [(lat, lon), (lat, lon + 0.002)],
+                tags: ["highway": "residential", "name": "Alpha Street"]),
+        ].joined(separator: ","))
+
+        let document = try OSMDocumentBuilder.build(overpass: data, box: box, name: "Test")
+        #expect(!document.features.contains { $0.elementType == .intersection })
+    }
+
+    /// Unnamed roads are dropped; unnamed ramps are kept, because they are never named and they
+    /// carry the grade separations that make a network make sense.
+    @Test func unnamedRoadsAreDroppedButRampsAreKept() throws {
+        let (lat, lon) = centre
+        let data = reply([
+            way(id: 1, nodes: [1, 2], points: [(lat, lon - 0.002), (lat, lon)],
+                tags: ["highway": "residential"]),
+            way(id: 2, nodes: [3, 4], points: [(lat + 0.001, lon), (lat + 0.001, lon + 0.002)],
+                tags: ["highway": "motorway_link"]),
+            way(id: 3, nodes: [5, 6], points: [(lat - 0.001, lon), (lat - 0.001, lon + 0.002)],
+                tags: ["highway": "primary_link", "ref": "I-295"]),
+        ].joined(separator: ","))
+
+        let document = try OSMDocumentBuilder.build(overpass: data, box: box, name: "Test")
+        let names = Set(document.features.filter { $0.elementType == .road }
+            .map(\.properties.name))
+        #expect(names == ["Ramp", "I-295 ramp"], "got \(names.sorted())")
+    }
+
+    /// Each kind of way lands as the element type the map draws it from.
+    @Test func everyKindOfWayIsClassified() throws {
+        let (lat, lon) = centre
+        let data = reply([
+            way(id: 1, nodes: [1, 2], points: [(lat, lon - 0.002), (lat, lon)],
+                tags: ["highway": "residential", "name": "Alpha Street"]),
+            way(id: 2, nodes: [3, 4], points: [(lat + 0.0005, lon), (lat + 0.0005, lon + 0.001)],
+                tags: ["highway": "footway", "footway": "sidewalk"]),
+            // A crossing is tagged as a footway too, so order of classification matters.
+            way(id: 3, nodes: [5, 6], points: [(lat + 0.0006, lon), (lat + 0.0007, lon)],
+                tags: ["highway": "footway", "footway": "crossing"]),
+            way(id: 4, nodes: [7, 8], points: [(lat - 0.0005, lon), (lat - 0.0005, lon + 0.001)],
+                tags: ["highway": "service"]),
+            way(id: 5, nodes: [9, 10], points: [(lat - 0.001, lon), (lat - 0.001, lon + 0.001)],
+                tags: ["railway": "rail"]),
+        ].joined(separator: ","))
+
+        let document = try OSMDocumentBuilder.build(overpass: data, box: box, name: "Test")
+        for category in MapSurfaceCategory.allCases {
+            #expect(document.features.contains { $0.elementType == category.documentType },
+                    Comment(rawValue: "nothing was classified as \(category.label)"))
+        }
+        let crossings = document.features.filter { $0.elementType == .crosswalk }
+        #expect(crossings.count == 1, "the crossing was classified as a plain footway")
+    }
+
+    /// Lane counts come from the tag when there is one, and from the road class otherwise —
+    /// and each road records which, so a trace can be read back honestly.
+    @Test func laneCountsRecordWhereTheyCameFrom() throws {
+        let (lat, lon) = centre
+        let data = reply([
+            way(id: 1, nodes: [1, 2], points: [(lat, lon - 0.002), (lat, lon)],
+                tags: ["highway": "residential", "name": "Tagged Street", "lanes": "3"]),
+            way(id: 2, nodes: [3, 4], points: [(lat + 0.001, lon), (lat + 0.001, lon + 0.002)],
+                tags: ["highway": "primary", "name": "Untagged Road"]),
+        ].joined(separator: ","))
+
+        let document = try OSMDocumentBuilder.build(overpass: data, box: box, name: "Test")
+        let tagged = try #require(document.features.first { $0.properties.name == "Tagged Street" })
+        #expect(tagged.properties.custom["lanes"] == "3")
+        #expect(tagged.properties.custom["lanes_source"] == "osm")
+
+        let untagged = try #require(document.features.first { $0.properties.name == "Untagged Road" })
+        #expect(untagged.properties.custom["lanes"] == "4")
+        #expect(untagged.properties.custom["lanes_source"] == "class")
+    }
+
+    /// Somewhere with no mapped streets says so rather than opening an empty map.
+    @Test func anAreaWithNoStreetsIsAnError() throws {
+        let data = reply("")
+        #expect(throws: OSMDocumentBuilder.Failure.self) {
+            _ = try OSMDocumentBuilder.build(overpass: data, box: box, name: "Nowhere")
+        }
+    }
+
+    /// A built document goes through the real map pipeline, exactly as a bundled one does.
+    @Test func aBuiltDocumentBecomesARealMap() throws {
+        let document = try OSMDocumentBuilder.build(overpass: crossroads(), box: box, name: "Test")
+        let context = PortlandMapLoader.LoadContext.current()
+        let centrePoint = box.project(latitude: centre.latitude, longitude: centre.longitude)
+
+        let map = StreetMap.build(
+            document: document,
+            extras: StreetMapExtras(initialCenter: .init(x: Double(centrePoint.x),
+                                                         y: Double(centrePoint.y))),
+            metrics: context.metrics,
+            labelFont: context.labelFont)
+
+        #expect(map.features.count == 2)
+        #expect(map.intersections.count == 1)
+        // The opening point snaps to the junction, which is where the two streets cross.
+        let junction = try #require(map.intersections.first)
+        #expect(hypot(map.initialCenter.x - junction.position.x,
+                      map.initialCenter.y - junction.position.y) < 1)
+        // And a finger on that point finds the junction.
+        guard case .intersection = map.probe(at: junction.position, velocity: 0) else {
+            Issue.record("the junction is not reachable by touch"); return
+        }
+    }
+}
+
+// MARK: - Reading OpenStreetMap's answer to a search
+
+/// The geocoder's parsing, against the shape Nominatim really returns.
+///
+/// A recorded reply rather than a live call: what has to be true is how one long
+/// comma-separated name is split into something a reader can tell apart from its neighbours,
+/// and that is a property of the parsing, not of the server.
+@MainActor
+struct OSMGeocoderTests {
+
+    /// Trimmed from a real reply to `?q=04101` — the case that matters, because the postcode
+    /// a Portland reader wants comes back *third*, behind Lithuania and South Korea.
+    private let reply = Data("""
+    [
+      {"place_id":1,"osm_type":"relation","osm_id":11,"lat":"54.6746444","lon":"25.2041237",
+       "display_name":"04101, Lazdynai eldership, Vilnius, Vilnius city municipality, Lithuania",
+       "addresstype":"postcode","type":"postcode"},
+      {"place_id":2,"osm_type":"node","osm_id":22,"lat":"37.5536400","lon":"126.9371445",
+       "display_name":"04101, Daeheung-dong, Mapo-gu, Seoul, South Korea",
+       "addresstype":"postcode","type":"postcode"},
+      {"place_id":3,"osm_type":"relation","osm_id":33,"lat":"43.6625616","lon":"-70.2575812",
+       "display_name":"04101, Portland, Cumberland County, Maine, United States",
+       "addresstype":"postcode","type":"postal_code"}
+    ]
+    """.utf8)
+
+    @Test func everyResultKeepsEnoughOfItsNameToBeToldApart() throws {
+        let places = try OSMGeocoder.places(fromNominatimJSON: reply)
+        #expect(places.count == 3)
+
+        // A postcode is ambiguous worldwide, so the country has to survive into what is read
+        // out. All three are called "04101"; only the context separates them.
+        let portland = try #require(places.first { $0.context.contains("United States") })
+        #expect(portland.name == "04101, Portland")
+        #expect(portland.context == "Cumberland County, Maine, United States")
+        #expect(portland.spokenLabel
+                == "04101, Portland. Cumberland County, Maine, United States")
+        #expect(abs(portland.latitude - 43.6625616) < 0.000_01)
+        #expect(abs(portland.longitude + 70.2575812) < 0.000_01)
+        #expect(portland.kind == "postcode")
+
+        // And no two results collide, or picking one from a list would be a coin toss.
+        #expect(Set(places.map(\.id)).count == 3)
+        #expect(Set(places.map(\.spokenLabel)).count == 3)
+    }
+
+    @Test func aReplyWithNoUsableCoordinatesIsSkippedRatherThanCrashing() throws {
+        let broken = Data("""
+        [{"place_id":1,"lat":"not-a-number","lon":"0","display_name":"Nowhere","type":"place"}]
+        """.utf8)
+        #expect(try OSMGeocoder.places(fromNominatimJSON: broken).isEmpty)
+    }
+
+    /// Each failure says something different, and each says what to do about it.
+    ///
+    /// A blind reader gets one sentence and no diagnostics, so "no internet" and "the server is
+    /// busy" must not both come out as "something went wrong" — the first is fixable by the
+    /// reader and the second by waiting.
+    @Test func everyFailureExplainsItself() throws {
+        let messages = [
+            OSMGeocoder.Failure.offline.errorDescription,
+            OSMGeocoder.Failure.unavailable.errorDescription,
+            OSMGeocoder.Failure.nothingFound("04101").errorDescription,
+            OverpassClient.Failure.offline.errorDescription,
+            OverpassClient.Failure.unavailable.errorDescription,
+            OverpassClient.Failure.tooBusy.errorDescription,
+            OSMDocumentBuilder.Failure.emptyArea.errorDescription,
+        ].compactMap { $0 }
+
+        #expect(messages.count == 7, "a failure with nothing to say reaches the reader as silence")
+        #expect(Set(messages).count == 7, "two different failures read identically")
+        for message in messages {
+            #expect(message.count > 20, Comment(rawValue: "too terse to act on: \(message)"))
+        }
+        #expect(OSMGeocoder.Failure.nothingFound("04101").errorDescription?
+            .contains("04101") == true, "the message should quote what was searched for")
+    }
+
+    /// The fetched box is the size the service promises, centred on the place.
+    @Test func theFetchedAreaIsThreeKilometresAroundThePlace() throws {
+        let box = OSMDocumentBuilder.Box(centreLatitude: 43.6625616,
+                                         centreLongitude: -70.2575812,
+                                         halfSpanMeters: LiveMapService.halfSpanMeters)
+        #expect(abs(box.width - 3000) < 2)
+        #expect(abs(box.height - 3000) < 2)
+        #expect(LiveMapService.spanDescription.contains("3 kilometres"))
+
+        let centre = box.project(latitude: 43.6625616, longitude: -70.2575812)
+        #expect(abs(Double(centre.x) - 1500) < 1)
+        #expect(abs(Double(centre.y) - 1500) < 1)
     }
 }

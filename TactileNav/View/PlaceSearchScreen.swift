@@ -2,196 +2,170 @@
 //  PlaceSearchScreen.swift
 //  TactileNav
 //
-//  Ask for a place, then go and read it.
+//  "Where are you traveling?" — ask for anywhere, and the map is fetched for it.
 //
-//  This is the half the Congress Square map does not have. That map opens where it opens; this
-//  one starts from a question — a street, or the junction of two — and takes you there with the
-//  place marked under your finger.
+//  The other map in this app ships as a file. This one starts from a question, because there is
+//  no list of everywhere: what is typed goes to OpenStreetMap's own geocoder, the answer picks a
+//  point, and the street network around that point is fetched from Overpass and built into the
+//  same kind of map.
 //
-//  **VoiceOver owns the voice on this screen.** It is ordinary UI: a text field and a list, read
-//  by the screen reader like any other. The app's own speech channel stays silent until the map
-//  appears. Announcing a result count here would put a second voice on top of the one already
-//  reading the list, which is precisely the overlap the speech channel exists to prevent.
+//  **A postcode is the most useful thing to be able to type.** Somebody planning a journey knows
+//  the district long before they know the corner, and a postcode is how people say a district.
+//  It is also ambiguous worldwide — 02119 is in Boston, Vilnius and Seoul — so every result
+//  carries its full place name and the reader chooses. Guessing a country would be wrong more
+//  often than it helped, and silently so.
+//
+//  **Searching happens on submit, not on every keystroke.** Nominatim is free infrastructure
+//  that asks for about one call a second, and firing one per letter would both abuse it and
+//  re-order the list under a reading finger. It is also simply clearer: you type, you search.
+//
+//  VoiceOver owns the voice on this screen — it is a text field and a list. The app's own speech
+//  channel stays silent until the map appears, which is the rule that keeps two voices from
+//  talking at once.
 //
 
 import SwiftUI
-import TactileMapCore
 
 struct PlaceSearchScreen: View {
 
-    /// Loaded once and handed to the map, so opening a result does not re-parse the extract.
-    private struct Loaded {
-        let map: StreetMap
-        let index: PlaceSearchIndex
-    }
+    @State private var query = ""
+    @State private var results: [GeocodedPlace] = []
+    @State private var isSearching = false
+    @State private var message: String?
+    @State private var recents = RecentSearches()
+    @State private var openPlace: OpenPlace?
+    @FocusState private var fieldFocused: Bool
 
-    private enum LoadPhase {
-        case loading
-        case ready(Loaded)
-        case failed
-    }
-
-    /// Carries the whole result and the whole map, for the reason spelled out in
-    /// `PortlandMapScreen.OpenJunction`: a destination builder that can come up empty is how
-    /// SwiftUI is told to throw the navigation stack away.
+    /// Carries the whole place, for the reason set out in `PortlandMapScreen.OpenJunction`: a
+    /// destination builder that can come up empty is how SwiftUI is told to empty the stack.
     private struct OpenPlace: Identifiable, Hashable {
         let id: String
-        let result: SearchResult
-        let map: StreetMap
+        let place: GeocodedPlace
 
         static func == (a: OpenPlace, b: OpenPlace) -> Bool { a.id == b.id }
         func hash(into hasher: inout Hasher) { hasher.combine(id) }
     }
 
-    @State private var phase: LoadPhase = .loading
-    @State private var hasAppeared = false
-    @State private var query = ""
-    @State private var results: [SearchResult] = []
-    @State private var recents = RecentSearches()
-    @State private var openPlace: OpenPlace?
-
     var body: some View {
-        content
-            // Unconditional, and total — see `OpenPlace`.
-            .navigationDestination(item: $openPlace) { place in
-                MapOptionsScreen(place: place.result)
-            }
-            .navigationTitle("Portland Explorer")
-            .navigationBarTitleDisplayMode(.inline)
-            .onAppear {
-                guard !hasAppeared else { return }
-                hasAppeared = true
-                load()
-            }
-            // Re-running the search is `.task(id:)`'s job: changing the query cancels the
-            // previous run, so the sleep below is a debounce with nothing to bookkeep.
-            .task(id: query) { await search() }
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        switch phase {
-        case .loading:
-            ProgressView("Loading Portland")
-                .accessibilityLabel("Loading the Portland map")
-
-        case .failed:
-            VStack(spacing: 12) {
-                Image(systemName: "exclamationmark.triangle").font(.largeTitle)
-                Text("The Portland map could not be loaded.").multilineTextAlignment(.center)
-            }
-            .padding()
-            .accessibilityElement(children: .combine)
-
-        case .ready:
-            searchList
-        }
-    }
-
-    private var searchList: some View {
         List {
             Section {
-                TextField("Search Portland", text: $query)
-                    .textFieldStyle(.roundedBorder)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.words)
-                    .submitLabel(.search)
-                    .accessibilityLabel("Search Portland")
-                    .accessibilityHint("A street name, or two street names for a junction")
+                HStack(spacing: 8) {
+                    TextField("Where are you traveling?", text: $query)
+                        .textFieldStyle(.roundedBorder)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.words)
+                        .submitLabel(.search)
+                        .focused($fieldFocused)
+                        .onSubmit(search)
+                        .accessibilityLabel("Where are you traveling?")
+                        .accessibilityHint("A postcode, a street, a landmark or an address")
+
+                    Button("Search", action: search)
+                        .buttonStyle(.borderedProminent)
+                        .disabled(query.trimmingCharacters(in: .whitespaces).count < 2 || isSearching)
+                        .accessibilityIdentifier("runSearch")
+                }
+            } footer: {
+                Text("Try a postcode — \u{201C}04101\u{201D} — or a street, a landmark, an address. "
+                     + "Anywhere OpenStreetMap has mapped.")
             }
 
-            if query.isEmpty {
-                if !recents.queries.isEmpty {
-                    Section("Recent") {
-                        ForEach(recents.queries, id: \.self) { past in
-                            Button(past) { query = past }
-                                .accessibilityHint("Searches for this again")
-                        }
+            if isSearching {
+                Section {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Searching OpenStreetMap\u{2026}")
                     }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Searching OpenStreetMap")
                 }
+            }
+
+            if let message {
                 Section {
-                    Text("Try a street — \u{201C}Congress\u{201D} — or two for a junction, "
-                         + "like \u{201C}Congress and High\u{201D}.")
-                        .font(.footnote)
+                    Text(message)
                         .foregroundColor(.secondary)
+                        .accessibilityLabel(message)
                 }
-            } else if results.isEmpty {
-                Section {
-                    Text(query.count < PlaceSearchIndex.minimumQueryLength
-                         ? "Keep typing."
-                         : "Nothing here by that name.")
-                        .foregroundColor(.secondary)
+            }
+
+            if !results.isEmpty {
+                Section("Results") {
+                    ForEach(results) { place in row(place) }
                 }
-            } else {
-                // Grouped so the answer you probably meant is under a heading you can jump to
-                // with the VoiceOver rotor rather than swiping past everything above it.
-                ForEach(SearchResult.Kind.allCases, id: \.self) { kind in
-                    let group = results.filter { $0.kind == kind }
-                    if !group.isEmpty {
-                        Section(kind.heading) {
-                            ForEach(group) { result in row(result) }
+            }
+
+            if results.isEmpty, !isSearching, !recents.queries.isEmpty {
+                Section("Recent") {
+                    ForEach(recents.queries, id: \.self) { past in
+                        Button(past) {
+                            query = past
+                            search()
                         }
+                        .accessibilityHint("Searches for this again")
                     }
                 }
             }
         }
+        .navigationDestination(item: $openPlace) { open in
+            MapOptionsScreen(place: open.place)
+        }
+        .navigationTitle("Find a Place")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func row(_ result: SearchResult) -> some View {
+    private func row(_ place: GeocodedPlace) -> some View {
         Button {
-            open(result)
+            guard openPlace == nil else { return }
+            recents.remember(query)
+            openPlace = OpenPlace(id: place.id, place: place)
         } label: {
             VStack(alignment: .leading, spacing: 2) {
-                Text(result.name)
+                Text(place.name)
                     .font(.body)
                     .foregroundColor(.primary)
-                Text(result.detail)
-                    .font(.caption)
+                if !place.context.isEmpty {
+                    Text(place.context)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Text(place.kind.replacingOccurrences(of: "_", with: " ").capitalized
+                     + (LiveMapService.isCached(place) ? " \u{00B7} already downloaded" : ""))
+                    .font(.caption2)
                     .foregroundColor(.secondary)
             }
         }
-        // One element, one swipe: the name and what it is are a single fact, and hearing them
-        // as two stops rather than one is slower for no gain.
+        // One element, one swipe: the name, where it is, and what kind of thing it is are one
+        // fact, and hearing them as three stops is slower for no gain.
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(result.spokenLabel)
-        .accessibilityHint("Opens the tactile map here")
+        .accessibilityLabel(place.spokenLabel)
+        .accessibilityHint(LiveMapService.isCached(place)
+            ? "Already downloaded. Opens the map options"
+            : "Opens the map options, then downloads the streets around it")
     }
 
-    // MARK: Behaviour
+    // MARK: Searching
 
-    private func open(_ result: SearchResult) {
-        guard case .ready(let loaded) = phase, openPlace == nil else { return }
-        recents.remember(query)
-        openPlace = OpenPlace(id: result.id, result: result, map: loaded.map)
-    }
+    private func search() {
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.count >= 2, !isSearching else { return }
+        fieldFocused = false
+        isSearching = true
+        message = nil
+        results = []
 
-    private func search() async {
-        guard case .ready(let loaded) = phase else { return }
-        guard query.count >= PlaceSearchIndex.minimumQueryLength else {
-            results = []
-            return
-        }
-        // Long enough that typing does not re-rank the list under the reading finger on every
-        // keystroke, short enough that stopping feels like an answer rather than a wait. Same
-        // reasoning, and nearly the same number, as the speech dwell.
-        try? await Task.sleep(for: .milliseconds(150))
-        guard !Task.isCancelled else { return }
-        results = loaded.index.results(for: query)
-    }
-
-    private func load() {
-        let context = PortlandMapLoader.LoadContext.current()
-        Task.detached(priority: .userInitiated) {
-            guard let map = try? PortlandMapLoader.loadStreetMap(
-                context: context,
-                resource: PortlandMapLoader.peninsulaResourceName) else {
-                await MainActor.run { phase = .failed }
-                return
+        Task {
+            do {
+                let found = try await OSMGeocoder.search(text)
+                isSearching = false
+                results = found
+            } catch {
+                isSearching = false
+                // The geocoder's own words: it knows whether this was no network, a service
+                // that would not answer, or a name that simply is not there.
+                message = (error as? LocalizedError)?.errorDescription
+                    ?? "That search could not be completed."
             }
-            // Built on the same background pass as the map: it is derived from it, and doing it
-            // here keeps the first keystroke from paying for it.
-            let index = PlaceSearchIndex(map: map)
-            await MainActor.run { phase = .ready(Loaded(map: map, index: index)) }
         }
     }
 }
@@ -200,12 +174,12 @@ struct PlaceSearchScreen: View {
 
 /// The last few things looked for, kept across launches.
 ///
-/// Worth its twenty lines in a research app: running the same set of places past one participant
-/// after another is the normal way these sessions go, and retyping a street name with VoiceOver
-/// on is slow enough to be worth not doing twice.
+/// Worth its twenty lines in a research app: running the same places past one participant after
+/// another is how these sessions go, and retyping a postcode with VoiceOver on is slow enough to
+/// be worth not doing twice.
 @MainActor
 struct RecentSearches {
-    private static let key = "PortlandExplorer.recentSearches"
+    private static let key = "PlaceSearch.recentQueries"
     private static let limit = 6
 
     private(set) var queries: [String] =
@@ -213,7 +187,7 @@ struct RecentSearches {
 
     mutating func remember(_ query: String) {
         let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard text.count >= PlaceSearchIndex.minimumQueryLength else { return }
+        guard text.count >= 2 else { return }
         queries.removeAll { $0.caseInsensitiveCompare(text) == .orderedSame }
         queries.insert(text, at: 0)
         if queries.count > Self.limit { queries.removeLast(queries.count - Self.limit) }

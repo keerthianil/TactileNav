@@ -23,6 +23,20 @@ final class TactileNavUITests: XCTestCase {
         return app
     }
 
+    /// Launches with OpenStreetMap stubbed out.
+    ///
+    /// The Find a Place screens talk to two free public services. A UI test that searched for
+    /// real would be slow, would fail whenever Overpass was queued behind other traffic, and
+    /// would put load on donated infrastructure on every run — so the navigation is tested
+    /// against a fixed answer and **the live fetch is verified by hand**, which is the only
+    /// honest way to check an integration with somebody else's server anyway.
+    private func launchWithStubbedOSM() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments += ["-osm-stub"]
+        app.launch()
+        return app
+    }
+
     private func attach(_ app: XCUIApplication, named name: String) {
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = name
@@ -202,16 +216,17 @@ final class TactileNavUITests: XCTestCase {
     /// is exactly the shape that has failed before.
     @MainActor
     func testSearchingForAPlaceOpensItAndComingBackLetsYouSearchAgain() throws {
-        let app = launch()
-        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Portland Explorer"))
+        let app = launchWithStubbedOSM()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Find a Place"))
             .firstMatch.tap()
-        XCTAssertTrue(app.navigationBars["Portland Explorer"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.navigationBars["Find a Place"].waitForExistence(timeout: 20))
 
-        let field = app.textFields["Search Portland"]
+        let field = app.textFields["Where are you traveling?"]
         XCTAssertTrue(field.waitForExistence(timeout: 20), "the search field never appeared")
 
         field.tap()
-        field.typeText("congress and high")
+        field.typeText("04101")
+        app.buttons["runSearch"].tap()
 
         let result = app.buttons.matching(
             NSPredicate(format: "label CONTAINS %@", "Congress Street and High Street")).firstMatch
@@ -230,14 +245,13 @@ final class TactileNavUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Map Options"].waitForExistence(timeout: 10),
                       "going back did not return to the options")
         app.navigationBars["Map Options"].buttons["BackButton"].tap()
-        XCTAssertTrue(app.navigationBars["Portland Explorer"].waitForExistence(timeout: 10),
+        XCTAssertTrue(app.navigationBars["Find a Place"].waitForExistence(timeout: 10),
                       "going back did not return to the search")
         XCTAssertFalse(app.navigationBars["TactileNav"].exists,
                        "going back fell through to the home screen")
 
         // And a second, different place still works — the stack is intact.
-        field.tap()
-        field.typeText(XCUIKeyboardKey.delete.rawValue)
+        app.buttons["runSearch"].tap()
         let second = app.buttons.matching(
             NSPredicate(format: "label CONTAINS %@", "Congress Street")).firstMatch
         XCTAssertTrue(second.waitForExistence(timeout: 10))
@@ -254,13 +268,14 @@ final class TactileNavUITests: XCTestCase {
     /// operable, which for this app's readers means operable without looking.
     @MainActor
     func testTheMapOptionsOfferScaleUnitsAndFeatures() throws {
-        let app = launch()
-        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Portland Explorer"))
+        let app = launchWithStubbedOSM()
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Find a Place"))
             .firstMatch.tap()
-        let field = app.textFields["Search Portland"]
+        let field = app.textFields["Where are you traveling?"]
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         field.tap()
-        field.typeText("congress and high")
+        field.typeText("04101")
+        app.buttons["runSearch"].tap()
 
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Congress Street and High Street"))
             .firstMatch.tap()

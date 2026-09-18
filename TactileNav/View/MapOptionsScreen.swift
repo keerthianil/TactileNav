@@ -20,7 +20,7 @@ import SwiftUI
 
 struct MapOptionsScreen: View {
 
-    let place: SearchResult
+    let place: GeocodedPlace
 
     @State private var scale: MapScale = .standard
     @State private var units: DistanceUnit = .feet
@@ -33,6 +33,8 @@ struct MapOptionsScreen: View {
     /// binding, one destination.
     @State private var built: BuiltMap?
     @State private var isBuilding = false
+    /// What went wrong, if the streets could not be fetched.
+    @State private var message: String?
 
     private struct BuiltMap: Identifiable, Hashable {
         let id: String
@@ -52,9 +54,11 @@ struct MapOptionsScreen: View {
                         .foregroundColor(.secondary)
                     Text(place.name)
                         .font(.title3.weight(.semibold))
-                    Text(place.detail)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    if !place.context.isEmpty {
+                        Text(place.context)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
                 .padding(.vertical, 2)
                 .accessibilityElement(children: .combine)
@@ -87,6 +91,30 @@ struct MapOptionsScreen: View {
                 .accessibilityLabel("Distance units")
             }
 
+            if isBuilding {
+                Section {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text(LiveMapService.isCached(place)
+                             ? "Building the map\u{2026}"
+                             : "Downloading the streets from OpenStreetMap\u{2026} "
+                               + "this can take up to a minute.")
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(LiveMapService.isCached(place)
+                        ? "Building the map"
+                        : "Downloading the streets from OpenStreetMap. This can take a few seconds")
+                }
+            }
+
+            if let message {
+                Section {
+                    Text(message)
+                        .foregroundColor(.secondary)
+                        .accessibilityLabel(message)
+                }
+            }
+
             Section {
                 ForEach(MapSurfaceCategory.allCases, id: \.self) { category in
                     Toggle(isOn: binding(for: category)) {
@@ -104,7 +132,8 @@ struct MapOptionsScreen: View {
                 Text("Features")
             } footer: {
                 Text("Every line switched on is another one to tell apart by touch. "
-                     + "Streets alone is the clearest map; add the rest when you need them.")
+                     + "Streets alone is the clearest map; add the rest when you need them. "
+                     + "All of them are downloaded together, so switching one on later is instant.")
             }
 
         }
@@ -142,22 +171,35 @@ struct MapOptionsScreen: View {
     /// every projected point and into the spatial index, so another scale is a different map,
     /// not a different view of the same one. Off the main thread for the same reason the first
     /// load is — six thousand elements is a dropped frame otherwise.
+    /// Fetches the streets around this place, builds the map these options describe, and
+    /// pushes it.
+    ///
+    /// The fetch is skipped entirely if this place has been opened before — the document is
+    /// kept on disk, so only the first visit needs a network. The build itself is a fresh parse
+    /// rather than a filter over an existing map: the scale is baked into every projected point
+    /// and into the spatial index, so another scale is a different map, not another view of the
+    /// same one.
     private func create() {
         guard !isBuilding, !features.isEmpty else { return }
         isBuilding = true
+        message = nil
         let configuration = MapConfiguration(place: place, scale: scale,
                                              units: units, features: features)
         let context = PortlandMapLoader.LoadContext.current(scale: scale)
         let chosen = features
-        Task.detached(priority: .userInitiated) {
-            let map = try? PortlandMapLoader.loadStreetMap(
-                context: context,
-                resource: PortlandMapLoader.peninsulaResourceName,
-                features: chosen)
-            await MainActor.run {
+        let destination = place
+
+        Task {
+            do {
+                let (map, _) = try await LiveMapService.map(for: destination,
+                                                            context: context,
+                                                            features: chosen)
                 isBuilding = false
-                guard let map else { return }
                 built = BuiltMap(id: configuration.id, configuration: configuration, map: map)
+            } catch {
+                isBuilding = false
+                message = (error as? LocalizedError)?.errorDescription
+                    ?? "The streets here could not be downloaded."
             }
         }
     }
@@ -178,7 +220,7 @@ struct MapOptionsScreen: View {
 
 /// Everything chosen on this screen, in one value the map can be built from.
 nonisolated struct MapConfiguration: Hashable, Identifiable {
-    let place: SearchResult
+    let place: GeocodedPlace
     let scale: MapScale
     let units: DistanceUnit
     let features: MapFeatureSet
