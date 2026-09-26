@@ -7,16 +7,16 @@
 //  Gesture contract, identical with VoiceOver on or off:
 //    • one finger, press and drag  → explore (haptics + spoken surface under the finger)
 //    • one finger, single tap      → speak the surface under the finger
-//    • two fingers, drag           → pan the map, continuously, with momentum
+//    • two fingers, drag           → pan the map, following the first finger down
 //    • three-finger swipe or drag  → go back
 //    • VoiceOver Actions rotor     → pan by half a screen, or recentre
 //
 //  Panning lives on two fingers because the one-finger channel is the tactile exploration
-//  model and cannot be shared. A UIScrollView with `minimumNumberOfTouches = 2` separates
-//  the two cleanly and brings momentum, deceleration and rubber-banding with it. Three
-//  fingers is not available for panning: VoiceOver reserves it and delivers it as a
-//  discrete `accessibilityScroll`, so it stays on back, and the Actions rotor covers users
-//  who can't manage a smooth two-finger drag.
+//  model and cannot be shared. It is driven from the same raw touches as exploration, not by
+//  the scroll view's own pan, and it is anchored on the finger that was down first (see
+//  `AnchoredPan`). Three fingers is not available for panning: VoiceOver reserves it and
+//  delivers it as a discrete `accessibilityScroll`, so it stays on back, and the Actions
+//  rotor covers users who can't manage a smooth two-finger drag.
 //
 //  There is deliberately no zoom. Every width on this map is a physical millimetre
 //  measurement, and a variable scale would make that untrue.
@@ -26,6 +26,72 @@ import SwiftUI
 import TactileMapCore
 import TactileMapLogging
 import UIKit
+
+// MARK: - Two-finger pan
+
+/// Two-finger panning that follows the first finger down, and only that finger.
+///
+/// **Why not the scroll view's own pan.** UIScrollView pans by the centroid of every finger on
+/// the glass. The moment a second finger lands that centroid jumps halfway towards it, and the
+/// map jumped with it: a reader holding a corner under one finger put a second finger down to
+/// start a pan and felt the corner slide away before either finger had moved. The same jump
+/// happened in reverse when a finger lifted.
+///
+/// Here the finger that has been down longest is the anchor. Nothing moves when another finger
+/// lands or lifts; each change of fingers takes a fresh baseline, and from then on the map moves
+/// exactly as far as the anchor does. Any other finger only says "this is a pan, not an
+/// explore". Exactly two fingers pan; a third pauses it, because three is the back gesture.
+///
+/// Points are in a frame that does not scroll (the window), so moving the map cannot feed back
+/// into the finger's own position. Offsets are unclamped; the scroll view clamps them.
+struct AnchoredPan {
+    typealias Finger = ObjectIdentifier
+
+    /// Every finger on the glass, in the order it arrived. The first is the anchor.
+    private var fingers: [(id: Finger, point: CGPoint)] = []
+    /// Where the anchor and the map were when the current pan (re)started.
+    private var baseline: (anchor: CGPoint, offset: CGPoint)?
+
+    var isPanning: Bool { baseline != nil }
+    var fingerCount: Int { fingers.count }
+
+    /// A finger landed. `offset` is where the map is right now.
+    mutating func fingerDown(_ id: Finger, at point: CGPoint, offset: CGPoint) {
+        guard !fingers.contains(where: { $0.id == id }) else { return }
+        fingers.append((id, point))
+        rebaseline(offset: offset)
+    }
+
+    /// A finger moved. Returns the offset the map should move to, or nil if this finger does
+    /// not move the map: every finger but the anchor, and every finger when not
+    /// exactly two are down.
+    mutating func fingerMoved(_ id: Finger, to point: CGPoint) -> CGPoint? {
+        guard let index = fingers.firstIndex(where: { $0.id == id }) else { return nil }
+        fingers[index].point = point
+        guard index == 0, let baseline else { return nil }
+        return CGPoint(x: baseline.offset.x - (point.x - baseline.anchor.x),
+                       y: baseline.offset.y - (point.y - baseline.anchor.y))
+    }
+
+    /// A finger lifted or was cancelled.
+    mutating func fingerUp(_ id: Finger, offset: CGPoint) {
+        guard fingers.contains(where: { $0.id == id }) else { return }
+        fingers.removeAll { $0.id == id }
+        rebaseline(offset: offset)
+    }
+
+    /// Forget any finger UIKit no longer reports, so a touch that ended somewhere this view
+    /// never heard about cannot hold a pan open.
+    mutating func keepOnly(_ live: Set<Finger>, offset: CGPoint) {
+        let before = fingers.count
+        fingers.removeAll { !live.contains($0.id) }
+        if fingers.count != before { rebaseline(offset: offset) }
+    }
+
+    private mutating func rebaseline(offset: CGPoint) {
+        baseline = fingers.count == 2 ? (fingers[0].point, offset) : nil
+    }
+}
 
 // MARK: - Scroll view
 
@@ -84,13 +150,54 @@ final class PortlandStreetScrollView: UIScrollView {
     private var lastTapPoint: CGPoint = .zero
     private var pendingSingleTap: DispatchWorkItem?
 
+    // MARK: Pan touches
+
+    /// A two-finger pan started or stopped, so the screen can hold or give its orientation cue.
+    var onPanBegan: (() -> Void)?
+    var onPanEnded: (() -> Void)?
+
+    private var pan = AnchoredPan()
+    var isPanning: Bool { pan.isPanning }
+
+    /// Feed a change of fingers to the pan, and report it starting or stopping.
+    private func updatePan(_ change: (inout AnchoredPan) -> Void) {
+        let wasPanning = pan.isPanning
+        change(&pan)
+        guard pan.isPanning != wasPanning else { return }
+        if pan.isPanning { onPanBegan?() } else { onPanEnded?() }
+    }
+
+    /// Move the map to where the anchor finger has taken it, within the map's edges.
+    private func panMoved(_ touches: Set<UITouch>) {
+        for touch in touches {
+            guard let proposed = pan.fingerMoved(ObjectIdentifier(touch), to: touch.location(in: nil))
+            else { continue }
+            let limit = CGPoint(x: max(0, contentSize.width - bounds.width),
+                                y: max(0, contentSize.height - bounds.height))
+            contentOffset = CGPoint(x: min(max(proposed.x, 0), limit.x),
+                                    y: min(max(proposed.y, 0), limit.y))
+            // The scroll view's own pan is off, so its indicators would never show otherwise.
+            flashScrollIndicators()
+        }
+    }
+
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesBegan(touches, with: event)
+
+        updatePan { pan in
+            if let live = event?.allTouches?.filter({ $0.phase != .ended && $0.phase != .cancelled }) {
+                pan.keepOnly(Set(live.map(ObjectIdentifier.init)), offset: contentOffset)
+            }
+            // Oldest first, so two fingers landing together still pick one anchor, and the same one.
+            for touch in touches.sorted(by: { $0.timestamp < $1.timestamp }) {
+                pan.fingerDown(ObjectIdentifier(touch), at: touch.location(in: nil), offset: contentOffset)
+            }
+        }
 
         // A second finger means the user is panning, not exploring.
         let activeCount = event?.allTouches?.filter { $0.phase != .ended && $0.phase != .cancelled }.count
             ?? touches.count
-        guard activeCount == 1, !isDragging, !isDecelerating, let touch = touches.first else {
+        guard activeCount == 1, !pan.isPanning, let touch = touches.first else {
             endExplore(cancelled: true)
             return
         }
@@ -103,12 +210,16 @@ final class PortlandStreetScrollView: UIScrollView {
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesMoved(touches, with: event)
+        panMoved(touches)
         guard let touch = exploreTouch, touches.contains(touch) else { return }
         onExploreMoved?(touch.location(in: self))
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesEnded(touches, with: event)
+        updatePan { pan in
+            for touch in touches { pan.fingerUp(ObjectIdentifier(touch), offset: contentOffset) }
+        }
         guard let touch = exploreTouch, touches.contains(touch) else { return }
 
         let point = touch.location(in: self)
@@ -152,6 +263,9 @@ final class PortlandStreetScrollView: UIScrollView {
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesCancelled(touches, with: event)
+        updatePan { pan in
+            for touch in touches { pan.fingerUp(ObjectIdentifier(touch), offset: contentOffset) }
+        }
         endExplore(cancelled: true)
     }
 
@@ -369,14 +483,16 @@ struct PortlandMapView: UIViewRepresentable {
         scrollView.delegate = coordinator
         scrollView.showsVerticalScrollIndicator = true
         scrollView.showsHorizontalScrollIndicator = true
-        // The map moves exactly as far as the fingers move, and stops when they stop.
+        // The scroll view's own pan is switched off; the map is panned from raw touches,
+        // anchored on the first finger down (see `AnchoredPan`). Its centroid-following pan
+        // jumped the map whenever a second finger landed.
         //
-        // Momentum is wrong here. A sighted user throws a map and watches where it lands; a
-        // user reading by touch has one finger holding a place on the street grid, and a map
-        // that keeps gliding after the pan has ended slides that place out from under them
-        // with no way to tell how far it went. Deceleration is switched off, and
-        // `scrollViewWillEndDragging` pins the landing point to wherever the fingers let go.
-        scrollView.decelerationRate = UIScrollView.DecelerationRate(rawValue: 0)
+        // That also means no momentum, which is right here. A sighted user throws a map and
+        // watches where it lands; a user reading by touch has one finger holding a place on
+        // the street grid, and a map that keeps gliding after the pan has ended slides that
+        // place out from under them with no way to tell how far it went. The map moves
+        // exactly as far as the anchor finger moves, and stops when it stops.
+        scrollView.isScrollEnabled = false
         // Rubber-banding at the edges is the same problem in miniature: the map moves without
         // the fingers having moved it.
         scrollView.bounces = false
@@ -388,11 +504,6 @@ struct PortlandMapView: UIViewRepresentable {
         scrollView.minimumZoomScale = 1
         scrollView.maximumZoomScale = 1
         scrollView.bouncesZoom = false
-
-        // Two fingers to pan, and never more than two — a three-finger back drag must not
-        // also pan the map.
-        scrollView.panGestureRecognizer.minimumNumberOfTouches = 2
-        scrollView.panGestureRecognizer.maximumNumberOfTouches = 2
 
         // A one-finger explore drag must reach the recognizers immediately, with no delay
         // waiting to see whether a scroll is starting.
@@ -713,21 +824,13 @@ struct PortlandMapView: UIViewRepresentable {
             container?.canvas.contentOffset = scrollView.contentOffset
         }
 
-        /// Pin the pan to where the fingers left it.
-        ///
-        /// Clearing `decelerationRate` alone is not quite enough — UIKit still projects a
-        /// landing point from the release velocity. Overwriting the target with the current
-        /// offset is what makes the gesture strictly one-to-one with the fingers.
-        func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint,
-                                       targetContentOffset: UnsafeMutablePointer<CGPoint>) {
-            targetContentOffset.pointee = scrollView.contentOffset
+        /// A two-finger pan has started: nothing about where the map was is worth saying now.
+        func panBegan() {
+            panSettleWork?.cancel()
         }
 
-        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-            if !decelerate { schedulePanSettled() }
-        }
-
-        func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        /// A two-finger pan has stopped where the anchor finger left it.
+        func panEnded() {
             schedulePanSettled()
         }
 
@@ -780,6 +883,8 @@ struct PortlandMapView: UIViewRepresentable {
             scrollView.onExploreEnded = { [weak self] in self?.exploreEnded() }
             scrollView.onExploreTapped = { [weak self] point in self?.exploreTapped(at: point) }
             scrollView.onExploreDoubleTapped = { [weak self] point in self?.exploreDoubleTapped(at: point) }
+            scrollView.onPanBegan = { [weak self] in self?.panBegan() }
+            scrollView.onPanEnded = { [weak self] in self?.panEnded() }
         }
 
         private func exploreBegan(at point: CGPoint) {

@@ -178,6 +178,12 @@ exactly as far as the fingers move and stops when they stop. A sighted user thro
 where it lands, but someone reading by touch has a finger holding a place on the grid, and a map that
 keeps gliding slides that place away with no way to tell how far it went.
 
+**The pan follows the first finger down.** Put one finger on a corner, add a second anywhere, and the
+map does not move until the first finger does; from then on it moves exactly as far as that finger.
+The second finger only says "this is a pan". A scroll view's usual pan follows the midpoint of all
+the fingers, which jumps halfway to the second finger the moment it lands, and that jump slid the
+corner out from under the first.
+
 The double tap is synthesised from the same raw touches as everything else, so it behaves identically
 with VoiceOver on and off — a second gesture-recognizer implementation for VoiceOver is exactly the
 split that leaves one of the two states broken.

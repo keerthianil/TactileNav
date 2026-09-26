@@ -193,7 +193,7 @@ the repo but **dead code from the app's point of view**.
 **The headline fact for onboarding:** the app only imports `TactileMapView` for one tuning-constant
 struct. Both real screens render themselves with a hand-rolled `UIScrollView` + `Canvas`/`UIView` stack
 (`PortlandMapView.swift`, `PortlandStreetCanvasView.swift`, `IntersectionTactileView.swift`) because both
-need continuous two-finger panning with momentum over content far larger than a `CALayer` can back —
+need continuous two-finger panning over content far larger than a `CALayer` can back —
 something the package's `TactileMapView` doesn't provide. Don't go looking for the map's rendering logic
 inside the package; it's entirely in the app.
 
@@ -206,7 +206,7 @@ inside the package; it's entirely in the app.
 ```
 finger down
   → PortlandStreetScrollView.touchesBegan  (PortlandMapView.swift:115-130)
-      guards: exactly 1 active touch, not mid-pan/decelerating
+      guards: exactly 1 active touch, not mid-pan (AnchoredPan)
       records exploreTouch/exploreStartedAt/exploreStartPoint
       calls onExploreBegan?(point)
   → Coordinator.exploreBegan(at:)  (PortlandMapView.swift:706-720)

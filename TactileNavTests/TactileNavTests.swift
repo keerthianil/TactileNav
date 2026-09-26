@@ -420,15 +420,86 @@ struct CongressSquareMapTests {
 
     @Test func scrollViewIsConfiguredForTwoFingerPanningOnly() throws {
         let container = try laidOutContainer(size: CGSize(width: 402, height: 720)).container
-        let pan = container.scrollView.panGestureRecognizer
 
-        // One finger is the exploration channel, so it must never pan.
-        #expect(pan.minimumNumberOfTouches == 2)
-        // Three fingers is the back gesture, so it must never also pan.
-        #expect(pan.maximumNumberOfTouches == 2)
+        // The scroll view's own pan follows the centroid of the fingers, which jumps when a
+        // second finger lands. It must stay off; the map is panned by `AnchoredPan` instead.
+        #expect(container.scrollView.isScrollEnabled == false)
         // Physical millimetre sizing is only true at one scale.
         #expect(container.scrollView.minimumZoomScale == 1)
         #expect(container.scrollView.maximumZoomScale == 1)
+    }
+
+    /// Fingers for `AnchoredPan`, which only needs something with an identity. Held for the
+    /// whole test: an identifier of an object already freed can be handed straight to the next.
+    private final class Finger {}
+    private let fingers = [Finger(), Finger(), Finger()]
+    private var first: ObjectIdentifier { ObjectIdentifier(fingers[0]) }
+    private var second: ObjectIdentifier { ObjectIdentifier(fingers[1]) }
+    private var third: ObjectIdentifier { ObjectIdentifier(fingers[2]) }
+
+    /// Putting a second finger down must not move the map, however far away it lands.
+    ///
+    /// This is the jitter that was reported: the scroll view's own pan followed the centroid of
+    /// the fingers, which moved halfway to the second finger the moment it touched down.
+    @Test func aSecondFingerLandingDoesNotMoveTheMap() {
+        var pan = AnchoredPan()
+        let offset = CGPoint(x: 5000, y: 3000)
+
+        pan.fingerDown(first, at: CGPoint(x: 100, y: 400), offset: offset)
+        #expect(!pan.isPanning, "one finger explores, it never pans")
+        // The first finger drifts a little while exploring, before the second arrives.
+        #expect(pan.fingerMoved(first, to: CGPoint(x: 130, y: 380)) == nil)
+
+        pan.fingerDown(second, at: CGPoint(x: 350, y: 700), offset: offset)
+        #expect(pan.isPanning)
+        // No movement yet from either finger: the map is exactly where it was.
+        #expect(pan.fingerMoved(first, to: CGPoint(x: 130, y: 380)) == offset)
+    }
+
+    /// The map follows the first finger, one-to-one, and nothing the second finger does moves it.
+    @Test func thePanFollowsTheFirstFingerAndOnlyTheFirst() {
+        var pan = AnchoredPan()
+        let offset = CGPoint(x: 5000, y: 3000)
+        pan.fingerDown(first, at: CGPoint(x: 100, y: 400), offset: offset)
+        pan.fingerDown(second, at: CGPoint(x: 300, y: 400), offset: offset)
+
+        // The second finger wobbling, or moving on its own, is not a pan.
+        #expect(pan.fingerMoved(second, to: CGPoint(x: 260, y: 520)) == nil)
+
+        // Dragging the first finger 40 right and 60 down moves the map the same distance, so
+        // the point that was under it stays under it.
+        #expect(pan.fingerMoved(first, to: CGPoint(x: 140, y: 460))
+                == CGPoint(x: offset.x - 40, y: offset.y - 60))
+    }
+
+    /// Fingers lifting and landing mid-pan never jump the map either, and a third finger (the
+    /// back gesture) pauses the pan rather than moving it.
+    @Test func changingFingersMidPanNeverJumpsTheMap() {
+        var pan = AnchoredPan()
+        pan.fingerDown(first, at: CGPoint(x: 100, y: 100), offset: .zero)
+        pan.fingerDown(second, at: CGPoint(x: 300, y: 100), offset: .zero)
+        let moved = pan.fingerMoved(first, to: CGPoint(x: 80, y: 100))
+        #expect(moved == CGPoint(x: 20, y: 0))
+
+        // Second finger lifts: one finger left, so no pan, and the map stays put.
+        pan.fingerUp(second, offset: CGPoint(x: 20, y: 0))
+        #expect(!pan.isPanning)
+        #expect(pan.fingerMoved(first, to: CGPoint(x: 60, y: 100)) == nil)
+
+        // It lands again somewhere else. The pan picks up from here, still on the first finger.
+        pan.fingerDown(second, at: CGPoint(x: 10, y: 600), offset: CGPoint(x: 20, y: 0))
+        #expect(pan.fingerMoved(first, to: CGPoint(x: 60, y: 100)) == CGPoint(x: 20, y: 0))
+        #expect(pan.fingerMoved(first, to: CGPoint(x: 50, y: 100)) == CGPoint(x: 30, y: 0))
+
+        // A third finger is the back gesture: the map holds still under it.
+        pan.fingerDown(third, at: CGPoint(x: 200, y: 300), offset: CGPoint(x: 30, y: 0))
+        #expect(!pan.isPanning)
+        #expect(pan.fingerMoved(first, to: CGPoint(x: 0, y: 100)) == nil)
+
+        // UIKit stops reporting two of them. The one it still reports is alone, so no pan.
+        pan.keepOnly([first], offset: CGPoint(x: 30, y: 0))
+        #expect(pan.fingerCount == 1)
+        #expect(!pan.isPanning)
     }
 
     @Test func theMapCanActuallyScrollInBothDirections() throws {
